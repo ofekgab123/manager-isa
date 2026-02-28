@@ -14,13 +14,17 @@ app.use(express.json());
 app.get('/api/orders', async (req, res) => {
   try {
     const orders = await readOrders();
-    const { status, type, createdBy, contacted } = req.query;
+    const { status, type, createdBy, contacted, customerPhone } = req.query;
     let filtered = orders;
     if (status) filtered = filtered.filter((o) => o.status === status);
     if (type) filtered = filtered.filter((o) => o.type === type);
     if (createdBy) filtered = filtered.filter((o) => o.createdBy === createdBy);
     if (contacted === 'true') filtered = filtered.filter((o) => o.contacted === true);
     if (contacted === 'false') filtered = filtered.filter((o) => !o.contacted);
+    if (customerPhone) {
+      const phone = customerPhone.replace(/\D/g, '');
+      filtered = filtered.filter((o) => (o.customerPhone || '').replace(/\D/g, '') === phone);
+    }
     res.json(filtered);
   } catch (err) {
     res.status(500).json({ error: err.message });
