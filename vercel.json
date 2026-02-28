@@ -3,16 +3,6 @@
   "buildCommand": "cd server && npm install && cd ../dashboard && npm install && npm run build",
   "outputDirectory": "public",
   "framework": null,
-  "headers": [
-    {
-      "source": "/api/(.*)",
-      "headers": [
-        { "key": "Access-Control-Allow-Origin", "value": "https://isa-32uqdb92z-ofekgab123s-projects.vercel.app" },
-        { "key": "Access-Control-Allow-Methods", "value": "GET, POST, PATCH, DELETE, OPTIONS" },
-        { "key": "Access-Control-Allow-Headers", "value": "Content-Type, Authorization" }
-      ]
-    }
-  ],
   "rewrites": [
     { "source": "/api/:path*", "destination": "/api" }
   ],

@@ -4,11 +4,19 @@ import { readOrders, writeOrders } from './storage.js';
 
 const app = express();
 app.use(cors({
-  origin: [
-    'https://isa-32uqdb92z-ofekgab123s-projects.vercel.app',
-    'http://localhost:5173',
-    'http://localhost:3000',
-  ],
+  origin: (origin, cb) => {
+    const allowed = [
+      'https://isa-32uqdb92z-ofekgab123s-projects.vercel.app',
+      'https://isa-git-main-ofekgab123s-projects.vercel.app',
+      'http://localhost:5173',
+      'http://localhost:3000',
+    ];
+    if (!origin || allowed.includes(origin) || /^https:\/\/isa-.*-ofekgab123s-projects\.vercel\.app$/.test(origin)) {
+      cb(null, true);
+    } else {
+      cb(null, false);
+    }
+  },
   methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
 }));
