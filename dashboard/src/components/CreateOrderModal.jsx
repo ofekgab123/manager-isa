@@ -282,8 +282,8 @@ export default function CreateOrderModal({ isOpen, onClose, onCreated }) {
                   className="p-6 rounded-xl border-2 border-slate-200 hover:border-slate-600 hover:bg-slate-50 flex flex-col items-center gap-3 transition"
                 >
                   <Package className="w-12 h-12 text-slate-600" />
-                  <span className="font-semibold text-slate-800">Bring boxes</span>
-                  <span className="text-sm text-slate-500 text-center">Ship empty boxes to customer</span>
+                  <span className="font-semibold text-slate-800">Order empty box</span>
+                  <span className="text-sm text-slate-500 text-center">Ready for Box – ship empty boxes to customer</span>
                 </button>
                 <button
                   type="button"
@@ -291,8 +291,8 @@ export default function CreateOrderModal({ isOpen, onClose, onCreated }) {
                   className="p-6 rounded-xl border-2 border-slate-200 hover:border-slate-600 hover:bg-slate-50 flex flex-col items-center gap-3 transition"
                 >
                   <Truck className="w-12 h-12 text-slate-600" />
-                  <span className="font-semibold text-slate-800">Pick up from me</span>
-                  <span className="text-sm text-slate-500 text-center">Pick up parcel from me and ship to receiver</span>
+                  <span className="font-semibold text-slate-800">Pick up my parcel</span>
+                  <span className="text-sm text-slate-500 text-center">Ready for Pickup – pick up parcel and ship to receiver</span>
                 </button>
               </div>
             </>

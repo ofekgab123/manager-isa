@@ -13,9 +13,8 @@ const STATUS_OPTIONS = [
 ];
 
 const TYPE_OPTIONS = [
-  { value: 'send', label: 'Pick up from me' },
-  { value: 'pickup', label: 'Pickup' },
-  { value: 'empty_box', label: 'Bring boxes' },
+  { value: 'pickup', label: 'Pick up' },
+  { value: 'empty_box', label: 'Box' },
 ];
 
 function EditableField({ label, value, onChange, type = 'text', placeholder, readOnly }) {
@@ -121,7 +120,7 @@ export default function OrderDetails({ order, onSave, onClose }) {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         <EditableField label="ID" value={edit.id} onChange={() => {}} readOnly />
         <div>
-          <label className="block text-xs font-medium text-slate-500 mb-1">Type</label>
+          <label className="block text-xs font-medium text-slate-500 mb-1">Ready for</label>
           <select
             value={edit.type || ''}
             onChange={(e) => update('type', e.target.value)}
@@ -168,8 +167,8 @@ export default function OrderDetails({ order, onSave, onClose }) {
               className="w-full px-3 py-2 border rounded-lg text-sm"
             >
               <option value="">—</option>
-              <option value="ready_for_box">Ready for Box</option>
-              <option value="pickup">Pickup</option>
+              <option value="ready_for_box">Box</option>
+              <option value="pickup">Pick up</option>
             </select>
           </div>
         )}
@@ -198,8 +197,8 @@ export default function OrderDetails({ order, onSave, onClose }) {
         />
       )}
 
-      {/* פרטי שולח - Pickup Parcel */}
-      {(edit.type === 'send' || edit.senderAddress || edit.fullName) && (
+      {/* Sender details - Pick up my parcel (includes legacy type 'send') */}
+      {((edit.type === 'pickup' || edit.type === 'send') && (edit.senderAddress || edit.fullName)) && (
         <>
           <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
             <h4 className="font-semibold text-slate-800 flex items-center gap-2">
@@ -219,8 +218,8 @@ export default function OrderDetails({ order, onSave, onClose }) {
         </>
       )}
 
-      {/* פרטי נמען */}
-      {(edit.type === 'send' || edit.receiverName || edit.receiverAddress) && (
+      {/* Receiver details */}
+      {((edit.type === 'pickup' || edit.type === 'send') && (edit.receiverName || edit.receiverAddress)) && (
         <>
           <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
             <h4 className="font-semibold text-slate-800 flex items-center gap-2">

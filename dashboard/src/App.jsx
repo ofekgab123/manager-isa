@@ -25,10 +25,10 @@ const STATUS_LABELS = {
 };
 
 const TYPE_LABELS = {
-  send: 'Pick up from me',
-  pickup: 'Pickup',
-  empty_box: 'Bring boxes',
+  pickup: 'Pick up',
+  empty_box: 'Box',
 };
+const getTypeLabel = (type) => TYPE_LABELS[type] || (type === 'send' ? 'Pick up' : type);
 
 const CREATED_BY_LABELS = {
   customer: 'Customer',
@@ -140,7 +140,8 @@ export default function App() {
 
   const filtered = orders.filter((o) => {
     if (filterStatus && o.status !== filterStatus) return false;
-    if (filterType && o.type !== filterType) return false;
+    if (filterType && filterType === 'pickup' && !['pickup', 'send'].includes(o.type)) return false;
+    if (filterType && filterType === 'empty_box' && o.type !== 'empty_box') return false;
     if (filterCreatedBy && o.createdBy !== filterCreatedBy) return false;
     if (filterContacted === 'yes' && !o.contacted) return false;
     if (filterContacted === 'no' && o.contacted) return false;
@@ -275,7 +276,7 @@ export default function App() {
                 onChange={(e) => setFilterType(e.target.value)}
                 className="px-3 py-2 border rounded-lg text-sm"
               >
-                <option value="">All types</option>
+                <option value="">All (Ready for)</option>
                 {Object.entries(TYPE_LABELS).map(([k, v]) => (
                   <option key={k} value={k}>{v}</option>
                 ))}
@@ -326,7 +327,7 @@ export default function App() {
                 <thead>
                   <tr className="bg-slate-50 border-b border-slate-100">
                     <th className="px-4 py-3 text-sm font-semibold text-slate-600">ID</th>
-                    <th className="px-4 py-3 text-sm font-semibold text-slate-600">Type</th>
+                    <th className="px-4 py-3 text-sm font-semibold text-slate-600">Ready for</th>
                     <th className="px-4 py-3 text-sm font-semibold text-slate-600">Status</th>
                     <th className="px-4 py-3 text-sm font-semibold text-slate-600">Contacted</th>
                     <th className="px-4 py-3 text-sm font-semibold text-slate-600">Boxes</th>
@@ -347,7 +348,7 @@ export default function App() {
                         <td className="px-4 py-3 font-mono font-bold text-blue-600">{order.id}</td>
                         <td className="px-4 py-3">
                           <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100">
-                            {TYPE_LABELS[order.type] || order.type}
+                            {getTypeLabel(order.type)}
                           </span>
                         </td>
                         <td className="px-4 py-3">

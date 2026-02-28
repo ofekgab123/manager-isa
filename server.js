@@ -117,14 +117,15 @@ app.delete('/api/orders/:id', async (req, res) => {
   res.json({ success: true });
 });
 
-// Static files (dashboard build)
-const distPath = path.join(__dirname, 'dashboard', 'dist');
-app.use(express.static(distPath));
-// SPA fallback - serve index.html for non-API routes
-app.get('*', (req, res, next) => {
-  if (req.path.startsWith('/api')) return next();
-  res.sendFile(path.join(distPath, 'index.html'));
-});
+// Static files - only when running locally (Vercel serves public/ from CDN)
+if (process.env.VERCEL !== '1') {
+  const distPath = path.join(__dirname, 'public');
+  app.use(express.static(distPath));
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api')) return next();
+    res.sendFile(path.join(distPath, 'index.html'));
+  });
+}
 
 if (process.env.VERCEL !== '1') {
   const PORT = process.env.PORT || 3002;
