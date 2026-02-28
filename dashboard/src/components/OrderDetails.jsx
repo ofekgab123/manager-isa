@@ -70,6 +70,12 @@ function AddressBlock({ title, addr, onChange }) {
       {data.displayAddress && (
         <p className="text-sm text-slate-600">Full address: {data.displayAddress}</p>
       )}
+      {(data.lat != null || data.lng != null) && (
+        <p className="text-sm text-slate-600 font-mono">
+          Coordinates: {typeof data.lat === 'number' ? data.lat.toFixed(6) : data.lat},{' '}
+          {typeof data.lng === 'number' ? data.lng.toFixed(6) : data.lng}
+        </p>
+      )}
       {data.videoUrl && (
         <div>
           <div className="flex items-center gap-2 text-xs font-medium text-slate-500 mb-1">

@@ -217,7 +217,7 @@ export default function CreateOrderModal({ isOpen, onClose, onCreated }) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          type: 'send',
+          type: 'pickup',
           boxes: 0,
           createdBy: 'customer_service',
           contacted: true,
