@@ -79,12 +79,12 @@ UPSTASH_REDIS_REST_TOKEN=your-token
 
 ## מבנה הפרויקט ב-Vercel
 
+הפרויקט משתמש ב-**Express בשורש** (`server.js`) שמשרת גם את ה-API וגם את ה-Dashboard:
+
 | נתיב        | תיאור                          |
 |-------------|--------------------------------|
 | `/`         | Dashboard (React/Vite)         |
-| `/api/*`    | Backend (Express serverless)   |
-
-ה-Dashboard משתמש ב-`/api` – ב-Vercel כל הבקשות ל-`/api/*` מנותבות ל-API.
+| `/api/*`    | Backend (Express)             |
 
 ---
 

@@ -2,9 +2,17 @@
   "name": "manager-isa",
   "private": true,
   "version": "1.0.0",
+  "type": "module",
+  "dependencies": {
+    "@upstash/redis": "^1.34.3",
+    "cors": "^2.8.5",
+    "express": "^4.21.0"
+  },
   "scripts": {
     "server": "cd server && npm run dev",
     "dashboard": "cd dashboard && npm run dev",
-    "install:all": "cd server && npm install && cd ../dashboard && npm install"
+    "dev": "npm run server & npm run dashboard",
+    "install:all": "cd server && npm install && cd ../dashboard && npm install",
+    "build": "cd dashboard && npm run build"
   }
 }

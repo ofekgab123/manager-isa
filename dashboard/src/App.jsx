@@ -310,7 +310,7 @@ export default function App() {
           {error || loading ? (
             <div className="p-8 text-center">
               {error ? (
-                <p className="text-red-600">שגיאה: {error}. ודא שהשרת רץ על פורט 3002.</p>
+                <p className="text-red-600">שגיאה: {error}. בהרצה מקומית – ודא שהשרת רץ (npm run server).</p>
               ) : (
                 <p className="text-slate-500">טוען...</p>
               )}

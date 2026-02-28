@@ -2,7 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { readOrders, writeOrders } from './storage.js';
+import { readOrders, writeOrders } from './server/storage.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -10,7 +10,7 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// GET /api/orders - כל ההזמנות
+// API routes
 app.get('/api/orders', async (req, res) => {
   try {
     const orders = await readOrders();
@@ -22,8 +22,8 @@ app.get('/api/orders', async (req, res) => {
     if (contacted === 'true') filtered = filtered.filter((o) => o.contacted === true);
     if (contacted === 'false') filtered = filtered.filter((o) => !o.contacted);
     if (customerPhone) {
-      const q = (customerPhone || '').replace(/\D/g, '').slice(-9);
-      filtered = filtered.filter((o) => ((o.customerPhone || '').replace(/\D/g, '').slice(-9)) === q);
+      const phone = customerPhone.replace(/\D/g, '');
+      filtered = filtered.filter((o) => (o.customerPhone || '').replace(/\D/g, '') === phone);
     }
     res.json(filtered);
   } catch (err) {
@@ -31,7 +31,6 @@ app.get('/api/orders', async (req, res) => {
   }
 });
 
-// GET /api/orders/stats - פילוחים וסטטיסטיקות
 app.get('/api/orders/stats', async (req, res) => {
   try {
     const orders = await readOrders();
@@ -42,7 +41,6 @@ app.get('/api/orders/stats', async (req, res) => {
     let totalPrice = 0;
     let contactedCount = 0;
     let notContactedCount = 0;
-
     orders.forEach((o) => {
       byStatus[o.status] = (byStatus[o.status] || 0) + 1;
       byType[o.type] = (byType[o.type] || 0) + 1;
@@ -52,7 +50,6 @@ app.get('/api/orders/stats', async (req, res) => {
       if (o.contacted) contactedCount++;
       else notContactedCount++;
     });
-
     res.json({
       total: orders.length,
       totalBoxes,
@@ -68,7 +65,6 @@ app.get('/api/orders/stats', async (req, res) => {
   }
 });
 
-// GET /api/orders/:id - הזמנה בודדת
 app.get('/api/orders/:id', async (req, res) => {
   const orders = await readOrders();
   const order = orders.find((o) => o.id === req.params.id);
@@ -76,7 +72,6 @@ app.get('/api/orders/:id', async (req, res) => {
   res.json(order);
 });
 
-// POST /api/orders - יצירת הזמנה חדשה
 app.post('/api/orders', async (req, res) => {
   try {
     const orders = await readOrders();
@@ -101,7 +96,6 @@ app.post('/api/orders', async (req, res) => {
   }
 });
 
-// PATCH /api/orders/:id - עדכון הזמנה
 app.patch('/api/orders/:id', async (req, res) => {
   try {
     const orders = await readOrders();
@@ -115,7 +109,6 @@ app.patch('/api/orders/:id', async (req, res) => {
   }
 });
 
-// DELETE /api/orders/:id - מחיקת הזמנה (אופציונלי)
 app.delete('/api/orders/:id', async (req, res) => {
   const orders = await readOrders();
   const filtered = orders.filter((o) => o.id !== req.params.id);
@@ -124,11 +117,19 @@ app.delete('/api/orders/:id', async (req, res) => {
   res.json({ success: true });
 });
 
-// Export for Vercel serverless; listen only when running locally
+// Static files (dashboard build)
+const distPath = path.join(__dirname, 'dashboard', 'dist');
+app.use(express.static(distPath));
+// SPA fallback - serve index.html for non-API routes
+app.get('*', (req, res, next) => {
+  if (req.path.startsWith('/api')) return next();
+  res.sendFile(path.join(distPath, 'index.html'));
+});
+
 if (process.env.VERCEL !== '1') {
   const PORT = process.env.PORT || 3002;
   app.listen(PORT, () => {
-    console.log(`Manager ISA API running at http://localhost:${PORT}`);
+    console.log(`Manager ISA running at http://localhost:${PORT}`);
   });
 }
 
