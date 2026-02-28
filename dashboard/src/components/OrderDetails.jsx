@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { MapPin, User, Save, X } from 'lucide-react';
+import { MapPin, User, Save, X, Video, Image } from 'lucide-react';
 import AddressSearch from './AddressSearch';
 import { API_BASE } from '../config';
 
@@ -69,6 +69,24 @@ function AddressBlock({ title, addr, onChange }) {
       </div>
       {data.displayAddress && (
         <p className="text-sm text-slate-600">Full address: {data.displayAddress}</p>
+      )}
+      {data.videoUrl && (
+        <div>
+          <div className="flex items-center gap-2 text-xs font-medium text-slate-500 mb-1">
+            <Video className="w-4 h-4" />
+            Verification video
+          </div>
+          <video src={data.videoUrl} controls className="w-full max-w-xs max-h-40 rounded-lg border bg-black" />
+        </div>
+      )}
+      {data.imageUrl && (
+        <div>
+          <div className="flex items-center gap-2 text-xs font-medium text-slate-500 mb-1">
+            <Image className="w-4 h-4" />
+            Verification photo
+          </div>
+          <img src={data.imageUrl} alt="Address verification" className="max-w-xs max-h-40 rounded-lg border object-contain" />
+        </div>
       )}
     </div>
   );

@@ -1,16 +1,24 @@
 import express from 'express';
 import cors from 'cors';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import { readOrders, writeOrders } from './server/storage.js';
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+import { readOrders, writeOrders } from './storage.js';
 
 const app = express();
-app.use(cors());
+app.use(cors({
+  origin: [
+    'https://isa-32uqdb92z-ofekgab123s-projects.vercel.app',
+    'http://localhost:5173',
+    'http://localhost:3000',
+  ],
+  methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+}));
 app.use(express.json());
 
-// API routes
+const normalizeStatus = (s) => {
+  if (s === 'recorded' || s === 'pending') return s === 'recorded' ? 'received' : 'linewhel_transferred';
+  return s;
+};
+
 app.get('/api/orders', async (req, res) => {
   try {
     const orders = await readOrders();
@@ -30,11 +38,6 @@ app.get('/api/orders', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-
-const normalizeStatus = (s) => {
-  if (s === 'recorded' || s === 'pending') return s === 'recorded' ? 'received' : 'linewhel_transferred';
-  return s;
-};
 
 app.get('/api/orders/stats', async (req, res) => {
   try {
@@ -122,22 +125,5 @@ app.delete('/api/orders/:id', async (req, res) => {
   await writeOrders(filtered);
   res.json({ success: true });
 });
-
-// Static files - only when running locally (Vercel serves public/ from CDN)
-if (process.env.VERCEL !== '1') {
-  const distPath = path.join(__dirname, 'public');
-  app.use(express.static(distPath));
-  app.get('*', (req, res, next) => {
-    if (req.path.startsWith('/api')) return next();
-    res.sendFile(path.join(distPath, 'index.html'));
-  });
-}
-
-if (process.env.VERCEL !== '1') {
-  const PORT = process.env.PORT || 3002;
-  app.listen(PORT, () => {
-    console.log(`Manager ISA running at http://localhost:${PORT}`);
-  });
-}
 
 export default app;
