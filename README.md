@@ -65,3 +65,4 @@ npm run dev
 # manager-isa
 # mangaer-isa
 # mangaer-isa
+# mangaer-isa
