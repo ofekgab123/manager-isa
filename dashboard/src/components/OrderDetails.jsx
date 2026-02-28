@@ -1,25 +1,20 @@
 import { useState } from 'react';
 import { MapPin, User, Save, X } from 'lucide-react';
 import AddressSearch from './AddressSearch';
-
-const API_BASE = '/api';
+import { API_BASE } from '../config';
 
 const STATUS_OPTIONS = [
-  { value: 'pending', label: 'ממתין' },
-  { value: 'recorded', label: 'נרשם במוקד' },
   { value: 'received', label: 'התקבל במערכת' },
-  { value: 'boxes_requested', label: 'נדרשו ארגזים' },
   { value: 'linewhel_transferred', label: 'הועבר ל-Linewhel' },
   { value: 'linewhel_scheduled', label: 'Linewhel נקבע' },
-  { value: 'packed', label: 'ארוז' },
-  { value: 'ready_pickup', label: 'מוכן לאיסוף' },
+  { value: 'collected', label: 'נאסף' },
   { value: 'shipped', label: 'נשלח' },
+  { value: 'completed', label: 'בוצע' },
 ];
 
 const TYPE_OPTIONS = [
   { value: 'send', label: 'שליחה' },
   { value: 'pickup', label: 'איסוף' },
-  { value: 'empty_box', label: 'ארגז ריק' },
 ];
 
 function EditableField({ label, value, onChange, type = 'text', placeholder, readOnly }) {
@@ -179,8 +174,8 @@ export default function OrderDetails({ order, onSave, onClose }) {
         )}
       </div>
 
-      {/* פרטים אישיים - Empty Box */}
-      {(edit.type === 'empty_box' || edit.firstName || edit.lastName) && (
+      {/* פרטים אישיים */}
+      {(edit.firstName || edit.lastName) && (
         <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
           <h4 className="font-semibold text-slate-800 flex items-center gap-2">
             <User className="w-4 h-4" />
@@ -194,7 +189,7 @@ export default function OrderDetails({ order, onSave, onClose }) {
       )}
 
       {/* כתובת ראשית */}
-      {(edit.address || edit.type === 'empty_box') && (
+      {edit.address && (
         <AddressBlock
           title="כתובת"
           addr={edit.address || {}}

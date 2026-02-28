@@ -13,25 +13,21 @@ import {
 } from 'lucide-react';
 import CreateOrderModal from './components/CreateOrderModal';
 import OrderDetails from './components/OrderDetails';
-
-const API_BASE = '/api';
+import { API_BASE } from './config';
 
 const STATUS_LABELS = {
-  pending: 'ממתין',
-  recorded: 'נרשם במוקד',
   received: 'התקבל במערכת',
-  boxes_requested: 'נדרשו ארגזים',
-  linewhel_scheduled: 'Linewhel נקבע',
   linewhel_transferred: 'הועבר ל-Linewhel',
-  packed: 'ארוז',
-  ready_pickup: 'מוכן לאיסוף',
+  linewhel_scheduled: 'Linewhel נקבע',
+  collected: 'נאסף',
   shipped: 'נשלח',
+  completed: 'בוצע',
 };
 
 const TYPE_LABELS = {
   send: 'שליחה',
   pickup: 'איסוף',
-  empty_box: 'ארגז ריק',
+  empty_box: 'איסוף', // תאימות לאחור
 };
 
 const CREATED_BY_LABELS = {
@@ -174,9 +170,16 @@ export default function App() {
       )}
       <header className="bg-slate-800 text-white px-4 py-4 shadow-lg">
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div>
-            <h1 className="text-xl sm:text-2xl font-bold">Manager ISA</h1>
-            <p className="text-slate-300 text-sm">ניהול הזמנות - ISA Express</p>
+          <div className="flex items-center gap-4">
+            <img
+              src="/isa-logo.png"
+              alt="ISA Express"
+              className="h-10 sm:h-12 w-auto object-contain brightness-0 invert"
+            />
+            <div>
+              <h1 className="text-xl sm:text-2xl font-bold">Manager ISA</h1>
+              <p className="text-slate-300 text-sm">ניהול הזמנות - ISA Express</p>
+            </div>
           </div>
           <div className="flex gap-2">
             <button
@@ -400,7 +403,7 @@ export default function App() {
                               onClose={() => setExpandedId(null)}
                             />
                               {order.createdBy === 'customer' &&
-                                !['linewhel_transferred', 'linewhel_scheduled', 'shipped'].includes(order.status) && (
+                                order.status === 'received' && (
                                 <div className="mt-4 pt-4 border-t">
                                   <button
                                     onClick={(e) => {

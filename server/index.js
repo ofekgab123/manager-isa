@@ -84,7 +84,7 @@ app.post('/api/orders', async (req, res) => {
     const newOrder = {
       ...body,
       id: body.id || `ORD-${Date.now()}`,
-      status: body.status ?? (body.createdBy === 'customer' ? 'recorded' : 'pending'),
+      status: body.status ?? (body.createdBy === 'customer' ? 'received' : 'linewhel_transferred'),
       createdAt: body.createdAt || new Date().toISOString(),
       customerPhone: body.customerPhone || '',
       scheduledFor: body.scheduledFor ?? null,
