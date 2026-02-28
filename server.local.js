@@ -31,6 +31,11 @@ app.get('/api/orders', async (req, res) => {
   }
 });
 
+const normalizeStatus = (s) => {
+  if (s === 'recorded' || s === 'pending') return s === 'recorded' ? 'received' : 'linewhel_transferred';
+  return s;
+};
+
 app.get('/api/orders/stats', async (req, res) => {
   try {
     const orders = await readOrders();
@@ -42,7 +47,8 @@ app.get('/api/orders/stats', async (req, res) => {
     let contactedCount = 0;
     let notContactedCount = 0;
     orders.forEach((o) => {
-      byStatus[o.status] = (byStatus[o.status] || 0) + 1;
+      const status = normalizeStatus(o.status);
+      byStatus[status] = (byStatus[status] || 0) + 1;
       byType[o.type] = (byType[o.type] || 0) + 1;
       byCreatedBy[o.createdBy || 'unknown'] = (byCreatedBy[o.createdBy || 'unknown'] || 0) + 1;
       totalBoxes += o.boxes || 0;
@@ -79,7 +85,7 @@ app.post('/api/orders', async (req, res) => {
     const newOrder = {
       ...body,
       id: body.id || `ORD-${Date.now()}`,
-      status: body.status ?? (body.createdBy === 'customer' ? 'recorded' : 'pending'),
+      status: body.status ?? (body.createdBy === 'customer' ? 'received' : 'linewhel_transferred'),
       createdAt: body.createdAt || new Date().toISOString(),
       customerPhone: body.customerPhone || '',
       scheduledFor: body.scheduledFor ?? null,

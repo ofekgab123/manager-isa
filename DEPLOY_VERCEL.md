@@ -32,7 +32,7 @@
    - **Root Directory**: השאר ריק (שורש הפרויקט)
    - **Framework Preset**: Other
    - **Build Command**: `cd server && npm install && cd ../dashboard && npm install && npm run build`
-   - **Output Directory**: `dashboard/dist`
+   - **Output Directory**: `public`
 
 6. **Environment Variables** – הוסף:
    - `UPSTASH_REDIS_REST_URL` = (מה-Upstash)

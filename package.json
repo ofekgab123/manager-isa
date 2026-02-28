@@ -12,6 +12,7 @@
     "server": "cd server && npm run dev",
     "dashboard": "cd dashboard && npm run dev",
     "dev": "npm run server & npm run dashboard",
+    "dev:full": "npm run build && node server.local.js",
     "install:all": "cd server && npm install && cd ../dashboard && npm install",
     "build": "cd dashboard && npm run build"
   }

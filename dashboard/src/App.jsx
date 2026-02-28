@@ -17,6 +17,8 @@ import { API_BASE } from './config';
 
 const STATUS_LABELS = {
   received: 'Received',
+  recorded: 'Received', // legacy – was used by old server
+  pending: 'Transferred to Linewhel', // legacy
   linewhel_transferred: 'Transferred to Linewhel',
   linewhel_scheduled: 'Linewhel scheduled',
   collected: 'Collected',
