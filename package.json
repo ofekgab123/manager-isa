@@ -1,0 +1,10 @@
+{
+  "name": "manager-isa",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "server": "cd server && npm run dev",
+    "dashboard": "cd dashboard && npm run dev",
+    "install:all": "cd server && npm install && cd ../dashboard && npm install"
+  }
+}
