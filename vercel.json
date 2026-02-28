@@ -1,5 +1,17 @@
 {
   "version": 2,
   "buildCommand": "cd server && npm install && cd ../dashboard && npm install && npm run build",
-  "framework": null
+  "framework": null,
+  "builds": [
+    {
+      "src": "server.js",
+      "use": "@vercel/node"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "/server.js"
+    }
+  ]
 }
