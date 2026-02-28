@@ -4,17 +4,18 @@ import AddressSearch from './AddressSearch';
 import { API_BASE } from '../config';
 
 const STATUS_OPTIONS = [
-  { value: 'received', label: 'התקבל במערכת' },
-  { value: 'linewhel_transferred', label: 'הועבר ל-Linewhel' },
-  { value: 'linewhel_scheduled', label: 'Linewhel נקבע' },
-  { value: 'collected', label: 'נאסף' },
-  { value: 'shipped', label: 'נשלח' },
-  { value: 'completed', label: 'בוצע' },
+  { value: 'received', label: 'Received' },
+  { value: 'linewhel_transferred', label: 'Transferred to Linewhel' },
+  { value: 'linewhel_scheduled', label: 'Linewhel scheduled' },
+  { value: 'collected', label: 'Collected' },
+  { value: 'shipped', label: 'Shipped' },
+  { value: 'completed', label: 'Completed' },
 ];
 
 const TYPE_OPTIONS = [
-  { value: 'send', label: 'שליחה' },
-  { value: 'pickup', label: 'איסוף' },
+  { value: 'send', label: 'Pick up from me' },
+  { value: 'pickup', label: 'Pickup' },
+  { value: 'empty_box', label: 'Bring boxes' },
 ];
 
 function EditableField({ label, value, onChange, type = 'text', placeholder, readOnly }) {
@@ -57,18 +58,18 @@ function AddressBlock({ title, addr, onChange }) {
           onClick={() => setShowSearch(true)}
           className="text-sm text-blue-600 hover:underline"
         >
-          {data.displayAddress ? 'שנה כתובת' : 'בחר כתובת'}
+          {data.displayAddress ? 'Change address' : 'Select address'}
         </button>
       )}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-        <EditableField label="עיר" value={data.city} onChange={(v) => onChange({ ...data, city: v })} />
-        <EditableField label="רחוב" value={data.street} onChange={(v) => onChange({ ...data, street: v })} />
-        <EditableField label="מס' בית" value={data.houseNumber} onChange={(v) => onChange({ ...data, houseNumber: v })} />
-        <EditableField label="דירה" value={data.apartment} onChange={(v) => onChange({ ...data, apartment: v })} />
-        <EditableField label="קומה" value={data.floor} onChange={(v) => onChange({ ...data, floor: v })} />
+        <EditableField label="City" value={data.city} onChange={(v) => onChange({ ...data, city: v })} />
+        <EditableField label="Street" value={data.street} onChange={(v) => onChange({ ...data, street: v })} />
+        <EditableField label="House no." value={data.houseNumber} onChange={(v) => onChange({ ...data, houseNumber: v })} />
+        <EditableField label="Apartment" value={data.apartment} onChange={(v) => onChange({ ...data, apartment: v })} />
+        <EditableField label="Floor" value={data.floor} onChange={(v) => onChange({ ...data, floor: v })} />
       </div>
       {data.displayAddress && (
-        <p className="text-sm text-slate-600">כתובת מלאה: {data.displayAddress}</p>
+        <p className="text-sm text-slate-600">Full address: {data.displayAddress}</p>
       )}
     </div>
   );
@@ -97,10 +98,10 @@ export default function OrderDetails({ order, onSave, onClose }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(edit),
       });
-      if (!res.ok) throw new Error('שגיאה בשמירה');
+      if (!res.ok) throw new Error('Save error');
       onSave?.(await res.json());
     } catch (e) {
-      setError(e.message || 'שגיאה');
+      setError(e.message || 'Error');
     } finally {
       setSaving(false);
     }
@@ -109,7 +110,7 @@ export default function OrderDetails({ order, onSave, onClose }) {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h3 className="font-bold text-slate-800">פרטי ההזמנה – עריכה</h3>
+        <h3 className="font-bold text-slate-800">Order details – Edit</h3>
         {onClose && (
           <button onClick={onClose} className="p-1 hover:bg-slate-200 rounded">
             <X className="w-5 h-5" />
@@ -118,9 +119,9 @@ export default function OrderDetails({ order, onSave, onClose }) {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        <EditableField label="מזהה" value={edit.id} onChange={() => {}} readOnly />
+        <EditableField label="ID" value={edit.id} onChange={() => {}} readOnly />
         <div>
-          <label className="block text-xs font-medium text-slate-500 mb-1">סוג</label>
+          <label className="block text-xs font-medium text-slate-500 mb-1">Type</label>
           <select
             value={edit.type || ''}
             onChange={(e) => update('type', e.target.value)}
@@ -132,7 +133,7 @@ export default function OrderDetails({ order, onSave, onClose }) {
           </select>
         </div>
         <div>
-          <label className="block text-xs font-medium text-slate-500 mb-1">סטטוס</label>
+          <label className="block text-xs font-medium text-slate-500 mb-1">Status</label>
           <select
             value={edit.status || ''}
             onChange={(e) => update('status', e.target.value)}
@@ -143,24 +144,24 @@ export default function OrderDetails({ order, onSave, onClose }) {
             ))}
           </select>
         </div>
-        <EditableField label="ארגזים" value={edit.boxes} onChange={(v) => update('boxes', parseInt(v) || 0)} type="number" />
-        <EditableField label="טלפון לקוח" value={edit.customerPhone} onChange={(v) => update('customerPhone', v)} type="tel" />
-        <EditableField label="תאריך נקבע" value={edit.scheduledFor} onChange={(v) => update('scheduledFor', v)} />
-        <EditableField label="הוקצה ל" value={edit.assignedTo} onChange={(v) => update('assignedTo', v)} />
+        <EditableField label="Boxes" value={edit.boxes} onChange={(v) => update('boxes', parseInt(v) || 0)} type="number" />
+        <EditableField label="Customer phone" value={edit.customerPhone} onChange={(v) => update('customerPhone', v)} type="tel" />
+        <EditableField label="Scheduled for" value={edit.scheduledFor} onChange={(v) => update('scheduledFor', v)} />
+        <EditableField label="Assigned to" value={edit.assignedTo} onChange={(v) => update('assignedTo', v)} />
         <div>
-          <label className="block text-xs font-medium text-slate-500 mb-1">התקשרו</label>
+          <label className="block text-xs font-medium text-slate-500 mb-1">Contacted</label>
           <select
             value={edit.contacted ? 'yes' : 'no'}
             onChange={(e) => update('contacted', e.target.value === 'yes')}
             className="w-full px-3 py-2 border rounded-lg text-sm"
           >
-            <option value="yes">כן</option>
-            <option value="no">לא</option>
+            <option value="yes">Yes</option>
+            <option value="no">No</option>
           </select>
         </div>
         {(edit.type === 'pickup' || edit.readyAction) && (
           <div>
-            <label className="block text-xs font-medium text-slate-500 mb-1">פעולה</label>
+            <label className="block text-xs font-medium text-slate-500 mb-1">Action</label>
             <select
               value={edit.readyAction || ''}
               onChange={(e) => update('readyAction', e.target.value || null)}
@@ -174,24 +175,24 @@ export default function OrderDetails({ order, onSave, onClose }) {
         )}
       </div>
 
-      {/* פרטים אישיים */}
-      {(edit.firstName || edit.lastName) && (
+      {/* פרטים אישיים - להביא ארגזים */}
+      {(edit.type === 'empty_box' || edit.firstName || edit.lastName) && (
         <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
           <h4 className="font-semibold text-slate-800 flex items-center gap-2">
             <User className="w-4 h-4" />
-            פרטים אישיים
+            Personal details
           </h4>
           <div className="grid grid-cols-2 gap-3">
-            <EditableField label="שם פרטי" value={edit.firstName} onChange={(v) => update('firstName', v)} />
-            <EditableField label="שם משפחה" value={edit.lastName} onChange={(v) => update('lastName', v)} />
+            <EditableField label="First name" value={edit.firstName} onChange={(v) => update('firstName', v)} />
+            <EditableField label="Last name" value={edit.lastName} onChange={(v) => update('lastName', v)} />
           </div>
         </div>
       )}
 
       {/* כתובת ראשית */}
-      {edit.address && (
+      {(edit.address || edit.type === 'empty_box') && (
         <AddressBlock
-          title="כתובת"
+          title="Address"
           addr={edit.address || {}}
           onChange={(a) => update('address', a)}
         />
@@ -203,15 +204,15 @@ export default function OrderDetails({ order, onSave, onClose }) {
           <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
             <h4 className="font-semibold text-slate-800 flex items-center gap-2">
               <User className="w-4 h-4" />
-              פרטי השולח
+              Sender details
             </h4>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <EditableField label="שם מלא" value={edit.fullName} onChange={(v) => update('fullName', v)} />
-              <EditableField label="טלפון ישראלי" value={edit.customerPhone} onChange={(v) => update('customerPhone', v)} type="tel" />
+            <EditableField label="Full name" value={edit.fullName} onChange={(v) => update('fullName', v)} />
+            <EditableField label="Israeli phone" value={edit.customerPhone} onChange={(v) => update('customerPhone', v)} type="tel" />
             </div>
           </div>
           <AddressBlock
-            title="כתובת איסוף"
+            title="Pickup address"
             addr={edit.senderAddress || {}}
             onChange={(a) => update('senderAddress', a)}
           />
@@ -224,15 +225,15 @@ export default function OrderDetails({ order, onSave, onClose }) {
           <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
             <h4 className="font-semibold text-slate-800 flex items-center gap-2">
               <User className="w-4 h-4" />
-              פרטי הנמען
+              Receiver details
             </h4>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <EditableField label="שם" value={edit.receiverName} onChange={(v) => update('receiverName', v)} />
-              <EditableField label="טלפון" value={edit.receiverPhone} onChange={(v) => update('receiverPhone', v)} type="tel" />
+            <EditableField label="Name" value={edit.receiverName} onChange={(v) => update('receiverName', v)} />
+            <EditableField label="Phone" value={edit.receiverPhone} onChange={(v) => update('receiverPhone', v)} type="tel" />
             </div>
           </div>
           <AddressBlock
-            title="כתובת משלוח"
+            title="Delivery address"
             addr={edit.receiverAddress || {}}
             onChange={(a) => update('receiverAddress', a)}
           />
@@ -241,7 +242,7 @@ export default function OrderDetails({ order, onSave, onClose }) {
 
       {/* הערות */}
       <div>
-        <label className="block text-xs font-medium text-slate-500 mb-1">הערות</label>
+        <label className="block text-xs font-medium text-slate-500 mb-1">Notes</label>
         <textarea
           value={edit.orderNotes ?? ''}
           onChange={(e) => update('orderNotes', e.target.value)}
@@ -253,7 +254,7 @@ export default function OrderDetails({ order, onSave, onClose }) {
       {/* פריטים - תצוגה בלבד */}
       {edit.items?.length > 0 && (
         <div className="p-4 rounded-xl bg-slate-50 border border-slate-200">
-          <h4 className="font-semibold text-slate-800 mb-2">פריטים</h4>
+          <h4 className="font-semibold text-slate-800 mb-2">Items</h4>
           <ul className="text-sm space-y-1">
             {edit.items.map((item) => (
               <li key={item.id}>
@@ -262,7 +263,7 @@ export default function OrderDetails({ order, onSave, onClose }) {
             ))}
           </ul>
           {edit.totalPrice != null && (
-            <p className="font-bold mt-2">סה״כ: ₪{edit.totalPrice}</p>
+            <p className="font-bold mt-2">Total: ₪{edit.totalPrice}</p>
           )}
         </div>
       )}
@@ -275,7 +276,7 @@ export default function OrderDetails({ order, onSave, onClose }) {
           className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-medium disabled:opacity-50"
         >
           <Save className="w-4 h-4" />
-          {saving ? 'שומר...' : 'שמור שינויים'}
+          {saving ? 'Saving...' : 'Save changes'}
         </button>
       </div>
     </div>

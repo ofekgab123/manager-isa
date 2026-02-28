@@ -1,23 +1,23 @@
 import { useState } from 'react';
-import { X, Truck, MapPin } from 'lucide-react';
+import { X, Package, Truck, MapPin } from 'lucide-react';
 import AddressSearch from './AddressSearch';
 import { geocodeAddress } from '../utils/geocode';
 import { API_BASE } from '../config';
 
 const PICKUP_STEPS = [
-  { id: 1, label: 'פרטי השולח' },
-  { id: 2, label: 'כתובת איסוף' },
-  { id: 3, label: 'פרטי הנמען' },
-  { id: 4, label: 'כתובת משלוח' },
-  { id: 5, label: 'סיכום' },
+  { id: 1, label: 'Sender details' },
+  { id: 2, label: 'Pickup address' },
+  { id: 3, label: 'Receiver details' },
+  { id: 4, label: 'Delivery address' },
+  { id: 5, label: 'Summary' },
 ];
 
 export default function CreateOrderModal({ isOpen, onClose, onCreated }) {
-  const [orderType, setOrderType] = useState('pickup');
+  const [orderType, setOrderType] = useState(null); // 'pickup' | 'empty_box'
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
-  // Pickup Parcel - 5 steps כמו PickupParcelPage
+  // Pickup Parcel - 5 steps
   const [pickupStep, setPickupStep] = useState(1);
   const [addressPickerFor, setAddressPickerFor] = useState(null);
   const [pickupForm, setPickupForm] = useState({
@@ -39,8 +39,34 @@ export default function CreateOrderModal({ isOpen, onClose, onCreated }) {
   const [senderMapAddress, setSenderMapAddress] = useState(null);
   const [receiverMapAddress, setReceiverMapAddress] = useState(null);
 
-  const handleChange = (e) => {
-    setPickupForm((p) => ({ ...p, [e.target.name]: e.target.value }));
+  // Empty box - להביא ארגזים
+  const [emptyBoxForm, setEmptyBoxForm] = useState({
+    firstName: '',
+    lastName: '',
+    country: 'Israel',
+    city: '',
+    streetName: '',
+    houseNumber: '',
+    apartment: '',
+    floor: '',
+    phone: '',
+    orderNotes: '',
+  });
+  const [emptyBoxAddress, setEmptyBoxAddress] = useState(null);
+
+  const handleChange = (e, form) => {
+    const setter = form === 'pickup' ? setPickupForm : setEmptyBoxForm;
+    setter((p) => ({ ...p, [e.target.name]: e.target.value }));
+  };
+
+  const handleEmptyBoxAddressSelect = (addr) => {
+    setEmptyBoxAddress(addr);
+    setEmptyBoxForm((p) => ({
+      ...p,
+      city: addr?.city || p.city,
+      streetName: addr?.street || p.streetName,
+      houseNumber: addr?.houseNumber || p.houseNumber,
+    }));
   };
 
   const handlePickupAddressSelect = (addr, forWho) => {
@@ -73,7 +99,7 @@ export default function CreateOrderModal({ isOpen, onClose, onCreated }) {
   };
 
   const resetForm = () => {
-    setOrderType('pickup');
+    setOrderType(null);
     setPickupStep(1);
     setPickupForm({
       israeliPhone: '',
@@ -93,7 +119,64 @@ export default function CreateOrderModal({ isOpen, onClose, onCreated }) {
     });
     setSenderMapAddress(null);
     setReceiverMapAddress(null);
+    setEmptyBoxForm({
+      firstName: '',
+      lastName: '',
+      country: 'Israel',
+      city: '',
+      streetName: '',
+      houseNumber: '',
+      apartment: '',
+      floor: '',
+      phone: '',
+      orderNotes: '',
+    });
+    setEmptyBoxAddress(null);
     setError('');
+  };
+
+  const submitEmptyBox = async () => {
+    const { firstName, lastName, phone, city, streetName, houseNumber, apartment, floor, orderNotes } = emptyBoxForm;
+    const hasAddress = emptyBoxAddress || (streetName && city && houseNumber);
+    if (!firstName.trim() || !lastName.trim() || !phone.trim() || !hasAddress) return;
+    setSubmitting(true);
+    setError('');
+    try {
+      const coords = await resolveAddressCoords(emptyBoxAddress, city, streetName, houseNumber);
+      const address = emptyBoxAddress || {
+        displayAddress: [streetName, houseNumber, city].filter(Boolean).join(', '),
+        lat: coords?.lat,
+        lng: coords?.lng,
+        city,
+        street: streetName,
+        houseNumber,
+      };
+      const res = await fetch(`${API_BASE}/orders`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'empty_box',
+          boxes: 0,
+          address: { ...address, apartment, floor },
+          customerPhone: phone.trim(),
+          firstName: firstName.trim(),
+          lastName: lastName.trim(),
+          fullName: [firstName, lastName].filter(Boolean).join(' ').trim(),
+          orderNotes: orderNotes.trim() || undefined,
+          createdBy: 'customer_service',
+          contacted: true,
+          status: 'linewhel_transferred',
+        }),
+      });
+      if (!res.ok) throw new Error('Save error');
+      const order = await res.json();
+      onCreated?.(order);
+      handleClose();
+    } catch (e) {
+      setError(e.message || 'Error');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const handleClose = () => {
@@ -165,12 +248,12 @@ export default function CreateOrderModal({ isOpen, onClose, onCreated }) {
           },
         }),
       });
-      if (!res.ok) throw new Error('שגיאה בשמירה');
+      if (!res.ok) throw new Error('Save error');
       const order = await res.json();
       onCreated?.(order);
       handleClose();
     } catch (e) {
-      setError(e.message || 'שגיאה');
+      setError(e.message || 'Error');
     } finally {
       setSubmitting(false);
     }
@@ -182,15 +265,42 @@ export default function CreateOrderModal({ isOpen, onClose, onCreated }) {
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 p-2 sm:p-4 overflow-y-auto">
       <div className="bg-white rounded-t-xl sm:rounded-xl w-full max-w-2xl max-h-[95vh] overflow-y-auto shadow-xl">
         <div className="sticky top-0 bg-white border-b px-4 py-3 flex items-center justify-between z-10">
-          <h2 className="text-lg font-bold text-slate-800">צור הזמנה חדשה</h2>
+          <h2 className="text-lg font-bold text-slate-800">Create new order</h2>
           <button onClick={handleClose} className="p-2 hover:bg-slate-100 rounded-lg">
             <X className="w-5 h-5" />
           </button>
         </div>
 
         <div className="p-4 sm:p-6">
-          {orderType === 'pickup' && (
+          {!orderType ? (
+            <>
+              <p className="text-slate-600 mb-4">Select order type:</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <button
+                  type="button"
+                  onClick={() => setOrderType('empty_box')}
+                  className="p-6 rounded-xl border-2 border-slate-200 hover:border-slate-600 hover:bg-slate-50 flex flex-col items-center gap-3 transition"
+                >
+                  <Package className="w-12 h-12 text-slate-600" />
+                  <span className="font-semibold text-slate-800">Bring boxes</span>
+                  <span className="text-sm text-slate-500 text-center">Ship empty boxes to customer</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setOrderType('pickup')}
+                  className="p-6 rounded-xl border-2 border-slate-200 hover:border-slate-600 hover:bg-slate-50 flex flex-col items-center gap-3 transition"
+                >
+                  <Truck className="w-12 h-12 text-slate-600" />
+                  <span className="font-semibold text-slate-800">Pick up from me</span>
+                  <span className="text-sm text-slate-500 text-center">Pick up parcel from me and ship to receiver</span>
+                </button>
+              </div>
+            </>
+          ) : orderType === 'pickup' ? (
             <div className="space-y-6">
+              <button type="button" onClick={() => setOrderType(null)} className="text-sm text-slate-500 hover:text-slate-700">
+                ← Back
+              </button>
               {/* Progress - 5 steps */}
               <div className="flex justify-between gap-1">
                 {PICKUP_STEPS.map((s, i) => (
@@ -209,26 +319,26 @@ export default function CreateOrderModal({ isOpen, onClose, onCreated }) {
 
               {pickupStep === 1 && (
                 <div>
-                  <h3 className="text-lg font-semibold mb-4">פרטי השולח</h3>
+                  <h3 className="text-lg font-semibold mb-4">Sender details</h3>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-medium mb-2">טלפון ישראלי *</label>
+                      <label className="block text-sm font-medium mb-2">Israeli phone *</label>
                       <input
                         type="tel"
                         name="israeliPhone"
                         value={pickupForm.israeliPhone}
-                        onChange={handleChange}
+                        onChange={(e) => handleChange(e, 'pickup')}
                         placeholder="050-1234567"
                         className="w-full px-3 py-2 border rounded-lg"
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium mb-2">שם מלא *</label>
+                      <label className="block text-sm font-medium mb-2">Full name *</label>
                       <input
                         type="text"
                         name="fullName"
                         value={pickupForm.fullName}
-                        onChange={handleChange}
+                        onChange={(e) => handleChange(e, 'pickup')}
                         placeholder="Full Name"
                         className="w-full px-3 py-2 border rounded-lg"
                       />
@@ -239,16 +349,16 @@ export default function CreateOrderModal({ isOpen, onClose, onCreated }) {
 
               {pickupStep === 2 && (
                 <div>
-                  <h3 className="text-lg font-semibold mb-4">כתובת איסוף בישראל</h3>
+                  <h3 className="text-lg font-semibold mb-4">Pickup address in Israel</h3>
                   <div className="space-y-4">
                     <div>
-                      <label className="block text-sm font-medium mb-2">בחר כתובת</label>
+                      <label className="block text-sm font-medium mb-2">Select address</label>
                       {addressPickerFor === 'sender' ? (
                         <AddressSearch
                           value={senderMapAddress}
                           onChange={(addr) => handlePickupAddressSelect(addr, 'sender')}
                           onClear={() => { setSenderMapAddress(null); setPickupForm((p) => ({ ...p, senderCity: '', senderStreet: '', senderHouseNumber: '' })); setAddressPickerFor(null); }}
-                          placeholder="חפש כתובת"
+                          placeholder="Search address"
                         />
                       ) : (
                         <button
@@ -257,65 +367,65 @@ export default function CreateOrderModal({ isOpen, onClose, onCreated }) {
                           className="w-full p-4 rounded-xl border-2 border-dashed border-slate-300 hover:border-slate-500 flex items-center justify-center gap-2"
                         >
                           <MapPin className="w-5 h-5" />
-                          {senderMapAddress ? senderMapAddress.displayAddress : 'חפש כתובת'}
+                          {senderMapAddress ? senderMapAddress.displayAddress : 'Search address'}
                         </button>
                       )}
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-sm mb-1">עיר</label>
+                        <label className="block text-sm mb-1">City</label>
                         <input
                           type="text"
                           name="senderCity"
                           value={pickupForm.senderCity}
-                          onChange={handleChange}
-                          placeholder="לחץ לבחירת כתובת"
+                          onChange={(e) => handleChange(e, 'pickup')}
+                          placeholder="Click to select address"
                           readOnly={!senderMapAddress}
                           className={`w-full px-3 py-2 border rounded-lg ${!senderMapAddress ? 'bg-slate-100' : ''}`}
                         />
                       </div>
                       <div>
-                        <label className="block text-sm mb-1">רחוב *</label>
+                        <label className="block text-sm mb-1">Street *</label>
                         <input
                           type="text"
                           name="senderStreet"
                           value={pickupForm.senderStreet}
-                          onChange={handleChange}
-                          placeholder="לחץ לבחירת כתובת"
+                          onChange={(e) => handleChange(e, 'pickup')}
+                          placeholder="Click to select address"
                           readOnly={!senderMapAddress}
                           className={`w-full px-3 py-2 border rounded-lg ${!senderMapAddress ? 'bg-slate-100' : ''}`}
                         />
                       </div>
                       <div>
-                        <label className="block text-sm mb-1">מס' בית *</label>
+                        <label className="block text-sm mb-1">House no. *</label>
                         <input
                           type="text"
                           name="senderHouseNumber"
                           value={pickupForm.senderHouseNumber}
-                          onChange={handleChange}
-                          placeholder="לחץ לבחירת כתובת"
+                          onChange={(e) => handleChange(e, 'pickup')}
+                          placeholder="Click to select address"
                           readOnly={!senderMapAddress}
                           className={`w-full px-3 py-2 border rounded-lg ${!senderMapAddress ? 'bg-slate-100' : ''}`}
                         />
                       </div>
                       <div>
-                        <label className="block text-sm mb-1">דירה</label>
+                        <label className="block text-sm mb-1">Apartment</label>
                         <input
                           type="text"
                           name="senderApartment"
                           value={pickupForm.senderApartment}
-                          onChange={handleChange}
+                          onChange={(e) => handleChange(e, 'pickup')}
                           placeholder="3"
                           className="w-full px-3 py-2 border rounded-lg"
                         />
                       </div>
                       <div>
-                        <label className="block text-sm mb-1">קומה</label>
+                        <label className="block text-sm mb-1">Floor</label>
                         <input
                           type="text"
                           name="senderFloor"
                           value={pickupForm.senderFloor}
-                          onChange={handleChange}
+                          onChange={(e) => handleChange(e, 'pickup')}
                           placeholder="2"
                           className="w-full px-3 py-2 border rounded-lg"
                         />
@@ -327,27 +437,27 @@ export default function CreateOrderModal({ isOpen, onClose, onCreated }) {
 
               {pickupStep === 3 && (
                 <div>
-                  <h3 className="text-lg font-semibold mb-4">פרטי הנמען</h3>
-                  <p className="text-sm text-slate-600 mb-4">מי יקבל את החבילה?</p>
+                  <h3 className="text-lg font-semibold mb-4">Receiver details</h3>
+                  <p className="text-sm text-slate-600 mb-4">Who will receive the parcel?</p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-medium mb-2">שם מלא *</label>
+                      <label className="block text-sm font-medium mb-2">Full name *</label>
                       <input
                         type="text"
                         name="receiverName"
                         value={pickupForm.receiverName}
-                        onChange={handleChange}
+                        onChange={(e) => handleChange(e, 'pickup')}
                         placeholder="Receiver name"
                         className="w-full px-3 py-2 border rounded-lg"
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium mb-2">טלפון *</label>
+                      <label className="block text-sm font-medium mb-2">Phone *</label>
                       <input
                         type="tel"
                         name="receiverPhone"
                         value={pickupForm.receiverPhone}
-                        onChange={handleChange}
+                        onChange={(e) => handleChange(e, 'pickup')}
                         placeholder="050-1234567"
                         className="w-full px-3 py-2 border rounded-lg"
                       />
@@ -358,17 +468,17 @@ export default function CreateOrderModal({ isOpen, onClose, onCreated }) {
 
               {pickupStep === 4 && (
                 <div>
-                  <h3 className="text-lg font-semibold mb-4">כתובת משלוח</h3>
-                  <p className="text-sm text-slate-600 mb-4">לאן לשלוח את החבילה?</p>
+                  <h3 className="text-lg font-semibold mb-4">Delivery address</h3>
+                  <p className="text-sm text-slate-600 mb-4">Where to ship the parcel?</p>
                   <div className="space-y-4">
                     <div>
-                      <label className="block text-sm font-medium mb-2">בחר כתובת</label>
+                      <label className="block text-sm font-medium mb-2">Select address</label>
                       {addressPickerFor === 'receiver' ? (
                         <AddressSearch
                           value={receiverMapAddress}
                           onChange={(addr) => handlePickupAddressSelect(addr, 'receiver')}
                           onClear={() => { setReceiverMapAddress(null); setPickupForm((p) => ({ ...p, receiverCity: '', receiverStreet: '', receiverHouseNumber: '' })); setAddressPickerFor(null); }}
-                          placeholder="חפש כתובת"
+                          placeholder="Search address"
                         />
                       ) : (
                         <button
@@ -377,65 +487,65 @@ export default function CreateOrderModal({ isOpen, onClose, onCreated }) {
                           className="w-full p-4 rounded-xl border-2 border-dashed border-slate-300 hover:border-slate-500 flex items-center justify-center gap-2"
                         >
                           <MapPin className="w-5 h-5" />
-                          {receiverMapAddress ? receiverMapAddress.displayAddress : 'חפש כתובת'}
+                          {receiverMapAddress ? receiverMapAddress.displayAddress : 'Search address'}
                         </button>
                       )}
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-sm mb-1">עיר</label>
+                        <label className="block text-sm mb-1">City</label>
                         <input
                           type="text"
                           name="receiverCity"
                           value={pickupForm.receiverCity}
-                          onChange={handleChange}
-                          placeholder="לחץ לבחירת כתובת"
+                          onChange={(e) => handleChange(e, 'pickup')}
+                          placeholder="Click to select address"
                           readOnly={!receiverMapAddress}
                           className={`w-full px-3 py-2 border rounded-lg ${!receiverMapAddress ? 'bg-slate-100' : ''}`}
                         />
                       </div>
                       <div>
-                        <label className="block text-sm mb-1">רחוב *</label>
+                        <label className="block text-sm mb-1">Street *</label>
                         <input
                           type="text"
                           name="receiverStreet"
                           value={pickupForm.receiverStreet}
-                          onChange={handleChange}
-                          placeholder="לחץ לבחירת כתובת"
+                          onChange={(e) => handleChange(e, 'pickup')}
+                          placeholder="Click to select address"
                           readOnly={!receiverMapAddress}
                           className={`w-full px-3 py-2 border rounded-lg ${!receiverMapAddress ? 'bg-slate-100' : ''}`}
                         />
                       </div>
                       <div>
-                        <label className="block text-sm mb-1">מס' בית *</label>
+                        <label className="block text-sm mb-1">House no. *</label>
                         <input
                           type="text"
                           name="receiverHouseNumber"
                           value={pickupForm.receiverHouseNumber}
-                          onChange={handleChange}
-                          placeholder="לחץ לבחירת כתובת"
+                          onChange={(e) => handleChange(e, 'pickup')}
+                          placeholder="Click to select address"
                           readOnly={!receiverMapAddress}
                           className={`w-full px-3 py-2 border rounded-lg ${!receiverMapAddress ? 'bg-slate-100' : ''}`}
                         />
                       </div>
                       <div>
-                        <label className="block text-sm mb-1">דירה</label>
+                        <label className="block text-sm mb-1">Apartment</label>
                         <input
                           type="text"
                           name="receiverApartment"
                           value={pickupForm.receiverApartment}
-                          onChange={handleChange}
+                          onChange={(e) => handleChange(e, 'pickup')}
                           placeholder="3"
                           className="w-full px-3 py-2 border rounded-lg"
                         />
                       </div>
                       <div>
-                        <label className="block text-sm mb-1">קומה</label>
+                        <label className="block text-sm mb-1">Floor</label>
                         <input
                           type="text"
                           name="receiverFloor"
                           value={pickupForm.receiverFloor}
-                          onChange={handleChange}
+                          onChange={(e) => handleChange(e, 'pickup')}
                           placeholder="2"
                           className="w-full px-3 py-2 border rounded-lg"
                         />
@@ -447,24 +557,24 @@ export default function CreateOrderModal({ isOpen, onClose, onCreated }) {
 
               {pickupStep === 5 && (
                 <div>
-                  <h3 className="text-lg font-semibold mb-4">סיכום</h3>
+                  <h3 className="text-lg font-semibold mb-4">Summary</h3>
                   <div className="space-y-4 text-slate-700">
                     <div className="p-4 rounded-xl bg-slate-50">
-                      <h4 className="font-semibold text-slate-800 mb-2">פרטי השולח</h4>
+                      <h4 className="font-semibold text-slate-800 mb-2">Sender details</h4>
                       <p>{pickupForm.fullName}</p>
                       <p>{pickupForm.israeliPhone}</p>
                     </div>
                     <div className="p-4 rounded-xl bg-slate-50">
-                      <h4 className="font-semibold text-slate-800 mb-2">כתובת איסוף</h4>
+                      <h4 className="font-semibold text-slate-800 mb-2">Pickup address</h4>
                       <p>{senderMapAddress?.displayAddress || [pickupForm.senderStreet, pickupForm.senderHouseNumber, pickupForm.senderCity].filter(Boolean).join(', ')}</p>
                     </div>
                     <div className="p-4 rounded-xl bg-slate-50">
-                      <h4 className="font-semibold text-slate-800 mb-2">נמען</h4>
+                      <h4 className="font-semibold text-slate-800 mb-2">Receiver</h4>
                       <p>{pickupForm.receiverName}</p>
                       <p>{pickupForm.receiverPhone}</p>
                     </div>
                     <div className="p-4 rounded-xl bg-slate-50">
-                      <h4 className="font-semibold text-slate-800 mb-2">כתובת משלוח</h4>
+                      <h4 className="font-semibold text-slate-800 mb-2">Delivery address</h4>
                       <p>{receiverMapAddress?.displayAddress || [pickupForm.receiverStreet, pickupForm.receiverHouseNumber, pickupForm.receiverCity].filter(Boolean).join(', ')}</p>
                     </div>
                   </div>
@@ -475,7 +585,7 @@ export default function CreateOrderModal({ isOpen, onClose, onCreated }) {
               <div className="flex gap-4 pt-4">
                 {pickupStep > 1 ? (
                   <button type="button" onClick={() => setPickupStep((s) => s - 1)} className="flex-1 py-2.5 border rounded-lg">
-                    הקודם
+                    Previous
                   </button>
                 ) : (
                   <div className="flex-1" />
@@ -486,7 +596,7 @@ export default function CreateOrderModal({ isOpen, onClose, onCreated }) {
                     onClick={() => setPickupStep((s) => s + 1)}
                     className="flex-1 py-2.5 bg-slate-700 text-white rounded-lg font-medium"
                   >
-                    הבא
+                    Next
                   </button>
                 ) : (
                   <button
@@ -503,11 +613,158 @@ export default function CreateOrderModal({ isOpen, onClose, onCreated }) {
                     }
                     className="flex-1 py-2.5 bg-slate-700 text-white rounded-lg font-medium disabled:opacity-50"
                   >
-                    {submitting ? 'שומר...' : 'צור הזמנה (הועבר ל-Linewhel)'}
+                    {submitting ? 'Saving...' : 'Create order (Transfer to Linewhel)'}
                   </button>
                 )}
               </div>
             </div>
+          ) : (
+            <form onSubmit={(e) => { e.preventDefault(); submitEmptyBox(); }} className="space-y-6">
+              <button type="button" onClick={() => setOrderType(null)} className="text-sm text-slate-500 hover:text-slate-700">
+                ← Back
+              </button>
+              <div>
+                <h3 className="text-lg font-semibold mb-4">Personal details</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-1">First name *</label>
+                    <input
+                      type="text"
+                      name="firstName"
+                      value={emptyBoxForm.firstName}
+                      onChange={(e) => handleChange(e, 'empty_box')}
+                      placeholder="First Name"
+                      required
+                      className="w-full px-3 py-2 border rounded-lg"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Last name *</label>
+                    <input
+                      type="text"
+                      name="lastName"
+                      value={emptyBoxForm.lastName}
+                      onChange={(e) => handleChange(e, 'empty_box')}
+                      placeholder="Last Name"
+                      required
+                      className="w-full px-3 py-2 border rounded-lg"
+                    />
+                  </div>
+                </div>
+                <div className="mt-4">
+                  <label className="block text-sm font-medium mb-1">Phone *</label>
+                  <input
+                    type="tel"
+                    name="phone"
+                    value={emptyBoxForm.phone}
+                    onChange={(e) => handleChange(e, 'empty_box')}
+                    placeholder="050-1234567"
+                    required
+                    className="w-full px-3 py-2 border rounded-lg"
+                  />
+                </div>
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold mb-4">Delivery address *</h3>
+                <p className="text-sm text-slate-600 mb-2">Search address or fill manually</p>
+                <AddressSearch
+                  value={emptyBoxAddress}
+                  onChange={handleEmptyBoxAddressSelect}
+                  onClear={() => { setEmptyBoxAddress(null); setEmptyBoxForm((p) => ({ ...p, city: '', streetName: '', houseNumber: '' })); }}
+                  placeholder="חפש כתובת"
+                />
+                <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm mb-1">עיר</label>
+                    <input
+                      type="text"
+                      name="city"
+                      value={emptyBoxForm.city}
+                      onChange={(e) => handleChange(e, 'empty_box')}
+                      placeholder="לחץ לבחירת כתובת"
+                      readOnly={!emptyBoxAddress}
+                      className={`w-full px-3 py-2 border rounded-lg ${!emptyBoxAddress ? 'bg-slate-100' : ''}`}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm mb-1">Street</label>
+                    <input
+                      type="text"
+                      name="streetName"
+                      value={emptyBoxForm.streetName}
+                      onChange={(e) => handleChange(e, 'empty_box')}
+                      placeholder="לחץ לבחירת כתובת"
+                      readOnly={!emptyBoxAddress}
+                      className={`w-full px-3 py-2 border rounded-lg ${!emptyBoxAddress ? 'bg-slate-100' : ''}`}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm mb-1">House no.</label>
+                    <input
+                      type="text"
+                      name="houseNumber"
+                      value={emptyBoxForm.houseNumber}
+                      onChange={(e) => handleChange(e, 'empty_box')}
+                      placeholder="לחץ לבחירת כתובת"
+                      readOnly={!emptyBoxAddress}
+                      className={`w-full px-3 py-2 border rounded-lg ${!emptyBoxAddress ? 'bg-slate-100' : ''}`}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm mb-1">Apartment (optional)</label>
+                    <input
+                      type="text"
+                      name="apartment"
+                      value={emptyBoxForm.apartment}
+                      onChange={(e) => handleChange(e, 'empty_box')}
+                      placeholder="3"
+                      className="w-full px-3 py-2 border rounded-lg"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm mb-1">Floor (optional)</label>
+                    <input
+                      type="text"
+                      name="floor"
+                      value={emptyBoxForm.floor}
+                      onChange={(e) => handleChange(e, 'empty_box')}
+                      placeholder="2"
+                      className="w-full px-3 py-2 border rounded-lg"
+                    />
+                  </div>
+                </div>
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold mb-2">Notes (optional)</h3>
+                <textarea
+                  name="orderNotes"
+                  value={emptyBoxForm.orderNotes}
+                  onChange={(e) => handleChange(e, 'empty_box')}
+                  placeholder="Notes about your order"
+                  rows={3}
+                  className="w-full px-3 py-2 border rounded-lg"
+                />
+              </div>
+              {error && <p className="text-red-500 text-sm">{error}</p>}
+              <div className="flex gap-2 pt-2">
+                <button type="button" onClick={handleClose} className="flex-1 py-2.5 border rounded-lg">
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={
+                    !emptyBoxForm.firstName.trim() ||
+                    !emptyBoxForm.lastName.trim() ||
+                    !emptyBoxForm.phone.trim() ||
+                    (!emptyBoxAddress && !(emptyBoxForm.streetName && emptyBoxForm.city && emptyBoxForm.houseNumber)) ||
+                    submitting
+                  }
+                  className="flex-1 py-2.5 bg-slate-700 text-white rounded-lg font-medium disabled:opacity-50"
+                >
+                  {submitting ? 'שומר...' : 'צור הזמנה (הועבר ל-Linewhel)'}
+                </button>
+              </div>
+            </form>
           )}
         </div>
       </div>

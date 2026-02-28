@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
 import { Search, MapPin, X } from 'lucide-react';
 
-export default function AddressSearch({ value, onChange, onClear, placeholder = 'חפש כתובת (רחוב, עיר)' }) {
+export default function AddressSearch({ value, onChange, onClear, placeholder = 'Search address (street, city)' }) {
   const [query, setQuery] = useState('');
   const [searching, setSearching] = useState(false);
   const [results, setResults] = useState([]);
@@ -20,7 +20,7 @@ export default function AddressSearch({ value, onChange, onClear, placeholder = 
       const data = await res.json();
       setResults(Array.isArray(data) ? data : []);
     } catch {
-      setError('שגיאה בחיפוש');
+      setError('Search error');
     } finally {
       setSearching(false);
     }
@@ -72,7 +72,7 @@ export default function AddressSearch({ value, onChange, onClear, placeholder = 
             className="flex items-center gap-2 px-4 py-2 bg-slate-700 text-white rounded-lg hover:bg-slate-600 disabled:opacity-50"
           >
             <Search className="w-4 h-4" />
-            {searching ? '...' : 'חפש'}
+            {searching ? '...' : 'Search'}
           </button>
         )}
       </div>

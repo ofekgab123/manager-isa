@@ -16,23 +16,23 @@ import OrderDetails from './components/OrderDetails';
 import { API_BASE } from './config';
 
 const STATUS_LABELS = {
-  received: 'התקבל במערכת',
-  linewhel_transferred: 'הועבר ל-Linewhel',
-  linewhel_scheduled: 'Linewhel נקבע',
-  collected: 'נאסף',
-  shipped: 'נשלח',
-  completed: 'בוצע',
+  received: 'Received',
+  linewhel_transferred: 'Transferred to Linewhel',
+  linewhel_scheduled: 'Linewhel scheduled',
+  collected: 'Collected',
+  shipped: 'Shipped',
+  completed: 'Completed',
 };
 
 const TYPE_LABELS = {
-  send: 'שליחה',
-  pickup: 'איסוף',
-  empty_box: 'איסוף', // תאימות לאחור
+  send: 'Pick up from me',
+  pickup: 'Pickup',
+  empty_box: 'Bring boxes',
 };
 
 const CREATED_BY_LABELS = {
-  customer: 'לקוח',
-  customer_service: 'שירות לקוחות',
+  customer: 'Customer',
+  customer_service: 'Customer service',
 };
 
 function useOrders(onNewOrders) {
@@ -105,8 +105,8 @@ export default function App() {
         orders: fromCustomer,
       });
       if ('Notification' in window && Notification.permission === 'granted') {
-        new Notification('הזמנה חדשה!', {
-          body: `נכנסו ${fromCustomer.length} הזמנות חדשות ממערכת`,
+        new Notification('New order!', {
+          body: `${fromCustomer.length} new orders from system`,
           icon: '/favicon.ico',
         });
       }
@@ -158,13 +158,13 @@ export default function App() {
       {newOrderAlert && (
         <div className="sticky top-0 z-50 bg-amber-500 text-white px-4 py-3 flex items-center justify-between gap-4 shadow-lg">
           <span className="font-semibold">
-            🔔 נכנסו {newOrderAlert.count} הזמנות חדשות! (סטטוס: התקבל במערכת)
+            🔔 {newOrderAlert.count} new orders! (Status: Received)
           </span>
           <button
             onClick={() => setNewOrderAlert(null)}
             className="px-4 py-2 bg-white/20 hover:bg-white/30 rounded-lg font-medium"
           >
-            סגור
+            Close
           </button>
         </div>
       )}
@@ -178,7 +178,7 @@ export default function App() {
             />
             <div>
               <h1 className="text-xl sm:text-2xl font-bold">Manager ISA</h1>
-              <p className="text-slate-300 text-sm">ניהול הזמנות - ISA Express</p>
+              <p className="text-slate-300 text-sm">Order management - ISA Express</p>
             </div>
           </div>
           <div className="flex gap-2">
@@ -187,7 +187,7 @@ export default function App() {
               className="flex items-center gap-2 px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg font-medium"
             >
               <Plus className="w-5 h-5" />
-              צור הזמנה חדשה
+              Create new order
             </button>
             <button
               onClick={refetch}
@@ -195,7 +195,7 @@ export default function App() {
               className="flex items-center gap-2 px-4 py-2 bg-slate-600 hover:bg-slate-500 rounded-lg font-medium disabled:opacity-50"
             >
               <RefreshCw className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
-              רענן
+              Refresh
             </button>
           </div>
         </div>
@@ -206,37 +206,37 @@ export default function App() {
         <section className="mb-8">
           <h2 className="text-lg font-semibold text-slate-800 mb-4 flex items-center gap-2">
             <TrendingUp className="w-5 h-5" />
-            פילוחים וסטטיסטיקות
+            Statistics
           </h2>
           {statsLoading ? (
-            <div className="text-slate-500">טוען...</div>
+            <div className="text-slate-500">Loading...</div>
           ) : stats ? (
             <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-4">
               <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-100">
                 <div className="text-2xl font-bold text-slate-800">{stats.total}</div>
-                <div className="text-sm text-slate-500">סה״כ הזמנות</div>
+                <div className="text-sm text-slate-500">Total orders</div>
               </div>
               <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-100">
                 <div className="text-2xl font-bold text-green-600 flex items-center gap-1">
                   <PhoneCall className="w-5 h-5" />
                   {stats.contacted ?? 0}
                 </div>
-                <div className="text-sm text-slate-500">התקשרו</div>
+                <div className="text-sm text-slate-500">Contacted</div>
               </div>
               <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-100">
                 <div className="text-2xl font-bold text-amber-600 flex items-center gap-1">
                   <PhoneOff className="w-5 h-5" />
                   {stats.notContacted ?? 0}
                 </div>
-                <div className="text-sm text-slate-500">לא התקשרו</div>
+                <div className="text-sm text-slate-500">Not contacted</div>
               </div>
               <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-100">
                 <div className="text-2xl font-bold text-blue-600">{stats.totalBoxes || 0}</div>
-                <div className="text-sm text-slate-500">סה״כ ארגזים</div>
+                <div className="text-sm text-slate-500">Total boxes</div>
               </div>
               <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-100">
                 <div className="text-2xl font-bold text-emerald-600">₪{stats.totalPrice || 0}</div>
-                <div className="text-sm text-slate-500">סה״כ מחיר</div>
+                <div className="text-sm text-slate-500">Total price</div>
               </div>
               {Object.entries(stats.byStatus || {}).map(([status, count]) => (
                 <div key={status} className="bg-white rounded-xl p-4 shadow-sm border border-slate-100">
@@ -255,7 +255,7 @@ export default function App() {
             className="flex items-center gap-2 px-3 py-2 bg-white border border-slate-200 rounded-lg hover:bg-slate-50"
           >
             <Filter className="w-4 h-4" />
-            פילטרים
+            Filters
             {showFilters ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
           </button>
           {showFilters && (
@@ -265,7 +265,7 @@ export default function App() {
                 onChange={(e) => setFilterStatus(e.target.value)}
                 className="px-3 py-2 border rounded-lg text-sm"
               >
-                <option value="">כל הסטטוסים</option>
+                <option value="">All statuses</option>
                 {Object.entries(STATUS_LABELS).map(([k, v]) => (
                   <option key={k} value={k}>{v}</option>
                 ))}
@@ -275,7 +275,7 @@ export default function App() {
                 onChange={(e) => setFilterType(e.target.value)}
                 className="px-3 py-2 border rounded-lg text-sm"
               >
-                <option value="">כל הסוגים</option>
+                <option value="">All types</option>
                 {Object.entries(TYPE_LABELS).map(([k, v]) => (
                   <option key={k} value={k}>{v}</option>
                 ))}
@@ -285,7 +285,7 @@ export default function App() {
                 onChange={(e) => setFilterCreatedBy(e.target.value)}
                 className="px-3 py-2 border rounded-lg text-sm"
               >
-                <option value="">כל המקורות</option>
+                <option value="">All sources</option>
                 {Object.entries(CREATED_BY_LABELS).map(([k, v]) => (
                   <option key={k} value={k}>{v}</option>
                 ))}
@@ -295,9 +295,9 @@ export default function App() {
                 onChange={(e) => setFilterContacted(e.target.value)}
                 className="px-3 py-2 border rounded-lg text-sm"
               >
-                <option value="">כל ההתקשרויות</option>
-                <option value="yes">התקשרו</option>
-                <option value="no">לא התקשרו</option>
+                <option value="">All contacted</option>
+                <option value="yes">Contacted</option>
+                <option value="no">Not contacted</option>
               </select>
             </div>
           )}
@@ -307,33 +307,33 @@ export default function App() {
         <section className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
           <h2 className="text-lg font-semibold text-slate-800 p-4 border-b flex items-center gap-2">
             <Package className="w-5 h-5" />
-            כל ההזמנות ({filtered.length})
+            All orders ({filtered.length})
           </h2>
 
           {error || loading ? (
             <div className="p-8 text-center">
               {error ? (
-                <p className="text-red-600">שגיאה: {error}. בהרצה מקומית – ודא שהשרת רץ (npm run server).</p>
+                <p className="text-red-600">Error: {error}. For local run – ensure server is running (npm run server).</p>
               ) : (
-                <p className="text-slate-500">טוען...</p>
+                <p className="text-slate-500">Loading...</p>
               )}
             </div>
           ) : filtered.length === 0 ? (
-            <div className="p-8 text-center text-slate-500">אין הזמנות להצגה</div>
+            <div className="p-8 text-center text-slate-500">No orders to display</div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-right">
                 <thead>
                   <tr className="bg-slate-50 border-b border-slate-100">
-                    <th className="px-4 py-3 text-sm font-semibold text-slate-600">מזהה</th>
-                    <th className="px-4 py-3 text-sm font-semibold text-slate-600">סוג</th>
-                    <th className="px-4 py-3 text-sm font-semibold text-slate-600">סטטוס</th>
-                    <th className="px-4 py-3 text-sm font-semibold text-slate-600">התקשרו</th>
-                    <th className="px-4 py-3 text-sm font-semibold text-slate-600">ארגזים</th>
-                    <th className="px-4 py-3 text-sm font-semibold text-slate-600">מקור</th>
-                    <th className="px-4 py-3 text-sm font-semibold text-slate-600">טלפון</th>
-                    <th className="px-4 py-3 text-sm font-semibold text-slate-600">תאריך</th>
-                    <th className="px-4 py-3 text-sm font-semibold text-slate-600">פרטים</th>
+                    <th className="px-4 py-3 text-sm font-semibold text-slate-600">ID</th>
+                    <th className="px-4 py-3 text-sm font-semibold text-slate-600">Type</th>
+                    <th className="px-4 py-3 text-sm font-semibold text-slate-600">Status</th>
+                    <th className="px-4 py-3 text-sm font-semibold text-slate-600">Contacted</th>
+                    <th className="px-4 py-3 text-sm font-semibold text-slate-600">Boxes</th>
+                    <th className="px-4 py-3 text-sm font-semibold text-slate-600">Source</th>
+                    <th className="px-4 py-3 text-sm font-semibold text-slate-600">Phone</th>
+                    <th className="px-4 py-3 text-sm font-semibold text-slate-600">Date</th>
+                    <th className="px-4 py-3 text-sm font-semibold text-slate-600">Details</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -359,12 +359,12 @@ export default function App() {
                           {order.contacted ? (
                             <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700 flex items-center gap-1 w-fit">
                               <PhoneCall className="w-3.5 h-3.5" />
-                              התקשרו
+                              Contacted
                             </span>
                           ) : (
                             <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 flex items-center gap-1 w-fit">
                               <PhoneOff className="w-3.5 h-3.5" />
-                              לא התקשרו
+                              Not contacted
                             </span>
                           )}
                         </td>
@@ -375,7 +375,7 @@ export default function App() {
                         <td className="px-4 py-3 text-sm">{order.customerPhone || '-'}</td>
                         <td className="px-4 py-3 text-sm">
                           {order.createdAt
-                            ? new Date(order.createdAt).toLocaleDateString('he-IL', {
+                            ? new Date(order.createdAt).toLocaleDateString('en-US', {
                                 day: '2-digit',
                                 month: '2-digit',
                                 year: 'numeric',
@@ -414,7 +414,7 @@ export default function App() {
                                     className="flex items-center gap-2 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-medium disabled:opacity-50"
                                   >
                                     <Truck className="w-4 h-4" />
-                                    {transferringId === order.id ? 'מעביר...' : 'העבר ל-Linewhel'}
+                                    {transferringId === order.id ? 'Transferring...' : 'Transfer to Linewhel'}
                                   </button>
                                 </div>
                               )}
