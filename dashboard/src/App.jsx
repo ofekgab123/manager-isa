@@ -2,26 +2,27 @@ import { useState, useEffect } from 'react';
 import {
   Package,
   TrendingUp,
-  MapPin,
   RefreshCw,
   Filter,
   ChevronDown,
   ChevronUp,
-  Calendar,
-  User,
   PhoneCall,
   PhoneOff,
   Plus,
+  Truck,
 } from 'lucide-react';
 import CreateOrderModal from './components/CreateOrderModal';
+import OrderDetails from './components/OrderDetails';
 
 const API_BASE = '/api';
 
 const STATUS_LABELS = {
   pending: 'ממתין',
   recorded: 'נרשם במוקד',
+  received: 'התקבל במערכת',
   boxes_requested: 'נדרשו ארגזים',
   linewhel_scheduled: 'Linewhel נקבע',
+  linewhel_transferred: 'הועבר ל-Linewhel',
   packed: 'ארוז',
   ready_pickup: 'מוכן לאיסוף',
   shipped: 'נשלח',
@@ -38,34 +39,42 @@ const CREATED_BY_LABELS = {
   customer_service: 'שירות לקוחות',
 };
 
-function useOrders() {
+function useOrders(onNewOrders) {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const knownIdsRef = { current: new Set() };
 
-  const fetchOrders = async () => {
-    setLoading(true);
+  const fetchOrders = async (isPoll = false) => {
+    if (!isPoll) setLoading(true);
     setError(null);
     try {
       const res = await fetch(`${API_BASE}/orders`);
       if (!res.ok) throw new Error('Failed to fetch');
       const data = await res.json();
+      if (isPoll && onNewOrders && knownIdsRef.current.size > 0) {
+        const newOrders = data.filter((o) => !knownIdsRef.current.has(o.id));
+        if (newOrders.length > 0) {
+          onNewOrders(newOrders);
+        }
+      }
+      knownIdsRef.current = new Set(data.map((o) => o.id));
       setOrders(data);
     } catch (e) {
       setError(e.message);
       setOrders([]);
     } finally {
-      setLoading(false);
+      if (!isPoll) setLoading(false);
     }
   };
 
   useEffect(() => {
     fetchOrders();
-    const interval = setInterval(fetchOrders, 10000);
+    const interval = setInterval(() => fetchOrders(true), 5000);
     return () => clearInterval(interval);
   }, []);
 
-  return { orders, loading, error, refetch: fetchOrders };
+  return { orders, loading, error, refetch: () => fetchOrders(false) };
 }
 
 function useStats() {
@@ -90,7 +99,25 @@ function useStats() {
 }
 
 export default function App() {
-  const { orders, loading, error, refetch } = useOrders();
+  const [newOrderAlert, setNewOrderAlert] = useState(null);
+
+  const handleNewOrders = (newOrders) => {
+    const fromCustomer = newOrders.filter((o) => o.createdBy === 'customer');
+    if (fromCustomer.length > 0) {
+      setNewOrderAlert({
+        count: fromCustomer.length,
+        orders: fromCustomer,
+      });
+      if ('Notification' in window && Notification.permission === 'granted') {
+        new Notification('הזמנה חדשה!', {
+          body: `נכנסו ${fromCustomer.length} הזמנות חדשות ממערכת`,
+          icon: '/favicon.ico',
+        });
+      }
+    }
+  };
+
+  const { orders, loading, error, refetch } = useOrders(handleNewOrders);
   const { stats, loading: statsLoading } = useStats();
   const [filterStatus, setFilterStatus] = useState('');
   const [filterType, setFilterType] = useState('');
@@ -99,6 +126,21 @@ export default function App() {
   const [expandedId, setExpandedId] = useState(null);
   const [showFilters, setShowFilters] = useState(false);
   const [showCreateOrder, setShowCreateOrder] = useState(false);
+  const [transferringId, setTransferringId] = useState(null);
+
+  const handleTransferToLinewhel = async (orderId) => {
+    setTransferringId(orderId);
+    try {
+      const res = await fetch(`${API_BASE}/orders/${orderId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'linewhel_transferred' }),
+      });
+      if (res.ok) refetch();
+    } finally {
+      setTransferringId(null);
+    }
+  };
 
   const filtered = orders.filter((o) => {
     if (filterStatus && o.status !== filterStatus) return false;
@@ -109,8 +151,27 @@ export default function App() {
     return true;
   });
 
+  useEffect(() => {
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+  }, []);
+
   return (
     <div className="min-h-screen bg-slate-50">
+      {newOrderAlert && (
+        <div className="sticky top-0 z-50 bg-amber-500 text-white px-4 py-3 flex items-center justify-between gap-4 shadow-lg">
+          <span className="font-semibold">
+            🔔 נכנסו {newOrderAlert.count} הזמנות חדשות! (סטטוס: התקבל במערכת)
+          </span>
+          <button
+            onClick={() => setNewOrderAlert(null)}
+            className="px-4 py-2 bg-white/20 hover:bg-white/30 rounded-lg font-medium"
+          >
+            סגור
+          </button>
+        </div>
+      )}
       <header className="bg-slate-800 text-white px-4 py-4 shadow-lg">
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
@@ -330,48 +391,30 @@ export default function App() {
                       </tr>
                       {expandedId === order.id && (
                         <tr key={`${order.id}-exp`} className="bg-slate-50/80">
-                          <td colSpan={9} className="px-4 py-4">
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
-                              {order.address?.displayAddress && (
-                                <div className="flex items-start gap-2">
-                                  <MapPin className="w-4 h-4 mt-0.5 shrink-0 text-slate-500" />
-                                  <span>{order.address.displayAddress}</span>
+                          <td colSpan={9} className="px-4 py-4 align-top">
+                            <OrderDetails
+                              order={order}
+                              onSave={(updated) => {
+                                refetch();
+                              }}
+                              onClose={() => setExpandedId(null)}
+                            />
+                              {order.createdBy === 'customer' &&
+                                !['linewhel_transferred', 'linewhel_scheduled', 'shipped'].includes(order.status) && (
+                                <div className="mt-4 pt-4 border-t">
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleTransferToLinewhel(order.id);
+                                    }}
+                                    disabled={transferringId === order.id}
+                                    className="flex items-center gap-2 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-medium disabled:opacity-50"
+                                  >
+                                    <Truck className="w-4 h-4" />
+                                    {transferringId === order.id ? 'מעביר...' : 'העבר ל-Linewhel'}
+                                  </button>
                                 </div>
                               )}
-                              {order.scheduledFor && (
-                                <div className="flex items-center gap-2">
-                                  <Calendar className="w-4 h-4 text-slate-500" />
-                                  <span>נקבע: {order.scheduledFor}</span>
-                                </div>
-                              )}
-                              {order.assignedTo && (
-                                <div className="flex items-center gap-2">
-                                  <User className="w-4 h-4 text-slate-500" />
-                                  <span>הוקצה: {order.assignedTo}</span>
-                                </div>
-                              )}
-                              {order.readyAction && (
-                                <div>
-                                  <span className="text-slate-500">פעולה: </span>
-                                  {order.readyAction === 'ready_for_box' ? 'Ready for Box' : 'Pickup'}
-                                </div>
-                              )}
-                              {order.items?.length > 0 && (
-                                <div className="sm:col-span-2">
-                                  <span className="font-medium text-slate-700">פריטים:</span>
-                                  <ul className="mt-1 space-y-1">
-                                    {order.items.map((item) => (
-                                      <li key={item.id}>
-                                        {item.name} × {item.quantity} — ₪{item.price * item.quantity}
-                                      </li>
-                                    ))}
-                                  </ul>
-                                </div>
-                              )}
-                              {order.totalPrice != null && (
-                                <div className="font-bold text-slate-800">סה״כ: ₪{order.totalPrice}</div>
-                              )}
-                            </div>
                           </td>
                         </tr>
                       )}

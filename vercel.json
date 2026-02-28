@@ -1,0 +1,12 @@
+{
+  "version": 2,
+  "buildCommand": "cd server && npm install && cd ../dashboard && npm install && npm run build",
+  "outputDirectory": "dashboard/dist",
+  "framework": null,
+  "functions": {
+    "api/[[...path]].js": {
+      "memory": 1024,
+      "maxDuration": 10
+    }
+  }
+}
