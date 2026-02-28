@@ -1,1 +1,2 @@
-export const API_BASE = 'https://manager-isa-git-main-ofekgab123s-projects.vercel.app/api';
+// יחסי – עובד כשהדשבורד וה-API על אותו דומיין (Vercel)
+export const API_BASE = '/api';

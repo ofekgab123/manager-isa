@@ -189,7 +189,7 @@ export default function CreateOrderModal({ isOpen, onClose, onCreated }) {
         </div>
 
         <div className="p-4 sm:p-6">
-          {orderType === 'pickup' ? (
+          {orderType === 'pickup' && (
             <div className="space-y-6">
               {/* Progress - 5 steps */}
               <div className="flex justify-between gap-1">
