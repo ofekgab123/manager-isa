@@ -1,0 +1,14 @@
+{
+  "name": "manager-isa-server",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js"
+  },
+  "dependencies": {
+    "@upstash/redis": "^1.36.3",
+    "cors": "^2.8.5",
+    "express": "^4.21.0"
+  }
+}
