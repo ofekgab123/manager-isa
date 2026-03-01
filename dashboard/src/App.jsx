@@ -400,10 +400,12 @@ export default function App() {
                           <td colSpan={9} className="px-4 py-4 align-top">
                             <OrderDetails
                               order={order}
-                              onSave={(updated) => {
-                                refetch();
-                              }}
+                              onSave={() => refetch()}
                               onClose={() => setExpandedId(null)}
+                              onDelete={() => {
+                                refetch();
+                                setExpandedId(null);
+                              }}
                             />
                               {order.createdBy === 'customer' &&
                                 order.status === 'received' && (

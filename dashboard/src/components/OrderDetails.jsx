@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { MapPin, User, Save, X, Video, Image, Copy } from 'lucide-react';
+import { MapPin, User, Save, X, Video, Image, Copy, Trash2 } from 'lucide-react';
 import AddressSearch from './AddressSearch';
 import { API_BASE } from '../config';
 
@@ -135,9 +135,11 @@ function AddressBlock({ title, addr, onChange }) {
   );
 }
 
-export default function OrderDetails({ order, onSave, onClose }) {
+export default function OrderDetails({ order, onSave, onClose, onDelete }) {
   const [edit, setEdit] = useState({ ...order });
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [error, setError] = useState('');
 
   const update = (path, value) => {
@@ -164,6 +166,21 @@ export default function OrderDetails({ order, onSave, onClose }) {
       setError(e.message || 'Error');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    setDeleting(true);
+    setError('');
+    try {
+      const res = await fetch(`${API_BASE}/orders/${order.id}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error('Delete error');
+      setShowDeleteConfirm(false);
+      onDelete?.();
+    } catch (e) {
+      setError(e.message || 'Error');
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -329,16 +346,55 @@ export default function OrderDetails({ order, onSave, onClose }) {
       )}
 
       {error && <p className="text-red-500 text-sm">{error}</p>}
-      <div className="flex gap-2 pt-2">
-        <button
-          onClick={handleSave}
-          disabled={saving}
-          className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-medium disabled:opacity-50"
-        >
-          <Save className="w-4 h-4" />
-          {saving ? 'Saving...' : 'Save changes'}
-        </button>
+      <div className="flex flex-wrap gap-2 pt-2 justify-between">
+        <div className="flex gap-2">
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-medium disabled:opacity-50"
+          >
+            <Save className="w-4 h-4" />
+            {saving ? 'Saving...' : 'Save changes'}
+          </button>
+          {onDelete && (
+            <button
+              onClick={() => setShowDeleteConfirm(true)}
+              disabled={saving}
+              className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium disabled:opacity-50"
+            >
+              <Trash2 className="w-4 h-4" />
+              Delete order
+            </button>
+          )}
+        </div>
       </div>
+
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-xl p-6 max-w-md w-full shadow-xl">
+            <h4 className="font-bold text-slate-800 mb-2">Delete order?</h4>
+            <p className="text-slate-600 text-sm mb-4">
+              Are you sure you want to delete order <strong>{order.id}</strong>? This action cannot be undone.
+            </p>
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                disabled={deleting}
+                className="px-4 py-2 border border-slate-300 rounded-lg hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDelete}
+                disabled={deleting}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium disabled:opacity-50"
+              >
+                {deleting ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
