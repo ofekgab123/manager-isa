@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { X, Package, Truck, MapPin } from 'lucide-react';
 import AddressSearch from './AddressSearch';
+import AddressPicker from './AddressPicker';
 import { geocodeAddress } from '../utils/geocode';
 import { API_BASE } from '../config';
 
@@ -20,6 +21,7 @@ export default function CreateOrderModal({ isOpen, onClose, onCreated }) {
   // Pickup Parcel - 5 steps
   const [pickupStep, setPickupStep] = useState(1);
   const [addressPickerFor, setAddressPickerFor] = useState(null);
+  const [addressMapOpenFor, setAddressMapOpenFor] = useState(null); // 'sender' | 'receiver' | 'empty_box' - opens map modal
   const [pickupForm, setPickupForm] = useState({
     israeliPhone: '',
     fullName: '',
@@ -60,12 +62,21 @@ export default function CreateOrderModal({ isOpen, onClose, onCreated }) {
   };
 
   const handleEmptyBoxAddressSelect = (addr) => {
-    setEmptyBoxAddress(addr);
+    if (!addr) return;
+    const mapped = {
+      displayAddress: addr.displayAddress,
+      lat: addr.lat,
+      lng: addr.lng,
+      city: addr.city || '',
+      street: addr.street || '',
+      houseNumber: addr.houseNumber || '',
+    };
+    setEmptyBoxAddress(mapped);
     setEmptyBoxForm((p) => ({
       ...p,
-      city: addr?.city || p.city,
-      streetName: addr?.street || p.streetName,
-      houseNumber: addr?.houseNumber || p.houseNumber,
+      city: mapped.city || p.city,
+      streetName: mapped.street || p.streetName,
+      houseNumber: mapped.houseNumber || p.houseNumber,
     }));
   };
 
@@ -132,6 +143,7 @@ export default function CreateOrderModal({ isOpen, onClose, onCreated }) {
       orderNotes: '',
     });
     setEmptyBoxAddress(null);
+    setAddressMapOpenFor(null);
     setError('');
   };
 
@@ -233,6 +245,8 @@ export default function CreateOrderModal({ isOpen, onClose, onCreated }) {
             houseNumber: pickupForm.senderHouseNumber,
             apartment: pickupForm.senderApartment,
             floor: pickupForm.senderFloor,
+            videoUrl: senderMapAddress?.videoUrl,
+            imageUrl: senderMapAddress?.imageUrl,
           },
           receiverName: pickupForm.receiverName,
           receiverPhone: pickupForm.receiverPhone,
@@ -245,6 +259,8 @@ export default function CreateOrderModal({ isOpen, onClose, onCreated }) {
             houseNumber: pickupForm.receiverHouseNumber,
             apartment: pickupForm.receiverApartment,
             floor: pickupForm.receiverFloor,
+            videoUrl: receiverMapAddress?.videoUrl,
+            imageUrl: receiverMapAddress?.imageUrl,
           },
         }),
       });
@@ -354,21 +370,47 @@ export default function CreateOrderModal({ isOpen, onClose, onCreated }) {
                     <div>
                       <label className="block text-sm font-medium mb-2">Select address</label>
                       {addressPickerFor === 'sender' ? (
-                        <AddressSearch
-                          value={senderMapAddress}
-                          onChange={(addr) => handlePickupAddressSelect(addr, 'sender')}
-                          onClear={() => { setSenderMapAddress(null); setPickupForm((p) => ({ ...p, senderCity: '', senderStreet: '', senderHouseNumber: '' })); setAddressPickerFor(null); }}
-                          placeholder="Search address"
-                        />
+                        <div className="space-y-3">
+                          <AddressSearch
+                            value={senderMapAddress}
+                            onChange={(addr) => handlePickupAddressSelect(addr, 'sender')}
+                            onClear={() => { setSenderMapAddress(null); setPickupForm((p) => ({ ...p, senderCity: '', senderStreet: '', senderHouseNumber: '' })); setAddressPickerFor(null); }}
+                            placeholder="Search address"
+                          />
+                          <p className="text-xs text-slate-500 text-center">or</p>
+                          <button
+                            type="button"
+                            onClick={() => setAddressMapOpenFor('sender')}
+                            className="w-full p-4 rounded-xl border-2 border-dashed border-slate-300 hover:border-slate-500 flex items-center justify-center gap-2"
+                          >
+                            <MapPin className="w-5 h-5" />
+                            Pick on map (like customer flow)
+                          </button>
+                        </div>
                       ) : (
-                        <button
-                          type="button"
-                          onClick={() => setAddressPickerFor('sender')}
-                          className="w-full p-4 rounded-xl border-2 border-dashed border-slate-300 hover:border-slate-500 flex items-center justify-center gap-2"
-                        >
-                          <MapPin className="w-5 h-5" />
-                          {senderMapAddress ? senderMapAddress.displayAddress : 'Search address'}
-                        </button>
+                        <div className="space-y-2">
+                          <div className="flex flex-col sm:flex-row gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setAddressPickerFor('sender')}
+                              className="flex-1 p-4 rounded-xl border-2 border-dashed border-slate-300 hover:border-slate-500 flex items-center justify-center gap-2"
+                            >
+                              <MapPin className="w-5 h-5" />
+                              Search address
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setAddressMapOpenFor('sender')}
+                              className="flex-1 p-4 rounded-xl border-2 border-dashed border-slate-300 hover:border-slate-500 flex items-center justify-center gap-2"
+                            >
+                              <MapPin className="w-5 h-5" />
+                              Pick on map
+                            </button>
+                          </div>
+                          {senderMapAddress && (
+                            <p className="text-sm text-slate-600">{senderMapAddress.displayAddress}</p>
+                          )}
+                        </div>
                       )}
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -474,21 +516,47 @@ export default function CreateOrderModal({ isOpen, onClose, onCreated }) {
                     <div>
                       <label className="block text-sm font-medium mb-2">Select address</label>
                       {addressPickerFor === 'receiver' ? (
-                        <AddressSearch
-                          value={receiverMapAddress}
-                          onChange={(addr) => handlePickupAddressSelect(addr, 'receiver')}
-                          onClear={() => { setReceiverMapAddress(null); setPickupForm((p) => ({ ...p, receiverCity: '', receiverStreet: '', receiverHouseNumber: '' })); setAddressPickerFor(null); }}
-                          placeholder="Search address"
-                        />
+                        <div className="space-y-3">
+                          <AddressSearch
+                            value={receiverMapAddress}
+                            onChange={(addr) => handlePickupAddressSelect(addr, 'receiver')}
+                            onClear={() => { setReceiverMapAddress(null); setPickupForm((p) => ({ ...p, receiverCity: '', receiverStreet: '', receiverHouseNumber: '' })); setAddressPickerFor(null); }}
+                            placeholder="Search address"
+                          />
+                          <p className="text-xs text-slate-500 text-center">or</p>
+                          <button
+                            type="button"
+                            onClick={() => setAddressMapOpenFor('receiver')}
+                            className="w-full p-4 rounded-xl border-2 border-dashed border-slate-300 hover:border-slate-500 flex items-center justify-center gap-2"
+                          >
+                            <MapPin className="w-5 h-5" />
+                            Pick on map (like customer flow)
+                          </button>
+                        </div>
                       ) : (
-                        <button
-                          type="button"
-                          onClick={() => setAddressPickerFor('receiver')}
-                          className="w-full p-4 rounded-xl border-2 border-dashed border-slate-300 hover:border-slate-500 flex items-center justify-center gap-2"
-                        >
-                          <MapPin className="w-5 h-5" />
-                          {receiverMapAddress ? receiverMapAddress.displayAddress : 'Search address'}
-                        </button>
+                        <div className="space-y-2">
+                          <div className="flex flex-col sm:flex-row gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setAddressPickerFor('receiver')}
+                              className="flex-1 p-4 rounded-xl border-2 border-dashed border-slate-300 hover:border-slate-500 flex items-center justify-center gap-2"
+                            >
+                              <MapPin className="w-5 h-5" />
+                              Search address
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setAddressMapOpenFor('receiver')}
+                              className="flex-1 p-4 rounded-xl border-2 border-dashed border-slate-300 hover:border-slate-500 flex items-center justify-center gap-2"
+                            >
+                              <MapPin className="w-5 h-5" />
+                              Pick on map
+                            </button>
+                          </div>
+                          {receiverMapAddress && (
+                            <p className="text-sm text-slate-600">{receiverMapAddress.displayAddress}</p>
+                          )}
+                        </div>
                       )}
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -666,22 +734,32 @@ export default function CreateOrderModal({ isOpen, onClose, onCreated }) {
               </div>
               <div>
                 <h3 className="text-lg font-semibold mb-4">Delivery address *</h3>
-                <p className="text-sm text-slate-600 mb-2">Search address or fill manually</p>
-                <AddressSearch
-                  value={emptyBoxAddress}
-                  onChange={handleEmptyBoxAddressSelect}
-                  onClear={() => { setEmptyBoxAddress(null); setEmptyBoxForm((p) => ({ ...p, city: '', streetName: '', houseNumber: '' })); }}
-                  placeholder="חפש כתובת"
-                />
+                <p className="text-sm text-slate-600 mb-2">Search address, pick on map, or fill manually</p>
+                <div className="flex flex-col sm:flex-row gap-2 mb-3">
+                  <AddressSearch
+                    value={emptyBoxAddress}
+                    onChange={handleEmptyBoxAddressSelect}
+                    onClear={() => { setEmptyBoxAddress(null); setEmptyBoxForm((p) => ({ ...p, city: '', streetName: '', houseNumber: '' })); }}
+                    placeholder="Search address"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setAddressMapOpenFor('empty_box')}
+                    className="p-4 rounded-xl border-2 border-dashed border-slate-300 hover:border-slate-500 flex items-center justify-center gap-2 shrink-0"
+                  >
+                    <MapPin className="w-5 h-5" />
+                    Pick on map
+                  </button>
+                </div>
                 <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm mb-1">עיר</label>
+                    <label className="block text-sm mb-1">City</label>
                     <input
                       type="text"
                       name="city"
                       value={emptyBoxForm.city}
                       onChange={(e) => handleChange(e, 'empty_box')}
-                      placeholder="לחץ לבחירת כתובת"
+                      placeholder="Click to select address"
                       readOnly={!emptyBoxAddress}
                       className={`w-full px-3 py-2 border rounded-lg ${!emptyBoxAddress ? 'bg-slate-100' : ''}`}
                     />
@@ -693,7 +771,7 @@ export default function CreateOrderModal({ isOpen, onClose, onCreated }) {
                       name="streetName"
                       value={emptyBoxForm.streetName}
                       onChange={(e) => handleChange(e, 'empty_box')}
-                      placeholder="לחץ לבחירת כתובת"
+                      placeholder="Click to select address"
                       readOnly={!emptyBoxAddress}
                       className={`w-full px-3 py-2 border rounded-lg ${!emptyBoxAddress ? 'bg-slate-100' : ''}`}
                     />
@@ -705,7 +783,7 @@ export default function CreateOrderModal({ isOpen, onClose, onCreated }) {
                       name="houseNumber"
                       value={emptyBoxForm.houseNumber}
                       onChange={(e) => handleChange(e, 'empty_box')}
-                      placeholder="לחץ לבחירת כתובת"
+                      placeholder="Click to select address"
                       readOnly={!emptyBoxAddress}
                       className={`w-full px-3 py-2 border rounded-lg ${!emptyBoxAddress ? 'bg-slate-100' : ''}`}
                     />
@@ -761,13 +839,33 @@ export default function CreateOrderModal({ isOpen, onClose, onCreated }) {
                   }
                   className="flex-1 py-2.5 bg-slate-700 text-white rounded-lg font-medium disabled:opacity-50"
                 >
-                  {submitting ? 'שומר...' : 'צור הזמנה (הועבר ל-Linewhel)'}
+                  {submitting ? 'Saving...' : 'Create order (Transfer to Linewhel)'}
                 </button>
               </div>
             </form>
           )}
         </div>
       </div>
+
+      <AddressPicker
+        isOpen={!!addressMapOpenFor}
+        onClose={() => setAddressMapOpenFor(null)}
+        onSelect={(addr) => {
+          if (addressMapOpenFor === 'sender') handlePickupAddressSelect(addr, 'sender');
+          else if (addressMapOpenFor === 'receiver') handlePickupAddressSelect(addr, 'receiver');
+          else if (addressMapOpenFor === 'empty_box') handleEmptyBoxAddressSelect(addr);
+          setAddressMapOpenFor(null);
+        }}
+        initialPosition={
+          addressMapOpenFor === 'sender' && senderMapAddress?.lat != null
+            ? [senderMapAddress.lat, senderMapAddress.lng]
+            : addressMapOpenFor === 'receiver' && receiverMapAddress?.lat != null
+              ? [receiverMapAddress.lat, receiverMapAddress.lng]
+              : addressMapOpenFor === 'empty_box' && emptyBoxAddress?.lat != null
+                ? [emptyBoxAddress.lat, emptyBoxAddress.lng]
+                : undefined
+        }
+      />
     </div>
   );
 }

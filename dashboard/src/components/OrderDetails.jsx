@@ -235,7 +235,7 @@ export default function OrderDetails({ order, onSave, onClose }) {
         )}
       </div>
 
-      {/* פרטים אישיים - להביא ארגזים */}
+      {/* Personal details - Order empty box */}
       {(edit.type === 'empty_box' || edit.firstName || edit.lastName) && (
         <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
           <h4 className="font-semibold text-slate-800 flex items-center gap-2">
@@ -249,7 +249,7 @@ export default function OrderDetails({ order, onSave, onClose }) {
         </div>
       )}
 
-      {/* כתובת ראשית */}
+      {/* Main address */}
       {(edit.address || edit.type === 'empty_box') && (
         <AddressBlock
           title="Address"
@@ -300,7 +300,7 @@ export default function OrderDetails({ order, onSave, onClose }) {
         </>
       )}
 
-      {/* הערות */}
+      {/* Notes */}
       <div>
         <label className="block text-xs font-medium text-slate-500 mb-1">Notes</label>
         <textarea
@@ -311,7 +311,7 @@ export default function OrderDetails({ order, onSave, onClose }) {
         />
       </div>
 
-      {/* פריטים - תצוגה בלבד */}
+      {/* Items - read only */}
       {edit.items?.length > 0 && (
         <div className="p-4 rounded-xl bg-slate-50 border border-slate-200">
           <h4 className="font-semibold text-slate-800 mb-2">Items</h4>

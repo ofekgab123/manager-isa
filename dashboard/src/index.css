@@ -5,3 +5,11 @@
 body {
   font-family: system-ui, -apple-system, sans-serif;
 }
+
+.leaflet-container {
+  height: 100%;
+  width: 100%;
+  min-height: 300px;
+  border-radius: 8px;
+  font-family: inherit;
+}
