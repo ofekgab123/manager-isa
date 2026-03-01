@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { MapPin, User, Save, X, Video, Image } from 'lucide-react';
+import { MapPin, User, Save, X, Video, Image, Copy } from 'lucide-react';
 import AddressSearch from './AddressSearch';
 import { API_BASE } from '../config';
 
@@ -35,6 +35,7 @@ function EditableField({ label, value, onChange, type = 'text', placeholder, rea
 
 function AddressBlock({ title, addr, onChange }) {
   const [showSearch, setShowSearch] = useState(false);
+  const [imagePreview, setImagePreview] = useState(null);
   const data = addr || {};
   return (
     <div className="p-4 rounded-xl bg-white border border-slate-200 space-y-3">
@@ -70,12 +71,26 @@ function AddressBlock({ title, addr, onChange }) {
       {data.displayAddress && (
         <p className="text-sm text-slate-600">Full address: {data.displayAddress}</p>
       )}
-      {(data.lat != null || data.lng != null) && (
-        <p className="text-sm text-slate-600 font-mono">
-          Coordinates: {typeof data.lat === 'number' ? data.lat.toFixed(6) : data.lat},{' '}
-          {typeof data.lng === 'number' ? data.lng.toFixed(6) : data.lng}
-        </p>
-      )}
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="text-xs font-medium text-slate-500">Exact pin location (lat, lng):</span>
+        {(data.lat != null && data.lng != null && String(data.lat).trim() !== '' && String(data.lng).trim() !== '') ? (
+          <>
+            <code className="text-sm font-mono bg-slate-100 px-2 py-1 rounded">
+              {typeof data.lat === 'number' ? data.lat.toFixed(6) : data.lat}, {typeof data.lng === 'number' ? data.lng.toFixed(6) : data.lng}
+            </code>
+            <button
+              type="button"
+              onClick={() => navigator.clipboard?.writeText(`${data.lat}, ${data.lng}`)}
+              className="p-1.5 hover:bg-slate-200 rounded"
+              title="Copy coordinates"
+            >
+              <Copy className="w-4 h-4 text-slate-500" />
+            </button>
+          </>
+        ) : (
+          <span className="text-sm text-slate-400 italic">Not available — use &quot;Change address&quot; and pick on map</span>
+        )}
+      </div>
       {data.videoUrl && (
         <div>
           <div className="flex items-center gap-2 text-xs font-medium text-slate-500 mb-1">
@@ -89,9 +104,31 @@ function AddressBlock({ title, addr, onChange }) {
         <div>
           <div className="flex items-center gap-2 text-xs font-medium text-slate-500 mb-1">
             <Image className="w-4 h-4" />
-            Verification photo
+            Verification photo (click to enlarge)
           </div>
-          <img src={data.imageUrl} alt="Address verification" className="max-w-xs max-h-40 rounded-lg border object-contain" />
+          <button
+            type="button"
+            onClick={() => setImagePreview(data.imageUrl)}
+            className="block text-left"
+          >
+            <img src={data.imageUrl} alt="Address verification" className="max-w-xs max-h-40 rounded-lg border object-contain cursor-zoom-in hover:opacity-90" />
+          </button>
+        </div>
+      )}
+      {imagePreview && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+          onClick={() => setImagePreview(null)}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => e.key === 'Escape' && setImagePreview(null)}
+        >
+          <img
+            src={imagePreview}
+            alt="Enlarged verification"
+            className="max-w-full max-h-full object-contain rounded-lg"
+            onClick={(e) => e.stopPropagation()}
+          />
         </div>
       )}
     </div>
