@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { MapPin, User, Save, X, Video, Image, Copy, Trash2 } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { MapPin, User, Save, X, Video, Image, Copy, Trash2, Users } from 'lucide-react';
 import AddressSearch from './AddressSearch';
 import { API_BASE } from '../config';
 
@@ -132,6 +132,14 @@ export default function OrderDetails({ order, onSave, onClose, onDelete }) {
   const [deleting, setDeleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [error, setError] = useState('');
+  const [affiliates, setAffiliates] = useState([]);
+
+  useEffect(() => {
+    fetch(`${API_BASE}/affiliates`)
+      .then((r) => r.json())
+      .then((data) => setAffiliates(data.filter((a) => a.active !== false)))
+      .catch(() => {});
+  }, []);
 
   const update = (path, value) => {
     if (path.includes('.')) {
@@ -204,6 +212,34 @@ export default function OrderDetails({ order, onSave, onClose, onDelete }) {
         <EditableField label="Customer phone" value={edit.customerPhone} onChange={(v) => update('customerPhone', v)} type="tel" />
         <EditableField label="Scheduled for" value={edit.scheduledFor} onChange={(v) => update('scheduledFor', v)} />
         <EditableField label="Assigned to" value={edit.assignedTo} onChange={(v) => update('assignedTo', v)} />
+        <div>
+          <label className="block text-xs font-medium text-slate-500 mb-1 flex items-center gap-1">
+            <Users className="w-3.5 h-3.5" /> Affiliate
+          </label>
+          <select
+            value={edit.affiliateName || ''}
+            onChange={(e) => {
+              const selected = affiliates.find((a) => a.name === e.target.value);
+              if (selected) {
+                setEdit((p) => ({
+                  ...p,
+                  affiliateName: selected.name,
+                  affiliateSlug: selected.slug,
+                  promoCode: p.promoCode || selected.promoCode,
+                  discountAmount: p.discountAmount || selected.discountAmount,
+                }));
+              } else {
+                setEdit((p) => ({ ...p, affiliateName: null, affiliateSlug: null }));
+              }
+            }}
+            className="w-full px-3 py-2 border rounded-lg text-sm"
+          >
+            <option value="">— None —</option>
+            {affiliates.map((a) => (
+              <option key={a.id} value={a.name}>{a.name}</option>
+            ))}
+          </select>
+        </div>
         <div>
           <label className="block text-xs font-medium text-slate-500 mb-1">Contacted</label>
           <select

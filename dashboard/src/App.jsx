@@ -121,13 +121,16 @@ export default function App() {
   const [filterDateFrom, setFilterDateFrom] = useState('');
   const [filterDateTo, setFilterDateTo] = useState('');
   const [filterBoxType, setFilterBoxType] = useState(''); // 'large' | 'small' | ''
+  const [filterAffiliate, setFilterAffiliate] = useState('');
   const [expandedId, setExpandedId] = useState(null);
   const [addMissionFor, setAddMissionFor] = useState(null);
   const [editingOrder, setEditingOrder] = useState(null);
   const [showFilters, setShowFilters] = useState(false);
   const [showCreateOrder, setShowCreateOrder] = useState(false);
 
-  const activeFilterCount = [filterType, filterCreatedBy, filterContacted, filterMissions, filterName, filterPhone, filterDateFrom, filterDateTo, filterBoxType].filter(Boolean).length;
+  const activeFilterCount = [filterType, filterCreatedBy, filterContacted, filterMissions, filterName, filterPhone, filterDateFrom, filterDateTo, filterBoxType, filterAffiliate].filter(Boolean).length;
+
+  const affiliateOptions = [...new Set(orders.map((o) => o.affiliateName).filter(Boolean))].sort();
 
   const filtered = orders.filter((o) => {
     if (filterType === 'pickup' && !['pickup', 'send'].includes(o.type)) return false;
@@ -149,13 +152,15 @@ export default function App() {
     if (filterDateTo && o.createdAt && new Date(o.createdAt) > new Date(filterDateTo + 'T23:59:59')) return false;
     if (filterBoxType === 'large' && !(o.boxSelection?.large > 0)) return false;
     if (filterBoxType === 'small' && !(o.boxSelection?.small > 0)) return false;
+    if (filterAffiliate === '__none__' && o.affiliateName) return false;
+    if (filterAffiliate && filterAffiliate !== '__none__' && o.affiliateName !== filterAffiliate) return false;
     return true;
   });
 
   const clearFilters = () => {
     setFilterType(''); setFilterCreatedBy(''); setFilterContacted('');
     setFilterMissions(''); setFilterName(''); setFilterPhone('');
-    setFilterDateFrom(''); setFilterDateTo(''); setFilterBoxType('');
+    setFilterDateFrom(''); setFilterDateTo(''); setFilterBoxType(''); setFilterAffiliate('');
   };
 
   useEffect(() => {
@@ -371,6 +376,16 @@ export default function App() {
                     <option value="">All</option>
                     <option value="large">ISA-BOX-70 (Large)</option>
                     <option value="small">ISA-BOX-35 (Small)</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-500 mb-1">Affiliate</label>
+                  <select value={filterAffiliate} onChange={(e) => setFilterAffiliate(e.target.value)} className="w-full px-2.5 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300">
+                    <option value="">All</option>
+                    <option value="__none__">No affiliate</option>
+                    {affiliateOptions.map((name) => (
+                      <option key={name} value={name}>{name}</option>
+                    ))}
                   </select>
                 </div>
                 <div>
