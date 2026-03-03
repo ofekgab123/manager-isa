@@ -1,6 +1,6 @@
 import express from 'express';
 import cors from 'cors';
-import { readOrders, writeOrders } from './storage.js';
+import { readOrders, writeOrders, readAffiliates, writeAffiliates } from './storage.js';
 
 const app = express();
 app.use(cors({
@@ -107,6 +107,19 @@ app.post('/api/orders', async (req, res) => {
     };
     orders.unshift(newOrder);
     await writeOrders(orders);
+
+    // Increment affiliate orderCount when order is associated with an affiliate
+    if (body.affiliateName) {
+      try {
+        const affiliates = await readAffiliates();
+        const idx = affiliates.findIndex((a) => a.name === body.affiliateName);
+        if (idx !== -1) {
+          affiliates[idx] = { ...affiliates[idx], orderCount: (affiliates[idx].orderCount || 0) + 1 };
+          await writeAffiliates(affiliates);
+        }
+      } catch {}
+    }
+
     res.status(201).json(newOrder);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -132,6 +145,202 @@ app.delete('/api/orders/:id', async (req, res) => {
   if (filtered.length === orders.length) return res.status(404).json({ error: 'Order not found' });
   await writeOrders(filtered);
   res.json({ success: true });
+});
+
+const VALID_MISSION_TYPES = ['ready_for_box', 'ready_for_pickup'];
+const VALID_STATUSES = ['received', 'linewhel_transferred', 'linewhel_scheduled', 'collected', 'shipped', 'completed'];
+
+app.post('/api/orders/:id/missions', async (req, res) => {
+  try {
+    const orders = await readOrders();
+    const idx = orders.findIndex((o) => o.id === req.params.id);
+    if (idx === -1) return res.status(404).json({ error: 'Order not found' });
+    const { type, notes, status, addresses, customerDetails, pickupLocation, deliveryLocation, imageUrl, largeBoxes, smallBoxes } = req.body;
+    if (!VALID_MISSION_TYPES.includes(type)) {
+      return res.status(400).json({ error: 'Invalid mission type' });
+    }
+    const mission = {
+      id: `MSN-${Date.now()}`,
+      type,
+      status: VALID_STATUSES.includes(status) ? status : 'received',
+      notes: notes || '',
+      addresses: Array.isArray(addresses) ? addresses : [],
+      customerDetails: customerDetails || null,
+      pickupLocation: pickupLocation || null,
+      deliveryLocation: deliveryLocation || null,
+      imageUrl: imageUrl || null,
+      largeBoxes: largeBoxes ?? null,
+      smallBoxes: smallBoxes ?? null,
+      createdAt: new Date().toISOString(),
+    };
+    const missions = Array.isArray(orders[idx].missions) ? orders[idx].missions : [];
+    orders[idx] = { ...orders[idx], missions: [...missions, mission] };
+    await writeOrders(orders);
+    res.status(201).json(mission);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.patch('/api/orders/:id/missions/:missionId', async (req, res) => {
+  try {
+    const orders = await readOrders();
+    const idx = orders.findIndex((o) => o.id === req.params.id);
+    if (idx === -1) return res.status(404).json({ error: 'Order not found' });
+    const missions = Array.isArray(orders[idx].missions) ? orders[idx].missions : [];
+    const mIdx = missions.findIndex((m) => m.id === req.params.missionId);
+    if (mIdx === -1) return res.status(404).json({ error: 'Mission not found' });
+    const { type, status, notes, addresses, customerDetails, pickupLocation, deliveryLocation, imageUrl, largeBoxes, smallBoxes } = req.body;
+    const updated = { ...missions[mIdx] };
+    if (type && VALID_MISSION_TYPES.includes(type)) updated.type = type;
+    if (status && VALID_STATUSES.includes(status)) updated.status = status;
+    if (notes !== undefined) updated.notes = notes;
+    if (addresses !== undefined) updated.addresses = Array.isArray(addresses) ? addresses : [];
+    if (customerDetails !== undefined) updated.customerDetails = customerDetails;
+    if (pickupLocation !== undefined) updated.pickupLocation = pickupLocation;
+    if (deliveryLocation !== undefined) updated.deliveryLocation = deliveryLocation;
+    if (imageUrl !== undefined) updated.imageUrl = imageUrl || null;
+    if (largeBoxes !== undefined) updated.largeBoxes = largeBoxes ?? null;
+    if (smallBoxes !== undefined) updated.smallBoxes = smallBoxes ?? null;
+    missions[mIdx] = updated;
+    orders[idx] = { ...orders[idx], missions };
+    await writeOrders(orders);
+    res.json(updated);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/orders/:id/missions/:missionId', async (req, res) => {
+  try {
+    const orders = await readOrders();
+    const idx = orders.findIndex((o) => o.id === req.params.id);
+    if (idx === -1) return res.status(404).json({ error: 'Order not found' });
+    const missions = Array.isArray(orders[idx].missions) ? orders[idx].missions : [];
+    const filtered = missions.filter((m) => m.id !== req.params.missionId);
+    if (filtered.length === missions.length) return res.status(404).json({ error: 'Mission not found' });
+    orders[idx] = { ...orders[idx], missions: filtered };
+    await writeOrders(orders);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Affiliates ────────────────────────────────────────────────────────────────
+
+app.get('/api/affiliates', async (req, res) => {
+  try {
+    const affiliates = await readAffiliates();
+    res.json(affiliates);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/affiliates/by-slug/:slug', async (req, res) => {
+  try {
+    const affiliates = await readAffiliates();
+    const affiliate = affiliates.find(
+      (a) => a.slug === req.params.slug && a.active !== false
+    );
+    if (!affiliate) return res.status(404).json({ error: 'Affiliate not found' });
+    res.json({ name: affiliate.name, discountAmount: affiliate.discountAmount, slug: affiliate.slug });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/affiliates', async (req, res) => {
+  try {
+    const affiliates = await readAffiliates();
+    const { name, slug, promoCode, discountAmount } = req.body;
+    if (!name || !slug || !promoCode || discountAmount == null) {
+      return res.status(400).json({ error: 'name, slug, promoCode and discountAmount are required' });
+    }
+    const slugExists = affiliates.some((a) => a.slug === slug.toLowerCase());
+    const codeExists = affiliates.some((a) => a.promoCode.toUpperCase() === promoCode.toUpperCase());
+    if (slugExists) return res.status(409).json({ error: 'Slug already exists' });
+    if (codeExists) return res.status(409).json({ error: 'Promo code already exists' });
+
+    const newAffiliate = {
+      id: `AFF-${Date.now()}`,
+      name: name.trim(),
+      slug: slug.toLowerCase().trim(),
+      promoCode: promoCode.toUpperCase().trim(),
+      discountAmount: Number(discountAmount),
+      active: true,
+      orderCount: 0,
+      createdAt: new Date().toISOString(),
+    };
+    affiliates.push(newAffiliate);
+    await writeAffiliates(affiliates);
+    res.status(201).json(newAffiliate);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.patch('/api/affiliates/:id', async (req, res) => {
+  try {
+    const affiliates = await readAffiliates();
+    const idx = affiliates.findIndex((a) => a.id === req.params.id);
+    if (idx === -1) return res.status(404).json({ error: 'Affiliate not found' });
+    const { name, slug, promoCode, discountAmount, active } = req.body;
+    const updated = { ...affiliates[idx] };
+    if (name !== undefined) updated.name = name.trim();
+    if (slug !== undefined) {
+      const conflict = affiliates.some((a, i) => i !== idx && a.slug === slug.toLowerCase());
+      if (conflict) return res.status(409).json({ error: 'Slug already exists' });
+      updated.slug = slug.toLowerCase().trim();
+    }
+    if (promoCode !== undefined) {
+      const conflict = affiliates.some((a, i) => i !== idx && a.promoCode.toUpperCase() === promoCode.toUpperCase());
+      if (conflict) return res.status(409).json({ error: 'Promo code already exists' });
+      updated.promoCode = promoCode.toUpperCase().trim();
+    }
+    if (discountAmount !== undefined) updated.discountAmount = Number(discountAmount);
+    if (active !== undefined) updated.active = active;
+    affiliates[idx] = updated;
+    await writeAffiliates(affiliates);
+    res.json(updated);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/affiliates/:id', async (req, res) => {
+  try {
+    const affiliates = await readAffiliates();
+    const filtered = affiliates.filter((a) => a.id !== req.params.id);
+    if (filtered.length === affiliates.length) return res.status(404).json({ error: 'Affiliate not found' });
+    await writeAffiliates(filtered);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Promo code validation ──────────────────────────────────────────────────────
+
+app.post('/api/promo/validate', async (req, res) => {
+  try {
+    const { code } = req.body;
+    if (!code) return res.status(400).json({ valid: false, error: 'Code is required' });
+    const affiliates = await readAffiliates();
+    const affiliate = affiliates.find(
+      (a) => a.promoCode.toUpperCase() === code.toUpperCase().trim() && a.active !== false
+    );
+    if (!affiliate) return res.json({ valid: false });
+    res.json({
+      valid: true,
+      affiliateName: affiliate.name,
+      affiliateId: affiliate.id,
+      discountAmount: affiliate.discountAmount,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 export default app;

@@ -3,15 +3,6 @@ import { MapPin, User, Save, X, Video, Image, Copy, Trash2 } from 'lucide-react'
 import AddressSearch from './AddressSearch';
 import { API_BASE } from '../config';
 
-const STATUS_OPTIONS = [
-  { value: 'received', label: 'Received' },
-  { value: 'linewhel_transferred', label: 'Transferred to Linewhel' },
-  { value: 'linewhel_scheduled', label: 'Linewhel scheduled' },
-  { value: 'collected', label: 'Collected' },
-  { value: 'shipped', label: 'Shipped' },
-  { value: 'completed', label: 'Completed' },
-];
-
 const TYPE_OPTIONS = [
   { value: 'pickup', label: 'Pick up' },
   { value: 'empty_box', label: 'Box' },
@@ -209,19 +200,7 @@ export default function OrderDetails({ order, onSave, onClose, onDelete }) {
             ))}
           </select>
         </div>
-        <div>
-          <label className="block text-xs font-medium text-slate-500 mb-1">Status</label>
-          <select
-            value={edit.status || ''}
-            onChange={(e) => update('status', e.target.value)}
-            className="w-full px-3 py-2 border rounded-lg text-sm"
-          >
-            {STATUS_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>{o.label}</option>
-            ))}
-          </select>
-        </div>
-        <EditableField label="Boxes" value={edit.boxes} onChange={(v) => update('boxes', parseInt(v) || 0)} type="number" />
+        <EditableField label="Boxes (total)" value={edit.boxes} onChange={(v) => update('boxes', parseInt(v) || 0)} type="number" />
         <EditableField label="Customer phone" value={edit.customerPhone} onChange={(v) => update('customerPhone', v)} type="tel" />
         <EditableField label="Scheduled for" value={edit.scheduledFor} onChange={(v) => update('scheduledFor', v)} />
         <EditableField label="Assigned to" value={edit.assignedTo} onChange={(v) => update('assignedTo', v)} />
@@ -251,6 +230,50 @@ export default function OrderDetails({ order, onSave, onClose, onDelete }) {
           </div>
         )}
       </div>
+
+      {/* Box selection — ISA-BOX-70 / ISA-BOX-35 */}
+      {(edit.type === 'empty_box' || edit.boxSelection) && (
+        <div className="p-4 rounded-xl bg-blue-50 border border-blue-200 space-y-3">
+          <h4 className="font-semibold text-blue-800 text-sm flex items-center gap-2">
+            Box types
+          </h4>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-slate-500 mb-1">ISA-BOX-70 (Large)</label>
+              <input
+                type="number"
+                min="0"
+                value={edit.boxSelection?.large ?? ''}
+                onChange={(e) => {
+                  const large = parseInt(e.target.value) || 0;
+                  const small = edit.boxSelection?.small ?? 0;
+                  setEdit((p) => ({ ...p, boxSelection: { large, small }, boxes: large + small }));
+                }}
+                placeholder="0"
+                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-500 mb-1">ISA-BOX-35 (Small)</label>
+              <input
+                type="number"
+                min="0"
+                value={edit.boxSelection?.small ?? ''}
+                onChange={(e) => {
+                  const small = parseInt(e.target.value) || 0;
+                  const large = edit.boxSelection?.large ?? 0;
+                  setEdit((p) => ({ ...p, boxSelection: { large, small }, boxes: large + small }));
+                }}
+                placeholder="0"
+                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+              />
+            </div>
+          </div>
+          {(edit.boxSelection?.large || edit.boxSelection?.small) ? (
+            <p className="text-xs text-blue-600">Total: {(edit.boxSelection?.large || 0) + (edit.boxSelection?.small || 0)} boxes</p>
+          ) : null}
+        </div>
+      )}
 
       {/* Personal details - Order empty box */}
       {(edit.type === 'empty_box' || edit.firstName || edit.lastName) && (
