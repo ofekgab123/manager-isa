@@ -6,6 +6,7 @@ const app = express();
 app.use(cors({
   origin: (origin, cb) => {
     const allowed = [
+      'https://isa-psi-six.vercel.app',
       'https://isa-32uqdb92z-ofekgab123s-projects.vercel.app',
       'https://isa-git-main-ofekgab123s-projects.vercel.app',
       'http://localhost:5173',
