@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { MapContainer, TileLayer, useMapEvents, Marker, Popup, useMap } from 'react-leaflet';
 import { X, Search, Video, Square, RotateCcw, Camera, Upload } from 'lucide-react';
 
-const OPENSTREETMAP_ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
+const MAP_ATTRIBUTION = 'Tiles &copy; Esri &mdash; Source: Esri, HERE, Garmin, USGS, Intermap, iPC, NRCAN, Esri Japan, METI, Esri China (Hong Kong)';
 
 function MapClickHandler({ onSelect }) {
   useMapEvents({
@@ -50,30 +50,119 @@ export default function AddressPicker({ isOpen, onClose, onSelect, initialPositi
     }
   }, [isOpen]);
 
+  const parseStructuredQuery = useCallback((query) => {
+    const commaIdx = query.lastIndexOf(',');
+    if (commaIdx > 0) {
+      const street = query.slice(0, commaIdx).trim();
+      const city = query.slice(commaIdx + 1).trim();
+      if (street && city) return { street, city };
+    }
+    // e.g. "Herzl 12 Haifa" – split after the last digit block
+    const numMatch = query.match(/^(.+?\d+)\s+(.+)$/);
+    if (numMatch) {
+      const street = numMatch[1].trim();
+      const city = numMatch[2].trim();
+      if (street && city) return { street, city };
+    }
+    return null;
+  }, []);
+
+  // Extract house number typed by user, to fill in when Nominatim doesn't return one
+  const extractHouseNumberFromQuery = useCallback((query) => {
+    const m = query.match(/\b(\d+)\b/);
+    return m ? m[1] : '';
+  }, []);
+
+  const NOMINATIM_HEADERS = { 'Accept-Language': 'en', 'User-Agent': 'ISA-Express-Address-Search/1.0' };
+
+  const nominatimFetch = useCallback(async (url) => {
+    const res = await fetch(url, { headers: NOMINATIM_HEADERS });
+    const data = await res.json();
+    return Array.isArray(data) ? data : [];
+  }, []);
+
+  // ArcGIS World Geocoder – better house-level accuracy for Israel.
+  // Results are normalized to the same shape as Nominatim items so the rest of the code is unchanged.
+  const arcgisSearch = useCallback(async (query) => {
+    try {
+      const params = new URLSearchParams({
+        SingleLine: query,
+        f: 'json',
+        maxLocations: '6',
+        countryCode: 'ISR',
+        outFields: 'StAddr,City',
+      });
+      const res = await fetch(
+        `https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer/findAddressCandidates?${params}`
+      );
+      if (!res.ok) return [];
+      const data = await res.json();
+      const candidates = (data.candidates || []).filter((c) => c.score >= 70);
+      return candidates.map((c) => {
+        const stAddr = c.attributes?.StAddr || '';
+        const numFirst = stAddr.match(/^(\d+)\s+(.+)$/);
+        const numLast  = stAddr.match(/^(.+?)\s+(\d+)$/);
+        const houseNumber = numFirst ? numFirst[1] : numLast ? numLast[2] : '';
+        const street      = numFirst ? numFirst[2].trim() : numLast ? numLast[1].trim() : stAddr.trim();
+        return {
+          place_id: `arcgis_${c.location.x}_${c.location.y}`,
+          lat: String(c.location.y),
+          lon: String(c.location.x),
+          display_name: c.address,
+          address: { road: street, house_number: houseNumber, city: c.attributes?.City || '' },
+        };
+      });
+    } catch {
+      return [];
+    }
+  }, []);
+
   const handleSearch = useCallback(async () => {
     if (!searchQuery.trim()) return;
     setSearching(true);
     setSearchError('');
     setSearchResults([]);
     try {
-      const res = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery.trim())}&countrycodes=il&addressdetails=1&limit=6`,
-        { headers: { 'Accept-Language': 'he,en', 'User-Agent': 'ISA-Express-Address-Search/1.0' } }
-      );
-      const data = await res.json();
-      const items = Array.isArray(data) ? data : [];
+      const query = searchQuery.trim();
+      let items = [];
+
+      const structured = parseStructuredQuery(query);
+      if (structured) {
+        const params = new URLSearchParams({
+          format: 'json',
+          street: structured.street,
+          city: structured.city,
+          countrycodes: 'il',
+          addressdetails: '1',
+          limit: '6',
+        });
+        items = await nominatimFetch(`https://nominatim.openstreetmap.org/search?${params}`);
+      }
+
+      if (items.length === 0) {
+        items = await nominatimFetch(
+          `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&countrycodes=il&addressdetails=1&limit=6`
+        );
+      }
+
+      // If Nominatim didn't return a house number and query contains a digit, try ArcGIS
+      // which has better house-level data for Israel
+      const nominatimHasHouse = items.some((i) => i.address?.house_number);
+      if (/\d/.test(query) && !nominatimHasHouse) {
+        const arcgisItems = await arcgisSearch(query);
+        if (arcgisItems.length > 0) items = arcgisItems;
+      }
+
       if (items.length > 0) {
         setSearchResults(items);
-        const item = items[0];
-        const { lat, lon, display_name, address } = item;
-        const newPos = [parseFloat(lat), parseFloat(lon)];
-        setPosition(newPos);
+        const { lat, lon, display_name, address } = items[0];
+        setPosition([parseFloat(lat), parseFloat(lon)]);
         setAddressText(display_name);
         const addr = address || {};
         setAddressDetails({
           city: addr.city || addr.town || addr.village || addr.municipality || addr.county || '',
           street: addr.road || addr.street || addr.pedestrian || '',
-          houseNumber: addr.house_number || '',
+          houseNumber: addr.house_number || extractHouseNumberFromQuery(query),
         });
       } else {
         setSearchError('No results found');
@@ -85,21 +174,20 @@ export default function AddressPicker({ isOpen, onClose, onSelect, initialPositi
     } finally {
       setSearching(false);
     }
-  }, [searchQuery]);
+  }, [searchQuery, parseStructuredQuery, nominatimFetch, arcgisSearch, extractHouseNumberFromQuery]);
 
   const selectSearchResult = useCallback((item) => {
     const { lat, lon, display_name, address } = item;
-    const newPos = [parseFloat(lat), parseFloat(lon)];
-    setPosition(newPos);
+    setPosition([parseFloat(lat), parseFloat(lon)]);
     setAddressText(display_name);
     const addr = address || {};
     setAddressDetails({
       city: addr.city || addr.town || addr.village || addr.municipality || addr.county || '',
       street: addr.road || addr.street || addr.pedestrian || '',
-      houseNumber: addr.house_number || '',
+      houseNumber: addr.house_number || extractHouseNumberFromQuery(searchQuery),
     });
     setSearchResults([]);
-  }, []);
+  }, [searchQuery, extractHouseNumberFromQuery]);
 
   const handleMapClick = useCallback(async (latlng) => {
     setPosition([latlng.lat, latlng.lng]);
@@ -108,7 +196,7 @@ export default function AddressPicker({ isOpen, onClose, onSelect, initialPositi
     try {
       const res = await fetch(
         `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latlng.lat}&lon=${latlng.lng}&addressdetails=1`,
-        { headers: { 'Accept-Language': 'he,en', 'User-Agent': 'ISA-Express-Address-Search/1.0' } }
+        { headers: NOMINATIM_HEADERS }
       );
       const data = await res.json();
       setAddressText(data.display_name || `${latlng.lat.toFixed(5)}, ${latlng.lng.toFixed(5)}`);
@@ -443,8 +531,9 @@ export default function AddressPicker({ isOpen, onClose, onSelect, initialPositi
             >
               <ChangeView center={position} zoom={13} />
               <TileLayer
-                attribution={OPENSTREETMAP_ATTRIBUTION}
-                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                attribution={MAP_ATTRIBUTION}
+                url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}"
+                maxZoom={19}
               />
               <MapClickHandler onSelect={handleMapClick} />
               <Marker position={position}>

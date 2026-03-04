@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { MapPin, User, Save, X, Video, Image, Copy, Trash2, Users } from 'lucide-react';
+import { MapPin, User, Save, X, Video, Image, Copy, Trash2, Users, AlertTriangle } from 'lucide-react';
 import AddressSearch from './AddressSearch';
 import { API_BASE } from '../config';
 
@@ -356,25 +356,45 @@ export default function OrderDetails({ order, onSave, onClose, onDelete }) {
       )}
 
       {/* Receiver details */}
-      {((edit.type === 'pickup' || edit.type === 'send') && (edit.receiverName || edit.receiverAddress)) && (
-        <>
-          <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
-            <h4 className="font-semibold text-slate-800 flex items-center gap-2">
-              <User className="w-4 h-4" />
-              Receiver details
-            </h4>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <EditableField label="Name" value={edit.receiverName} onChange={(v) => update('receiverName', v)} />
-            <EditableField label="Phone" value={edit.receiverPhone} onChange={(v) => update('receiverPhone', v)} type="tel" />
+      {(edit.type === 'pickup' || edit.type === 'send') && (() => {
+        const missingReceiver = !edit.receiverName && !edit.receiverPhone;
+        const missingAddress  = !edit.receiverAddress?.displayAddress && !edit.receiverAddress?.city;
+        return (
+          <>
+            {(missingReceiver || missingAddress) && (
+              <div className="flex flex-wrap gap-2">
+                {missingReceiver && (
+                  <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-700 text-sm">
+                    <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+                    Receiver details not filled
+                  </div>
+                )}
+                {missingAddress && (
+                  <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-700 text-sm">
+                    <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+                    Delivery address not filled
+                  </div>
+                )}
+              </div>
+            )}
+            <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
+              <h4 className="font-semibold text-slate-800 flex items-center gap-2">
+                <User className="w-4 h-4" />
+                Receiver details
+              </h4>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <EditableField label="Name" value={edit.receiverName} onChange={(v) => update('receiverName', v)} placeholder="Receiver name" />
+                <EditableField label="Phone" value={edit.receiverPhone} onChange={(v) => update('receiverPhone', v)} type="tel" placeholder="050-0000000" />
+              </div>
             </div>
-          </div>
-          <AddressBlock
-            title="Delivery address"
-            addr={edit.receiverAddress || {}}
-            onChange={(a) => update('receiverAddress', a)}
-          />
-        </>
-      )}
+            <AddressBlock
+              title="Delivery address"
+              addr={edit.receiverAddress || {}}
+              onChange={(a) => update('receiverAddress', a)}
+            />
+          </>
+        );
+      })()}
 
       {/* Notes */}
       <div>

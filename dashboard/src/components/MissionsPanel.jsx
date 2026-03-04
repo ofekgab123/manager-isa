@@ -128,6 +128,14 @@ function AddMissionModal({ order, onClose, onSaved }) {
     setSaving(true);
     try {
       const addresses = [...customAddresses];
+      // For ready_for_box, the address IS the sender location – store it as pickupLocation too
+      const resolvedPickupLocation =
+        selectedType === 'ready_for_box'
+          ? (addresses[0] || null)
+          : selectedType === 'ready_for_pickup'
+            ? pickupLocation
+            : null;
+
       const res = await fetch(`${API_BASE}/orders/${order.id}/missions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -137,7 +145,7 @@ function AddMissionModal({ order, onClose, onSaved }) {
           notes,
           addresses,
           customerDetails,
-          pickupLocation: selectedType === 'ready_for_pickup' ? pickupLocation : null,
+          pickupLocation: resolvedPickupLocation,
           deliveryLocation: selectedType === 'ready_for_pickup' ? deliveryLocation : null,
           imageUrl: missionImageUrl || null,
           largeBoxes: selectedType === 'ready_for_box' ? (parseInt(largeBoxes) || 0) : null,
@@ -308,7 +316,7 @@ function AddMissionModal({ order, onClose, onSaved }) {
                   Pickup & Delivery locations
                 </p>
                 {[
-                  { label: 'Pickup location', loc: pickupLocation, setLoc: setPickupLocation, picker: 'pickup' },
+                  { label: 'Sender location', loc: pickupLocation, setLoc: setPickupLocation, picker: 'pickup' },
                   { label: 'Delivery location', loc: deliveryLocation, setLoc: setDeliveryLocation, picker: 'delivery' },
                 ].map(({ label, loc, setLoc, picker }) => (
                   <div key={picker}>
@@ -343,7 +351,7 @@ function AddMissionModal({ order, onClose, onSaved }) {
                       <button type="button" onClick={() => setActiveLocationPicker(picker)}
                         className="flex items-center gap-1.5 px-3 py-2 border border-dashed border-emerald-300 rounded-lg text-sm text-emerald-700 hover:bg-emerald-100 transition-colors w-full">
                         <LocateFixed className="w-4 h-4" />
-                        Pick {picker} location on map
+                        Pick {picker === 'pickup' ? 'sender' : picker} location on map
                       </button>
                     )}
                   </div>
@@ -665,9 +673,8 @@ export default function MissionsPanel({ order, onUpdated, openForm = false, onFo
                 <th className="px-3 py-2.5 text-left">Type</th>
                 <th className="px-3 py-2.5 text-left">Status</th>
                 <th className="px-3 py-2.5 text-left">Customer</th>
-                <th className="px-3 py-2.5 text-left">Pickup location</th>
+                <th className="px-3 py-2.5 text-left">Sender location</th>
                 <th className="px-3 py-2.5 text-left">Delivery location</th>
-                <th className="px-3 py-2.5 text-left">Addresses</th>
                 <th className="px-3 py-2.5 text-left">Image</th>
                 <th className="px-3 py-2.5 text-left">Notes</th>
                 <th className="px-3 py-2.5 text-left">Created</th>
@@ -730,30 +737,27 @@ export default function MissionsPanel({ order, onUpdated, openForm = false, onFo
                       ) : <span className="text-slate-300 text-xs">—</span>}
                     </td>
 
-                    {/* Pickup location */}
+                    {/* Sender location – pickupLocation or fallback to addresses[] */}
                     <td className="px-3 py-3 min-w-[160px]">
-                      <LocationCell loc={mission.pickupLocation} onImageClick={setImagePreview}
-                        onEdit={() => setEditingLocation({ missionId: mission.id, field: 'pickupLocation' })} />
-                    </td>
-
-                    {/* Delivery location */}
-                    <td className="px-3 py-3 min-w-[160px]">
-                      <LocationCell loc={mission.deliveryLocation} onImageClick={setImagePreview}
-                        onEdit={() => setEditingLocation({ missionId: mission.id, field: 'deliveryLocation' })} />
-                    </td>
-
-                    {/* Addresses from order */}
-                    <td className="px-3 py-3 min-w-[160px]">
-                      {addrList.length === 0 ? (
-                        <span className="text-slate-300 text-xs">—</span>
-                      ) : (
+                      {mission.pickupLocation?.displayAddress ? (
+                        <LocationCell loc={mission.pickupLocation} onImageClick={setImagePreview}
+                          onEdit={() => setEditingLocation({ missionId: mission.id, field: 'pickupLocation' })} />
+                      ) : addrList.length > 0 ? (
                         <div className="space-y-1.5">
                           {addrList.map((addr, i) => (
                             <LocationCell key={i} loc={addr} label={addr.label} onImageClick={setImagePreview}
                               onEdit={() => setEditingLocation({ missionId: mission.id, field: i })} />
                           ))}
                         </div>
+                      ) : (
+                        <span className="text-slate-300 text-xs">—</span>
                       )}
+                    </td>
+
+                    {/* Delivery location */}
+                    <td className="px-3 py-3 min-w-[160px]">
+                      <LocationCell loc={mission.deliveryLocation} onImageClick={setImagePreview}
+                        onEdit={() => setEditingLocation({ missionId: mission.id, field: 'deliveryLocation' })} />
                     </td>
 
                     {/* Image */}

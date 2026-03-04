@@ -424,7 +424,6 @@ export default function App() {
                 <thead>
                   <tr className="bg-slate-50 border-b border-slate-100">
                     <th className="px-4 py-3 text-sm font-semibold text-slate-600">ID</th>
-                    <th className="px-4 py-3 text-sm font-semibold text-slate-600">Ready for</th>
                     <th className="px-4 py-3 text-sm font-semibold text-slate-600">Contacted</th>
                     <th className="px-4 py-3 text-sm font-semibold text-slate-600">Boxes</th>
                     <th className="px-4 py-3 text-sm font-semibold text-slate-600">Source</th>
@@ -447,11 +446,6 @@ export default function App() {
                         onClick={() => setExpandedId(expandedId === order.id ? null : order.id)}
                       >
                         <td className="px-4 py-3 font-mono font-bold text-blue-600">{order.id}</td>
-                        <td className="px-4 py-3">
-                          <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100">
-                            {getTypeLabel(order.type)}
-                          </span>
-                        </td>
                         <td className="px-4 py-3">
                           {order.contacted ? (
                             <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700 flex items-center gap-1 w-fit">
