@@ -15,12 +15,14 @@ import {
   Users,
   MapPin,
   Tag,
+  BarChart2,
 } from 'lucide-react';
 import CreateMissionModal from './components/CreateMissionModal';
 import MissionDetails from './components/MissionDetails';
 import CompleteDeliveryModal from './components/CompleteDeliveryModal';
 import AffiliatesPanel from './components/AffiliatesPanel';
 import UsersPanel from './components/UsersPanel';
+import StatisticsPanel from './components/StatisticsPanel';
 import { API_BASE } from './config';
 
 const TYPE_LABELS = {
@@ -319,12 +321,29 @@ export default function App() {
             <Users className="w-4 h-4" />
             Users
           </button>
+          <button
+            onClick={() => setActiveTab('statistics')}
+            className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === 'statistics' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-600 hover:text-slate-800'
+            }`}
+          >
+            <BarChart2 className="w-4 h-4" />
+            Statistics
+          </button>
         </div>
       </div>
 
       <main className="p-4 sm:p-6">
         {activeTab === 'affiliates' && <AffiliatesPanel missions={missions} />}
         {activeTab === 'users' && <UsersPanel />}
+        {activeTab === 'statistics' && (
+          <StatisticsPanel
+            missions={missions}
+            affiliates={affiliates}
+            onRefresh={() => { refetch(); refetchStats(); }}
+            loading={loading}
+          />
+        )}
 
         {activeTab === 'missions' && (
           <>
@@ -556,7 +575,7 @@ export default function App() {
                             <td className="px-4 py-3 font-mono font-bold text-blue-600 text-sm whitespace-nowrap">{mission.id}</td>
                             {visibleColumns.type && (
                               <td className="px-4 py-3">
-                                <span className={`inline-flex items-center gap-1 text-sm font-medium px-2.5 py-1 rounded-full whitespace-nowrap ${mission.type === 'pickup' ? 'bg-indigo-100 text-indigo-700' : 'bg-blue-100 text-blue-700'}`}>
+                                <span className={`inline-flex items-center gap-1 text-sm font-medium px-2.5 py-1 rounded-full whitespace-nowrap ${mission.type === 'pickup' ? 'bg-orange-100 text-orange-700' : 'bg-yellow-100 text-yellow-700'}`}>
                                   {mission.type === 'pickup' ? <Truck className="w-3.5 h-3.5 shrink-0" /> : <Package className="w-3.5 h-3.5 shrink-0" />}
                                   {TYPE_LABELS[mission.type] || mission.type}
                                 </span>
