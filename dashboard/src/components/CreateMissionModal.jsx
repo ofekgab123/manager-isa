@@ -137,12 +137,68 @@ function SummaryRow({ label, value }) {
   );
 }
 
+function AffiliatePickerModal({ isOpen, onClose, onSelect }) {
+  const [affiliates, setAffiliates] = useState([]);
+  const [search, setSearch] = useState('');
+
+  useEffect(() => {
+    if (!isOpen) return;
+    fetch(`${API_BASE}/affiliates`).then((r) => r.json()).then((data) => setAffiliates(Array.isArray(data) ? data.filter((a) => a.active !== false) : [])).catch(() => {});
+    setSearch('');
+  }, [isOpen]);
+
+  if (!isOpen) return null;
+  const filtered = affiliates.filter((a) => (a.name || '').toLowerCase().includes(search.toLowerCase()));
+
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm flex flex-col max-h-[70vh]">
+        <div className="flex items-center justify-between px-4 py-3 border-b">
+          <h3 className="font-bold text-slate-800">Select Affiliate</h3>
+          <button onClick={onClose} className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-500"><X className="w-4 h-4" /></button>
+        </div>
+        <div className="px-4 py-3 border-b">
+          <input
+            autoFocus
+            className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+            placeholder="Search affiliate..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
+        <ul className="flex-1 overflow-y-auto divide-y divide-slate-100">
+          {filtered.length === 0 && <li className="px-4 py-6 text-center text-sm text-slate-400">No affiliates found</li>}
+          {filtered.map((a) => (
+            <li key={a.id}>
+              <button
+                type="button"
+                onMouseDown={(e) => { e.preventDefault(); onSelect(a); }}
+                className="w-full flex items-center gap-3 px-4 py-3 hover:bg-indigo-50 text-left transition-colors"
+              >
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-slate-800">{a.name}</p>
+                  <p className="text-xs text-slate-400">{a.promoCode}{a.discountAmount ? ` · ₪${a.discountAmount} discount` : ''}</p>
+                </div>
+              </button>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  );
+}
+
 export default function CreateMissionModal({ isOpen, onClose, onCreated }) {
   const [missionType, setMissionType] = useState(null); // null | 'pickup' | 'empty_box'
   const [step, setStep] = useState(1);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [mapOpen, setMapOpen] = useState(false);
+
+  /* ─── Affiliate ──────────────────────────────────────── */
+  const [viaAffiliate, setViaAffiliate] = useState(false);
+  const [selectedAffiliate, setSelectedAffiliate] = useState(null);
+  const [affiliatePickerOpen, setAffiliatePickerOpen] = useState(false);
 
   const [form, setForm] = useState({
     fullName: '', israeliPhone: '',
@@ -292,6 +348,8 @@ export default function CreateMissionModal({ isOpen, onClose, onCreated }) {
           bringBoxes: bringBoxes !== false,
           pickupBoxCount: missionType === 'pickup' ? (pickupBoxCount ?? 0) : null,
           createdBy: 'customer_service',
+          affiliateName: viaAffiliate && selectedAffiliate ? selectedAffiliate.name : null,
+          discountAmount: viaAffiliate && selectedAffiliate ? selectedAffiliate.discountAmount : null,
         }),
       });
       if (!res.ok) throw new Error('Save error');
@@ -320,6 +378,7 @@ export default function CreateMissionModal({ isOpen, onClose, onCreated }) {
     setForm({ fullName: '', israeliPhone: '', senderCity: '', senderStreet: '', senderHouseNumber: '', senderApartment: '', senderFloor: '' });
     setMapAddress(null); setBoxCounts({ large: 0, small: 0 }); setBringBoxes(null);
     setPickupBoxCount(null); setPickupBoxCountInput('');
+    setViaAffiliate(false); setSelectedAffiliate(null);
     onClose();
   };
 
@@ -554,6 +613,42 @@ export default function CreateMissionModal({ isOpen, onClose, onCreated }) {
                         <p className="text-sm text-slate-500">Customer doesn't need additional boxes</p>
                       </div>
                     )}
+
+                    {/* Affiliate */}
+                    <label className={`flex items-start gap-3 p-4 rounded-xl border-2 cursor-pointer transition-all ${viaAffiliate ? 'border-indigo-400 bg-indigo-50' : 'border-slate-200 hover:border-indigo-300 hover:bg-indigo-50/50'}`}>
+                      <input
+                        type="checkbox"
+                        checked={viaAffiliate}
+                        onChange={(e) => { setViaAffiliate(e.target.checked); if (!e.target.checked) setSelectedAffiliate(null); }}
+                        className="mt-0.5 w-4 h-4 accent-indigo-600 cursor-pointer flex-shrink-0"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-slate-800">Came via affiliate</p>
+                        <p className="text-xs text-slate-500 mt-0.5">Associate this mission with an affiliate</p>
+                      </div>
+                    </label>
+
+                    {viaAffiliate && (
+                      <div className="rounded-xl border border-indigo-200 bg-indigo-50 p-3">
+                        {selectedAffiliate ? (
+                          <div className="flex items-center justify-between gap-2">
+                            <div>
+                              <p className="text-sm font-semibold text-slate-800">{selectedAffiliate.name}</p>
+                              <p className="text-xs text-slate-500">{selectedAffiliate.promoCode}{selectedAffiliate.discountAmount ? ` · ₪${selectedAffiliate.discountAmount} discount` : ''}</p>
+                            </div>
+                            <button type="button" onClick={() => setAffiliatePickerOpen(true)} className="text-xs text-indigo-600 hover:underline shrink-0">Change</button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setAffiliatePickerOpen(true)}
+                            className="w-full flex items-center justify-center gap-2 py-2.5 text-sm font-medium text-indigo-700 hover:bg-indigo-100 rounded-lg transition-colors"
+                          >
+                            Select affiliate
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -602,6 +697,12 @@ export default function CreateMissionModal({ isOpen, onClose, onCreated }) {
         onClose={() => setMapOpen(false)}
         onSelect={(addr) => { handleAddressSelect(addr); setMapOpen(false); }}
         initialPosition={mapAddress?.lat != null ? [mapAddress.lat, mapAddress.lng] : undefined}
+      />
+
+      <AffiliatePickerModal
+        isOpen={affiliatePickerOpen}
+        onClose={() => setAffiliatePickerOpen(false)}
+        onSelect={(a) => { setSelectedAffiliate(a); setAffiliatePickerOpen(false); }}
       />
     </>
   );

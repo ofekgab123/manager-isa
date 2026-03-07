@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { MapPin, User, Save, Trash2, AlertTriangle, Copy, Video, Image } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { MapPin, User, Save, Trash2, AlertTriangle, Copy, Video, Image, X, Tag } from 'lucide-react';
 import AddressPicker from './AddressPicker';
 import PhoneInput from './PhoneInput';
 import { API_BASE } from '../config';
@@ -123,12 +123,64 @@ function AddressBlock({ addr, onChange, title = 'Address', missing = false }) {
   );
 }
 
+function AffiliatePickerModal({ isOpen, onClose, onSelect }) {
+  const [affiliates, setAffiliates] = useState([]);
+  const [search, setSearch] = useState('');
+
+  useEffect(() => {
+    if (!isOpen) return;
+    fetch(`${API_BASE}/affiliates`).then((r) => r.json()).then((data) => setAffiliates(Array.isArray(data) ? data.filter((a) => a.active !== false) : [])).catch(() => {});
+    setSearch('');
+  }, [isOpen]);
+
+  if (!isOpen) return null;
+  const filtered = affiliates.filter((a) => (a.name || '').toLowerCase().includes(search.toLowerCase()));
+
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm flex flex-col max-h-[70vh]">
+        <div className="flex items-center justify-between px-4 py-3 border-b">
+          <h3 className="font-bold text-slate-800">Select Affiliate</h3>
+          <button onClick={onClose} className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-500"><X className="w-4 h-4" /></button>
+        </div>
+        <div className="px-4 py-3 border-b">
+          <input
+            autoFocus
+            className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+            placeholder="Search affiliate..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
+        <ul className="flex-1 overflow-y-auto divide-y divide-slate-100">
+          {filtered.length === 0 && <li className="px-4 py-6 text-center text-sm text-slate-400">No affiliates found</li>}
+          {filtered.map((a) => (
+            <li key={a.id}>
+              <button
+                type="button"
+                onMouseDown={(e) => { e.preventDefault(); onSelect(a); }}
+                className="w-full flex items-center gap-3 px-4 py-3 hover:bg-indigo-50 text-left transition-colors"
+              >
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-slate-800">{a.name}</p>
+                  <p className="text-xs text-slate-400">{a.promoCode}{a.discountAmount ? ` · ₪${a.discountAmount} discount` : ''}</p>
+                </div>
+              </button>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  );
+}
+
 export default function MissionDetails({ mission, onSave, onClose, onDelete }) {
   const [edit, setEdit] = useState({ ...mission, bringBoxes: mission.bringBoxes === true });
   const [saving, setSaving]   = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [error, setError] = useState('');
+  const [affiliatePickerOpen, setAffiliatePickerOpen] = useState(false);
 
   const isPickup = edit.type === 'pickup';
   const missingAddress = isPickup ? !edit.receiverAddress?.lat : !edit.address?.lat;
@@ -349,6 +401,33 @@ export default function MissionDetails({ mission, onSave, onClose, onDelete }) {
         )}
       </div>
 
+      {/* Affiliate */}
+      <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
+        <h4 className="font-semibold text-slate-800 flex items-center gap-2 text-sm">
+          <Tag className="w-4 h-4" /> Affiliate
+        </h4>
+        {edit.affiliateName ? (
+          <div className="flex items-center justify-between gap-2 p-3 bg-indigo-50 border border-indigo-200 rounded-lg">
+            <div>
+              <p className="text-sm font-semibold text-slate-800">{edit.affiliateName}</p>
+              {edit.discountAmount && <p className="text-xs text-slate-500">₪{edit.discountAmount} discount</p>}
+            </div>
+            <div className="flex gap-2">
+              <button type="button" onClick={() => setAffiliatePickerOpen(true)} className="text-xs text-indigo-600 hover:underline">Change</button>
+              <button type="button" onClick={() => setEdit((p) => ({ ...p, affiliateName: null, discountAmount: null }))} className="text-xs text-red-500 hover:underline">Remove</button>
+            </div>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setAffiliatePickerOpen(true)}
+            className="w-full flex items-center justify-center gap-2 py-2.5 text-sm font-medium text-indigo-700 border-2 border-dashed border-indigo-200 hover:bg-indigo-50 rounded-lg transition-colors"
+          >
+            Assign affiliate
+          </button>
+        )}
+      </div>
+
       {/* Notes */}
       <div>
         <label className="block text-xs font-medium text-slate-500 mb-1">Notes</label>
@@ -402,6 +481,15 @@ export default function MissionDetails({ mission, onSave, onClose, onDelete }) {
           </div>
         </div>
       )}
+
+      <AffiliatePickerModal
+        isOpen={affiliatePickerOpen}
+        onClose={() => setAffiliatePickerOpen(false)}
+        onSelect={(a) => {
+          setEdit((p) => ({ ...p, affiliateName: a.name, discountAmount: a.discountAmount }));
+          setAffiliatePickerOpen(false);
+        }}
+      />
     </div>
   );
 }
