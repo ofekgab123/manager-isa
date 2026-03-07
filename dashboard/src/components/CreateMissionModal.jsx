@@ -379,22 +379,6 @@ export default function CreateMissionModal({ isOpen, onClose, onCreated }) {
                   <div className="space-y-4" ref={suggestRef}>
                     <h3 className="font-semibold text-slate-800 text-base mb-1">Sender Details</h3>
 
-                    {/* Full name with autocomplete */}
-                    <Field label="Full name" required>
-                      <div className="relative">
-                        <input
-                          className={inputCls} name="fullName" value={form.fullName}
-                          onChange={handleChange}
-                          onFocus={() => { setActiveField('fullName'); filterSuggestions('fullName', form.fullName); }}
-                          placeholder="Full name"
-                          autoComplete="off"
-                        />
-                        {activeField === 'fullName' && userSuggestions.length > 0 && (
-                          <SuggestionDropdown suggestions={userSuggestions} onSelect={applySuggestion} />
-                        )}
-                      </div>
-                    </Field>
-
                     {/* Phone with autocomplete */}
                     <Field label="Phone" required>
                       <div className="relative">
@@ -410,6 +394,22 @@ export default function CreateMissionModal({ isOpen, onClose, onCreated }) {
                           autoComplete="off"
                         />
                         {activeField === 'israeliPhone' && userSuggestions.length > 0 && (
+                          <SuggestionDropdown suggestions={userSuggestions} onSelect={applySuggestion} />
+                        )}
+                      </div>
+                    </Field>
+
+                    {/* Full name with autocomplete */}
+                    <Field label="Full name" required>
+                      <div className="relative">
+                        <input
+                          className={inputCls} name="fullName" value={form.fullName}
+                          onChange={handleChange}
+                          onFocus={() => { setActiveField('fullName'); filterSuggestions('fullName', form.fullName); }}
+                          placeholder="Full name"
+                          autoComplete="off"
+                        />
+                        {activeField === 'fullName' && userSuggestions.length > 0 && (
                           <SuggestionDropdown suggestions={userSuggestions} onSelect={applySuggestion} />
                         )}
                       </div>

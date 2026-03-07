@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { X, Package, Truck, MapPin, User, Home, CheckCircle, ChevronRight, ChevronLeft, ClipboardList, Box, Plus, Minus } from 'lucide-react';
 import AddressPicker from './AddressPicker';
+import PhoneInput from './PhoneInput';
 import { geocodeAddress } from '../utils/geocode';
 import { API_BASE } from '../config';
 
@@ -68,6 +69,32 @@ function Field({ label, required, children }) {
 
 const inputCls = 'w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 transition';
 const readonlyCls = 'w-full px-3 py-2.5 border border-slate-100 rounded-xl text-sm bg-slate-50 text-slate-500 cursor-default';
+
+function SuggestionDropdown({ suggestions, onSelect }) {
+  return (
+    <ul className="absolute z-50 top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden">
+      {suggestions.map((u) => (
+        <li key={u.id}>
+          <button
+            type="button"
+            onMouseDown={(e) => { e.preventDefault(); onSelect(u); }}
+            className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-indigo-50 transition-colors text-left"
+          >
+            <div className="w-7 h-7 rounded-full bg-indigo-100 flex items-center justify-center shrink-0">
+              <User className="w-3.5 h-3.5 text-indigo-600" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-slate-800 truncate">{u.fullName}</p>
+              <p className="text-xs text-slate-400 truncate">
+                {u.phone}{u.address?.displayAddress ? ` · ${u.address.displayAddress}` : ''}
+              </p>
+            </div>
+          </button>
+        </li>
+      ))}
+    </ul>
+  );
+}
 
 function MissionCheckbox({ checked, onChange, missionType }) {
   const isBox = missionType === 'ready_for_box';
@@ -170,7 +197,60 @@ export default function CreateOrderModal({ isOpen, onClose, onCreated }) {
   const [missionLargeBoxes, setMissionLargeBoxes] = useState('');
   const [missionSmallBoxes, setMissionSmallBoxes] = useState('');
 
-  const handlePickupChange = (e) => setPickupForm((p) => ({ ...p, [e.target.name]: e.target.value }));
+  /* ─── User autocomplete ──────────────────────────────── */
+  const [allUsers, setAllUsers] = useState([]);
+  const [userSuggestions, setUserSuggestions] = useState([]);
+  const [activeField, setActiveField] = useState(null);
+  const suggestRef = useRef(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    fetch(`${API_BASE}/users`).then((r) => r.json()).then(setAllUsers).catch(() => {});
+  }, [isOpen]);
+
+  useEffect(() => {
+    const handler = (e) => {
+      if (suggestRef.current && !suggestRef.current.contains(e.target)) {
+        setUserSuggestions([]);
+        setActiveField(null);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const filterSuggestions = (fieldName, value) => {
+    if (!value.trim()) { setUserSuggestions([]); return; }
+    const q = value.toLowerCase();
+    const matches = allUsers.filter((u) => {
+      if (fieldName === 'fullName')     return (u.fullName || '').toLowerCase().includes(q);
+      if (fieldName === 'israeliPhone') return (u.phone || '').replace(/\D/g, '').includes(q.replace(/\D/g, ''));
+      return false;
+    });
+    setUserSuggestions(matches.slice(0, 6));
+  };
+
+  const applySuggestion = (u) => {
+    setPickupForm((p) => ({
+      ...p,
+      fullName: u.fullName || p.fullName,
+      israeliPhone: u.phone || p.israeliPhone,
+      ...(u.address?.lat ? {
+        senderCity:        u.address.city        || p.senderCity,
+        senderStreet:      u.address.street      || p.senderStreet,
+        senderHouseNumber: u.address.houseNumber || p.senderHouseNumber,
+      } : {}),
+    }));
+    if (u.address?.lat) setSenderMapAddress(u.address);
+    setUserSuggestions([]);
+    setActiveField(null);
+  };
+
+  const handlePickupChange = (e) => {
+    const { name, value } = e.target;
+    setPickupForm((p) => ({ ...p, [name]: value }));
+    if (name === 'fullName') { setActiveField('fullName'); filterSuggestions('fullName', value); }
+  };
 
   const steps = orderType ? PICKUP_STEPS : [];
   const totalSteps = steps.length;
@@ -254,6 +334,16 @@ export default function CreateOrderModal({ isOpen, onClose, onCreated }) {
           smallBoxes: boxCounts.small,
         });
       }
+      // Save/update sender as a user
+      fetch(`${API_BASE}/users`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fullName: pickupForm.fullName.trim(),
+          phone:    pickupForm.israeliPhone.trim(),
+          address:  senderAddr,
+        }),
+      }).catch(() => {});
       onCreated?.(order);
       handleClose();
     } catch (e) { setError(e.message || 'Error'); }
@@ -266,6 +356,7 @@ export default function CreateOrderModal({ isOpen, onClose, onCreated }) {
     setSenderMapAddress(null); setReceiverMapAddress(null); setAddressMapOpenFor(null);
     setBoxCounts({ large: 0, small: 0 });
     setCreateMission(false); setMissionLargeBoxes(''); setMissionSmallBoxes('');
+    setUserSuggestions([]); setActiveField(null);
     onClose();
   };
 
@@ -327,13 +418,39 @@ export default function CreateOrderModal({ isOpen, onClose, onCreated }) {
               {orderType && (
                 <>
                   {step === 1 && (
-                    <div className="space-y-4">
+                    <div className="space-y-4" ref={suggestRef}>
                       <h3 className="font-semibold text-slate-800 text-base mb-1">Sender Details</h3>
-                      <Field label="Full name" required>
-                        <input className={inputCls} name="fullName" value={pickupForm.fullName} onChange={handlePickupChange} placeholder="Full name" />
-                      </Field>
                       <Field label="Israeli phone" required>
-                        <input className={inputCls} name="israeliPhone" type="tel" value={pickupForm.israeliPhone} onChange={handlePickupChange} placeholder="050-1234567" />
+                        <div className="relative">
+                          <PhoneInput
+                            value={pickupForm.israeliPhone}
+                            onChange={(v) => {
+                              setPickupForm((p) => ({ ...p, israeliPhone: v }));
+                              setActiveField('israeliPhone');
+                              filterSuggestions('israeliPhone', v);
+                            }}
+                            onFocus={() => { setActiveField('israeliPhone'); filterSuggestions('israeliPhone', pickupForm.israeliPhone); }}
+                            placeholder="501234567"
+                            autoComplete="off"
+                          />
+                          {activeField === 'israeliPhone' && userSuggestions.length > 0 && (
+                            <SuggestionDropdown suggestions={userSuggestions} onSelect={applySuggestion} />
+                          )}
+                        </div>
+                      </Field>
+                      <Field label="Full name" required>
+                        <div className="relative">
+                          <input
+                            className={inputCls} name="fullName" value={pickupForm.fullName}
+                            onChange={handlePickupChange}
+                            onFocus={() => { setActiveField('fullName'); filterSuggestions('fullName', pickupForm.fullName); }}
+                            placeholder="Full name"
+                            autoComplete="off"
+                          />
+                          {activeField === 'fullName' && userSuggestions.length > 0 && (
+                            <SuggestionDropdown suggestions={userSuggestions} onSelect={applySuggestion} />
+                          )}
+                        </div>
                       </Field>
                     </div>
                   )}

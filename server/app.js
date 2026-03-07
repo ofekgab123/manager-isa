@@ -496,6 +496,25 @@ app.post('/api/users', async (req, res) => {
   try {
     const users = await readUsers();
     const body = req.body;
+    const normalizedPhone = (body.phone || '').replace(/\D/g, '');
+
+    if (normalizedPhone) {
+      const existingIdx = users.findIndex(
+        (u) => (u.phone || '').replace(/\D/g, '') === normalizedPhone
+      );
+      if (existingIdx !== -1) {
+        const updated = {
+          ...users[existingIdx],
+          fullName: body.fullName || users[existingIdx].fullName,
+          address: body.address || users[existingIdx].address,
+          notes: body.notes || users[existingIdx].notes,
+        };
+        users[existingIdx] = updated;
+        await writeUsers(users);
+        return res.status(200).json(updated);
+      }
+    }
+
     const newUser = {
       id: `USR-${Date.now()}`,
       fullName: body.fullName || '',
