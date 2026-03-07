@@ -257,7 +257,7 @@ export default function App() {
       )}
 
       <header className="bg-slate-800 text-white px-4 py-4 shadow-lg">
-        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div className="mx-auto flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div className="flex items-center gap-4">
             <img src="/isa-logo.png" alt="ISA Express" className="h-10 sm:h-12 w-auto object-contain brightness-0 invert" />
             <div>
@@ -291,7 +291,7 @@ export default function App() {
 
       {/* Tabs */}
       <div className="bg-white border-b border-slate-200 px-4">
-        <div className="max-w-7xl mx-auto flex gap-1">
+        <div className="flex gap-1">
           <button
             onClick={() => setActiveTab('missions')}
             className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
@@ -322,7 +322,7 @@ export default function App() {
         </div>
       </div>
 
-      <main className="max-w-7xl mx-auto p-4 sm:p-6">
+      <main className="p-4 sm:p-6">
         {activeTab === 'affiliates' && <AffiliatesPanel missions={missions} />}
         {activeTab === 'users' && <UsersPanel />}
 
@@ -531,18 +531,18 @@ export default function App() {
                   <table className="w-full text-left">
                     <thead>
                       <tr className="bg-slate-50 border-b border-slate-100">
-                        <th className="px-3 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap w-32">ID</th>
-                        {visibleColumns.type        && <th className="px-3 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap w-24">Type</th>}
-                        {visibleColumns.status      && <th className="px-3 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap w-28">Status</th>}
-                        {visibleColumns.sender      && <th className="px-3 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap w-36">Sender</th>}
-                        {visibleColumns.pickupAddr  && <th className="px-3 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap w-44">Pickup Addr</th>}
-                        {visibleColumns.receiver    && <th className="px-3 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap w-36">Receiver</th>}
-                        {visibleColumns.deliveryAddr && <th className="px-3 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap w-44">Delivery Addr</th>}
-                        {visibleColumns.boxes       && <th className="px-3 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap w-24">Boxes</th>}
-                        {visibleColumns.source      && <th className="px-3 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap w-16">Source</th>}
-                        {visibleColumns.affiliate   && <th className="px-3 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap w-28">Affiliate</th>}
-                        {visibleColumns.date        && <th className="px-3 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap w-32">Date</th>}
-                        <th className="px-3 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide w-16"></th>
+                        <th className="px-4 py-3 text-sm font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap w-40">ID</th>
+                        {visibleColumns.type        && <th className="px-4 py-3 text-sm font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap w-28">Type</th>}
+                        {visibleColumns.status      && <th className="px-4 py-3 text-sm font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap w-32">Status</th>}
+                        {visibleColumns.sender      && <th className="px-4 py-3 text-sm font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap w-48">Sender</th>}
+                        {visibleColumns.pickupAddr  && <th className="px-4 py-3 text-sm font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap w-64">Pickup Addr</th>}
+                        {visibleColumns.receiver    && <th className="px-4 py-3 text-sm font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap w-48">Receiver</th>}
+                        {visibleColumns.deliveryAddr && <th className="px-4 py-3 text-sm font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap w-64">Delivery Addr</th>}
+                        {visibleColumns.boxes       && <th className="px-4 py-3 text-sm font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap w-28">Boxes</th>}
+                        {visibleColumns.source      && <th className="px-4 py-3 text-sm font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap w-20">Source</th>}
+                        {visibleColumns.affiliate   && <th className="px-4 py-3 text-sm font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap w-32">Affiliate</th>}
+                        {visibleColumns.date        && <th className="px-4 py-3 text-sm font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap w-40">Date</th>}
+                        <th className="px-4 py-3 text-sm font-semibold text-slate-500 uppercase tracking-wide w-20"></th>
                       </tr>
                     </thead>
                     <tbody>
@@ -553,94 +553,94 @@ export default function App() {
                             key={mission.id}
                             className={`border-b border-slate-100 hover:bg-slate-50/60 transition-colors ${missingAddr ? 'bg-amber-50/40' : ''}`}
                           >
-                            <td className="px-3 py-3 font-mono font-bold text-blue-600 text-xs whitespace-nowrap">{mission.id}</td>
+                            <td className="px-4 py-3 font-mono font-bold text-blue-600 text-sm whitespace-nowrap">{mission.id}</td>
                             {visibleColumns.type && (
-                              <td className="px-3 py-3">
-                                <span className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-full whitespace-nowrap ${mission.type === 'pickup' ? 'bg-indigo-100 text-indigo-700' : 'bg-blue-100 text-blue-700'}`}>
-                                  {mission.type === 'pickup' ? <Truck className="w-3 h-3 shrink-0" /> : <Package className="w-3 h-3 shrink-0" />}
+                              <td className="px-4 py-3">
+                                <span className={`inline-flex items-center gap-1 text-sm font-medium px-2.5 py-1 rounded-full whitespace-nowrap ${mission.type === 'pickup' ? 'bg-indigo-100 text-indigo-700' : 'bg-blue-100 text-blue-700'}`}>
+                                  {mission.type === 'pickup' ? <Truck className="w-3.5 h-3.5 shrink-0" /> : <Package className="w-3.5 h-3.5 shrink-0" />}
                                   {TYPE_LABELS[mission.type] || mission.type}
                                 </span>
                               </td>
                             )}
                             {visibleColumns.status && (
-                              <td className="px-3 py-3">
-                                <span className={`text-xs font-medium px-2 py-1 rounded-full whitespace-nowrap ${STATUS_COLORS[mission.status] || 'bg-slate-100 text-slate-600'}`}>
+                              <td className="px-4 py-3">
+                                <span className={`text-sm font-medium px-2.5 py-1 rounded-full whitespace-nowrap ${STATUS_COLORS[mission.status] || 'bg-slate-100 text-slate-600'}`}>
                                   {STATUS_LABELS[mission.status] || mission.status}
                                 </span>
                               </td>
                             )}
                             {visibleColumns.sender && (
-                              <td className="px-3 py-3 w-36 max-w-[9rem]">
-                                <p className="text-sm font-medium text-slate-700 truncate">{mission.fullName || '—'}</p>
-                                <p className="text-xs text-slate-400 truncate">{mission.customerPhone || ''}</p>
+                              <td className="px-4 py-3 w-48 max-w-[12rem]">
+                                <p className="text-base font-medium text-slate-700 truncate">{mission.fullName || '—'}</p>
+                                <p className="text-sm text-slate-400 truncate">{mission.customerPhone || ''}</p>
                               </td>
                             )}
                             {visibleColumns.pickupAddr && (
-                              <td className="px-3 py-3 w-44 max-w-[11rem]">
+                              <td className="px-4 py-3 w-64 max-w-[16rem]">
                                 {mission.address?.lat ? (
-                                  <span className="inline-flex items-center gap-1 text-xs text-slate-600 w-full overflow-hidden">
-                                    <MapPin className="w-3 h-3 text-green-500 shrink-0" />
+                                  <span className="inline-flex items-center gap-1 text-sm text-slate-600 w-full overflow-hidden">
+                                    <MapPin className="w-3.5 h-3.5 text-green-500 shrink-0" />
                                     <span className="truncate">{mission.address.displayAddress || '—'}</span>
                                   </span>
                                 ) : (
-                                  <span className="inline-flex items-center gap-1 text-xs font-semibold text-amber-700 bg-amber-100 px-2 py-1 rounded-full whitespace-nowrap">
-                                    <AlertTriangle className="w-3 h-3 shrink-0" />
+                                  <span className="inline-flex items-center gap-1 text-sm font-semibold text-amber-700 bg-amber-100 px-2.5 py-1 rounded-full whitespace-nowrap">
+                                    <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
                                     Missing
                                   </span>
                                 )}
                               </td>
                             )}
                             {visibleColumns.receiver && (
-                              <td className="px-3 py-3 w-36 max-w-[9rem]">
+                              <td className="px-4 py-3 w-48 max-w-[12rem]">
                                 {mission.type === 'pickup' ? (
                                   mission.receiverName || mission.receiverPhone ? (
                                     <>
-                                      <p className="text-sm font-medium text-slate-700 truncate">{mission.receiverName || '—'}</p>
-                                      <p className="text-xs text-slate-400 truncate">{mission.receiverPhone || ''}</p>
+                                      <p className="text-base font-medium text-slate-700 truncate">{mission.receiverName || '—'}</p>
+                                      <p className="text-sm text-slate-400 truncate">{mission.receiverPhone || ''}</p>
                                     </>
                                   ) : (
-                                    <span className="inline-flex items-center gap-1 text-xs font-semibold text-amber-700 bg-amber-100 px-2 py-1 rounded-full whitespace-nowrap">
-                                      <AlertTriangle className="w-3 h-3 shrink-0" />
+                                    <span className="inline-flex items-center gap-1 text-sm font-semibold text-amber-700 bg-amber-100 px-2.5 py-1 rounded-full whitespace-nowrap">
+                                      <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
                                       Missing
                                     </span>
                                   )
                                 ) : (
-                                  <span className="text-slate-300 text-xs">—</span>
+                                  <span className="text-slate-300 text-sm">—</span>
                                 )}
                               </td>
                             )}
                             {visibleColumns.deliveryAddr && (
-                              <td className="px-3 py-3 w-44 max-w-[11rem]">
+                              <td className="px-4 py-3 w-64 max-w-[16rem]">
                                 {mission.type === 'pickup' ? (
                                   mission.receiverAddress?.lat ? (
-                                    <span className="inline-flex items-center gap-1 text-xs text-slate-600 w-full overflow-hidden">
-                                      <MapPin className="w-3 h-3 text-indigo-500 shrink-0" />
+                                    <span className="inline-flex items-center gap-1 text-sm text-slate-600 w-full overflow-hidden">
+                                      <MapPin className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
                                       <span className="truncate">{mission.receiverAddress.displayAddress || '—'}</span>
                                     </span>
                                   ) : (
-                                    <span className="inline-flex items-center gap-1 text-xs font-semibold text-amber-700 bg-amber-100 px-2 py-1 rounded-full whitespace-nowrap">
-                                      <AlertTriangle className="w-3 h-3 shrink-0" />
+                                    <span className="inline-flex items-center gap-1 text-sm font-semibold text-amber-700 bg-amber-100 px-2.5 py-1 rounded-full whitespace-nowrap">
+                                      <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
                                       Missing
                                     </span>
                                   )
                                 ) : (
-                                  <span className="text-slate-300 text-xs">—</span>
+                                  <span className="text-slate-300 text-sm">—</span>
                                 )}
                               </td>
                             )}
                             {visibleColumns.boxes && (
-                              <td className="px-3 py-3">
+                              <td className="px-4 py-3">
                                 {mission.boxSelection ? (
-                                  <div className="text-xs space-y-0.5">
+                                  <div className="text-sm space-y-0.5">
                                     {mission.boxSelection.large > 0 && (
                                       <div className="flex items-center gap-1 text-blue-700 whitespace-nowrap">
-                                        <span className="font-mono bg-blue-100 px-1 rounded">70</span>
+                                        <span className="font-mono bg-blue-100 px-1.5 rounded">70</span>
                                         <span className="font-bold">×{mission.boxSelection.large}</span>
                                       </div>
                                     )}
                                     {mission.boxSelection.small > 0 && (
                                       <div className="flex items-center gap-1 text-indigo-700 whitespace-nowrap">
-                                        <span className="font-mono bg-indigo-100 px-1 rounded">35</span>
+                                        <span className="font-mono bg-indigo-100 px-1.5 rounded">35</span>
                                         <span className="font-bold">×{mission.boxSelection.small}</span>
                                       </div>
                                     )}
@@ -652,28 +652,28 @@ export default function App() {
                               </td>
                             )}
                             {visibleColumns.source && (
-                              <td className="px-3 py-3 text-xs text-slate-500 whitespace-nowrap">{CREATED_BY_LABELS[mission.createdBy] || mission.createdBy}</td>
+                              <td className="px-4 py-3 text-sm text-slate-500 whitespace-nowrap">{CREATED_BY_LABELS[mission.createdBy] || mission.createdBy}</td>
                             )}
                             {visibleColumns.affiliate && (
-                              <td className="px-3 py-3">
+                              <td className="px-4 py-3">
                                 {mission.affiliateName ? (
-                                  <span className="inline-flex items-center gap-1 text-xs font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-full whitespace-nowrap">
-                                    <Tag className="w-3 h-3 shrink-0" />
+                                  <span className="inline-flex items-center gap-1 text-sm font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2.5 py-0.5 rounded-full whitespace-nowrap">
+                                    <Tag className="w-3.5 h-3.5 shrink-0" />
                                     {mission.affiliateName}
                                   </span>
                                 ) : (
-                                  <span className="text-slate-300 text-xs">—</span>
+                                  <span className="text-slate-300 text-sm">—</span>
                                 )}
                               </td>
                             )}
                             {visibleColumns.date && (
-                              <td className="px-3 py-3 text-xs text-slate-500 whitespace-nowrap">
+                              <td className="px-4 py-3 text-sm text-slate-500 whitespace-nowrap">
                                 {mission.createdAt
                                   ? new Date(mission.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
                                   : '—'}
                               </td>
                             )}
-                            <td className="px-3 py-3">
+                            <td className="px-4 py-3">
                               <div className="flex items-center gap-1">
                                 {mission.type === 'pickup' && (
                                   <button

@@ -1,5 +1,40 @@
 [
   {
+    "id": "MSN-1772855278528",
+    "type": "pickup",
+    "status": "linewhel_transferred",
+    "createdBy": "customer_service",
+    "createdAt": "2026-03-07T03:47:58.528Z",
+    "fullName": "ofek gabay",
+    "firstName": null,
+    "lastName": null,
+    "customerPhone": "+97212323",
+    "address": {
+      "displayAddress": "Tel Aviv Municipality / Ibn Gabirol, Tel Aviv-Yafo, Israel",
+      "lat": 32.08230249213034,
+      "lng": 34.781285015869145,
+      "city": "Tel Aviv-Yafo",
+      "street": "",
+      "houseNumber": "",
+      "apartment": "",
+      "floor": ""
+    },
+    "senderAddress": null,
+    "receiverName": null,
+    "receiverPhone": null,
+    "receiverAddress": null,
+    "boxes": 0,
+    "boxSelection": {
+      "large": 1,
+      "small": 0
+    },
+    "bringBoxes": true,
+    "pickupBoxCount": 2,
+    "notes": null,
+    "affiliateName": null,
+    "discountAmount": null
+  },
+  {
     "id": "MSN-1772854130058",
     "type": "pickup",
     "status": "received",

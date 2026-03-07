@@ -17,6 +17,7 @@ import {
   PhoneCall,
   PhoneOff,
   Package,
+  Search,
 } from 'lucide-react';
 import { API_BASE } from '../config';
 
@@ -266,6 +267,7 @@ export default function AffiliatesPanel({ missions = [] }) {
   const [copiedId, setCopiedId] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
   const [expandedId, setExpandedId] = useState(null);
+  const [search, setSearch] = useState('');
 
   const fetchAffiliates = useCallback(async () => {
     setLoading(true);
@@ -328,6 +330,16 @@ export default function AffiliatesPanel({ missions = [] }) {
 
   const totalOrders = missions.filter((m) => m.affiliateName).length;
 
+  const filteredAffiliates = affiliates.filter((a) => {
+    if (!search.trim()) return true;
+    const q = search.toLowerCase();
+    return (
+      (a.name      || '').toLowerCase().includes(q) ||
+      (a.slug      || '').toLowerCase().includes(q) ||
+      (a.promoCode || '').toLowerCase().includes(q)
+    );
+  });
+
   return (
     <div className="space-y-6">
       {/* Header stats */}
@@ -353,7 +365,7 @@ export default function AffiliatesPanel({ missions = [] }) {
         <div className="flex items-center justify-between p-4 border-b">
           <h2 className="text-lg font-semibold text-slate-800 flex items-center gap-2">
             <Users className="w-5 h-5" />
-            Affiliate Management
+            Affiliate Management ({search ? `${filteredAffiliates.length} / ${affiliates.length}` : affiliates.length})
           </h2>
           <button
             onClick={() => { setEditingAffiliate(null); setShowForm(true); }}
@@ -362,6 +374,23 @@ export default function AffiliatesPanel({ missions = [] }) {
             <Plus className="w-4 h-4" />
             New affiliate
           </button>
+        </div>
+        <div className="px-4 py-3 border-b">
+          <div className="relative">
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search by name, slug or promo code…"
+              className="w-full pl-9 pr-4 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200"
+            />
+            {search && (
+              <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                <X className="w-4 h-4" />
+              </button>
+            )}
+          </div>
         </div>
 
         {loading ? (
@@ -374,6 +403,8 @@ export default function AffiliatesPanel({ missions = [] }) {
             <p>No affiliates yet</p>
             <p className="text-sm mt-1">Click &quot;New affiliate&quot; to add one</p>
           </div>
+        ) : filteredAffiliates.length === 0 ? (
+          <div className="p-8 text-center text-slate-400">No affiliates match your search</div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-right">
@@ -389,7 +420,7 @@ export default function AffiliatesPanel({ missions = [] }) {
                 </tr>
               </thead>
               <tbody>
-                {affiliates.map((affiliate) => {
+                {filteredAffiliates.map((affiliate) => {
                   const trackingLink = `${SITE_URL}/?ref=${affiliate.slug}`;
                   const affiliateOrders = missions.filter(
                     (m) => m.affiliateName === affiliate.name,

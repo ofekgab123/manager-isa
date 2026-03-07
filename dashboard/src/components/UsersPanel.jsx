@@ -139,10 +139,11 @@ export default function UsersPanel() {
   const filtered = users.filter((u) => {
     if (!search.trim()) return true;
     const q = search.toLowerCase();
+    const qDigits = q.replace(/\D/g, '');
     return (
       (u.fullName || '').toLowerCase().includes(q) ||
-      (u.phone    || '').replace(/\D/g, '').includes(q.replace(/\D/g, '')) ||
-      (u.address?.displayAddress || '').toLowerCase().includes(q)
+      (u.address?.displayAddress || '').toLowerCase().includes(q) ||
+      (qDigits && (u.phone || '').replace(/\D/g, '').includes(qDigits))
     );
   });
 
@@ -165,7 +166,7 @@ export default function UsersPanel() {
       <div className="flex items-center justify-between px-5 py-4 border-b">
         <h2 className="text-lg font-semibold text-slate-800 flex items-center gap-2">
           <Users className="w-5 h-5" />
-          Users ({users.length})
+          Users ({search ? `${filtered.length} / ${users.length}` : users.length})
         </h2>
         <button
           onClick={() => setShowAdd(true)}

@@ -152,6 +152,9 @@ export default function CreateMissionModal({ isOpen, onClose, onCreated }) {
   const [boxCounts, setBoxCounts] = useState({ large: 0, small: 0 });
   // pickup only: null = not answered, true = bring boxes, false = no boxes needed
   const [bringBoxes, setBringBoxes] = useState(null);
+  // pickup only: how many boxes to collect from customer (null = not yet set)
+  const [pickupBoxCount, setPickupBoxCount] = useState(null);
+  const [pickupBoxCountInput, setPickupBoxCountInput] = useState('');
 
   /* ─── User autocomplete ──────────────────────────────── */
   const [allUsers, setAllUsers]           = useState([]);
@@ -229,6 +232,12 @@ export default function CreateMissionModal({ isOpen, onClose, onCreated }) {
     if (step === 2) return !!mapAddress;
     if (step === 3) {
       if (missionType === 'pickup') {
+        // sub-step 1: entering pickup box count
+        if (pickupBoxCount === null) {
+          const v = parseInt(pickupBoxCountInput);
+          return pickupBoxCountInput.trim() !== '' && !isNaN(v) && v >= 0;
+        }
+        // sub-step 2: yes/no — must click a button, cannot use Next
         if (bringBoxes === null) return false;
         if (bringBoxes === false) return true;
         return boxCounts.large + boxCounts.small > 0;
@@ -236,6 +245,25 @@ export default function CreateMissionModal({ isOpen, onClose, onCreated }) {
       return boxCounts.large + boxCounts.small > 0;
     }
     return true;
+  };
+
+  const handleNext = () => {
+    // step 3 pickup sub-step: confirm pickup box count, stay on step 3
+    if (step === 3 && missionType === 'pickup' && pickupBoxCount === null) {
+      setPickupBoxCount(parseInt(pickupBoxCountInput) || 0);
+      return;
+    }
+    setStep((s) => s + 1);
+  };
+
+  const handleBack = () => {
+    if (!missionType) { handleClose(); return; }
+    if (step === 3 && missionType === 'pickup') {
+      if (bringBoxes === true) { setBringBoxes(null); setBoxCounts({ large: 0, small: 0 }); return; }
+      if (bringBoxes === null && pickupBoxCount !== null) { setPickupBoxCount(null); setPickupBoxCountInput(''); return; }
+    }
+    if (step > 1) setStep((s) => s - 1);
+    else setMissionType(null);
   };
 
   const handleSubmit = async () => {
@@ -262,6 +290,7 @@ export default function CreateMissionModal({ isOpen, onClose, onCreated }) {
           address,
           boxSelection: { large: boxCounts.large, small: boxCounts.small },
           bringBoxes: bringBoxes !== false,
+          pickupBoxCount: missionType === 'pickup' ? (pickupBoxCount ?? 0) : null,
           createdBy: 'customer_service',
         }),
       });
@@ -290,6 +319,7 @@ export default function CreateMissionModal({ isOpen, onClose, onCreated }) {
     setMissionType(null); setStep(1); setError('');
     setForm({ fullName: '', israeliPhone: '', senderCity: '', senderStreet: '', senderHouseNumber: '', senderApartment: '', senderFloor: '' });
     setMapAddress(null); setBoxCounts({ large: 0, small: 0 }); setBringBoxes(null);
+    setPickupBoxCount(null); setPickupBoxCountInput('');
     onClose();
   };
 
@@ -401,7 +431,20 @@ export default function CreateMissionModal({ isOpen, onClose, onCreated }) {
 
                 {step === 3 && (
                   <div className="space-y-4">
-                    {missionType === 'pickup' && bringBoxes === null ? (
+                    {missionType === 'pickup' && pickupBoxCount === null ? (
+                      <>
+                        <h3 className="font-semibold text-slate-800 text-base mb-1">Boxes to collect</h3>
+                        <p className="text-sm text-slate-500 -mt-2">How many boxes are we picking up from the customer?</p>
+                        <input
+                          type="number" min="0"
+                          value={pickupBoxCountInput}
+                          onChange={(e) => setPickupBoxCountInput(e.target.value)}
+                          placeholder="0"
+                          className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl text-lg font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 text-center"
+                          autoFocus
+                        />
+                      </>
+                    ) : missionType === 'pickup' && bringBoxes === null ? (
                       <>
                         <h3 className="font-semibold text-slate-800 text-base mb-1">Boxes</h3>
                         <p className="text-sm text-slate-500 -mt-2">Does the customer need empty boxes delivered?</p>
@@ -422,7 +465,7 @@ export default function CreateMissionModal({ isOpen, onClose, onCreated }) {
                           >
                             <Truck className="w-8 h-8 text-slate-400" />
                             <span className="font-semibold text-slate-800 text-sm">No</span>
-                            <span className="text-xs text-slate-500 text-center">Customer has their own boxes</span>
+                            <span className="text-xs text-slate-500 text-center">Customer doesn't need additional boxes</span>
                           </button>
                         </div>
                       </>
@@ -499,10 +542,16 @@ export default function CreateMissionModal({ isOpen, onClose, onCreated }) {
                         <SummaryRow label="Total" value={String(boxCounts.large + boxCounts.small)} />
                       </div>
                     )}
+                    {missionType === 'pickup' && (
+                      <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 space-y-2">
+                        <p className="text-xs font-semibold text-amber-600 uppercase tracking-wide mb-1">Pickup from customer</p>
+                        <SummaryRow label="Boxes to collect" value={String(pickupBoxCount ?? 0)} />
+                      </div>
+                    )}
                     {missionType === 'pickup' && bringBoxes === false && (
                       <div className="p-4 rounded-xl bg-slate-50 border border-slate-200">
-                        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Boxes</p>
-                        <p className="text-sm text-slate-500">No boxes — customer has their own</p>
+                        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Empty boxes delivery</p>
+                        <p className="text-sm text-slate-500">Customer doesn't need additional boxes</p>
                       </div>
                     )}
                   </div>
@@ -517,7 +566,7 @@ export default function CreateMissionModal({ isOpen, onClose, onCreated }) {
           <div className="flex gap-3 px-5 py-4 border-t flex-shrink-0 bg-white">
             <button
               type="button"
-              onClick={() => !missionType ? handleClose() : step > 1 ? setStep((s) => s - 1) : setMissionType(null)}
+              onClick={handleBack}
               className="flex items-center gap-1 px-4 py-2.5 border border-slate-200 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors"
             >
               <ChevronLeft className="w-4 h-4" />
@@ -527,7 +576,7 @@ export default function CreateMissionModal({ isOpen, onClose, onCreated }) {
               <button
                 type="button"
                 disabled={!canProceed()}
-                onClick={() => setStep((s) => s + 1)}
+                onClick={handleNext}
                 className="flex-1 flex items-center justify-center gap-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-200 disabled:text-slate-400 text-white rounded-xl text-sm font-semibold transition-colors"
               >
                 Next
