@@ -21,7 +21,7 @@ import {
 } from 'lucide-react';
 import { API_BASE } from '../config';
 
-const SITE_URL = import.meta.env.VITE_SITE_URL || 'https://isa-express.vercel.app';
+const SITE_URL = import.meta.env.VITE_SITE_URL || 'https://isa-psi-six.vercel.app';
 
 function copyToClipboard(text) {
   navigator.clipboard.writeText(text).catch(() => {});
