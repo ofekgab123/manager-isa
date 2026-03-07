@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { X, Plus, Trash2, MapPin, CheckCircle, Truck, Package, AlertTriangle } from 'lucide-react';
+import { X, Plus, Trash2, MapPin, CheckCircle, Truck, Package, AlertTriangle, Copy } from 'lucide-react';
 import AddressPicker from './AddressPicker';
 import PhoneInput from './PhoneInput';
 import { API_BASE } from '../config';
@@ -66,6 +66,23 @@ function DeliveryRow({ row, idx, totalPickup, otherAssigned, onChange, onDelete,
           onSelect={(a) => { onChange({ ...row, address: a }); setPickerOpen(false); }}
           initialPosition={row.address?.lat ? [row.address.lat, row.address.lng] : undefined}
         />
+        {row.address?.lat != null && (
+          <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+            <span className="text-xs font-medium text-slate-500">Coords:</span>
+            <code className="text-xs font-mono bg-slate-100 px-2 py-1 rounded">
+              {typeof row.address.lat === 'number' ? row.address.lat.toFixed(6) : row.address.lat},{' '}
+              {typeof row.address.lng === 'number' ? row.address.lng.toFixed(6) : row.address.lng}
+            </code>
+            <button
+              type="button"
+              onClick={() => navigator.clipboard?.writeText(`${row.address.lat}, ${row.address.lng}`)}
+              className="p-1 hover:bg-slate-200 rounded"
+              title="Copy coordinates"
+            >
+              <Copy className="w-3.5 h-3.5 text-slate-500" />
+            </button>
+          </div>
+        )}
       </div>
 
       <div>

@@ -318,6 +318,89 @@ export default function MissionDetails({ mission, onSave, onClose, onDelete }) {
         />
       )}
 
+      {/* All deliveries with numbering — shown when deliveries array exists */}
+      {isPickup && edit.deliveries?.length > 0 && (
+        <div className="space-y-3">
+          <h4 className="font-semibold text-slate-700 text-sm flex items-center gap-2">
+            <MapPin className="w-4 h-4 text-indigo-500" />
+            All delivery addresses ({edit.deliveries.length})
+          </h4>
+          {edit.deliveries.map((d, idx) => (
+            <div key={d.id || idx} className="p-4 rounded-xl border-2 border-slate-200 bg-white space-y-2">
+              <div className="flex items-center gap-2">
+                <span className="w-6 h-6 rounded-full bg-indigo-600 text-white text-xs font-bold flex items-center justify-center flex-shrink-0">
+                  {idx + 1}
+                </span>
+                <span className="text-xs font-bold text-slate-500 uppercase tracking-wide">
+                  Delivery {idx + 1}
+                </span>
+                {d.boxCount != null && (
+                  <span className="ml-auto text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-medium">
+                    {d.boxCount} box{d.boxCount !== 1 ? 'es' : ''}
+                  </span>
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <p className="text-xs font-medium text-slate-500 mb-0.5">Receiver name</p>
+                  <input
+                    value={d.receiverName || ''}
+                    onChange={(e) => {
+                      const updated = edit.deliveries.map((r, i) => i === idx ? { ...r, receiverName: e.target.value } : r);
+                      setEdit((p) => ({ ...p, deliveries: updated }));
+                    }}
+                    placeholder="Full name"
+                    className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                  />
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-slate-500 mb-0.5">Receiver phone</p>
+                  <input
+                    value={d.receiverPhone || ''}
+                    onChange={(e) => {
+                      const updated = edit.deliveries.map((r, i) => i === idx ? { ...r, receiverPhone: e.target.value } : r);
+                      setEdit((p) => ({ ...p, deliveries: updated }));
+                    }}
+                    placeholder="050..."
+                    className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                  />
+                </div>
+              </div>
+
+              {d.address?.displayAddress ? (
+                <div className="flex items-start gap-2">
+                  <MapPin className="w-3.5 h-3.5 text-slate-400 mt-0.5 flex-shrink-0" />
+                  <span className="text-sm text-slate-700">{d.address.displayAddress}</span>
+                </div>
+              ) : (
+                <p className="text-sm text-amber-600 italic flex items-center gap-1">
+                  <AlertTriangle className="w-3.5 h-3.5" /> No address set
+                </p>
+              )}
+
+              {d.address?.lat != null && (
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs font-medium text-slate-500">Coords:</span>
+                  <code className="text-xs font-mono bg-slate-100 px-2 py-1 rounded">
+                    {typeof d.address.lat === 'number' ? d.address.lat.toFixed(6) : d.address.lat},{' '}
+                    {typeof d.address.lng === 'number' ? d.address.lng.toFixed(6) : d.address.lng}
+                  </code>
+                  <button
+                    type="button"
+                    onClick={() => navigator.clipboard?.writeText(`${d.address.lat}, ${d.address.lng}`)}
+                    className="p-1 hover:bg-slate-200 rounded"
+                    title="Copy coordinates"
+                  >
+                    <Copy className="w-3.5 h-3.5 text-slate-500" />
+                  </button>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Box selection */}
       <div className="p-4 rounded-xl bg-blue-50 border border-blue-200 space-y-3">
         {isPickup && (
