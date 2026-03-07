@@ -383,9 +383,9 @@ app.get('/api/affiliates/by-slug/:slug', async (req, res) => {
 app.post('/api/affiliates', async (req, res) => {
   try {
     const affiliates = await readAffiliates();
-    const { name, slug, promoCode, discountAmount } = req.body;
-    if (!name || !slug || !promoCode || discountAmount == null) {
-      return res.status(400).json({ error: 'name, slug, promoCode and discountAmount are required' });
+    const { name, slug, promoCode, discountAmount, commissionPerOrder } = req.body;
+    if (!name || !slug || !promoCode || discountAmount == null || commissionPerOrder == null) {
+      return res.status(400).json({ error: 'name, slug, promoCode, discountAmount and commissionPerOrder are required' });
     }
     const slugExists = affiliates.some((a) => a.slug === slug.toLowerCase());
     const codeExists = affiliates.some((a) => a.promoCode.toUpperCase() === promoCode.toUpperCase());
@@ -398,6 +398,7 @@ app.post('/api/affiliates', async (req, res) => {
       slug: slug.toLowerCase().trim(),
       promoCode: promoCode.toUpperCase().trim(),
       discountAmount: Number(discountAmount),
+      commissionPerOrder: commissionPerOrder != null ? Number(commissionPerOrder) : null,
       active: true,
       orderCount: 0,
       createdAt: new Date().toISOString(),
@@ -415,7 +416,7 @@ app.patch('/api/affiliates/:id', async (req, res) => {
     const affiliates = await readAffiliates();
     const idx = affiliates.findIndex((a) => a.id === req.params.id);
     if (idx === -1) return res.status(404).json({ error: 'Affiliate not found' });
-    const { name, slug, promoCode, discountAmount, active } = req.body;
+    const { name, slug, promoCode, discountAmount, commissionPerOrder, active } = req.body;
     const updated = { ...affiliates[idx] };
     if (name !== undefined) updated.name = name.trim();
     if (slug !== undefined) {
@@ -429,6 +430,7 @@ app.patch('/api/affiliates/:id', async (req, res) => {
       updated.promoCode = promoCode.toUpperCase().trim();
     }
     if (discountAmount !== undefined) updated.discountAmount = Number(discountAmount);
+    if (commissionPerOrder !== undefined) updated.commissionPerOrder = commissionPerOrder != null ? Number(commissionPerOrder) : null;
     if (active !== undefined) updated.active = active;
     affiliates[idx] = updated;
     await writeAffiliates(affiliates);

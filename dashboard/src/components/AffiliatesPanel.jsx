@@ -34,6 +34,7 @@ function AffiliateFormModal({ affiliate, onSave, onClose }) {
     slug: affiliate?.slug || '',
     promoCode: affiliate?.promoCode || '',
     discountAmount: affiliate?.discountAmount ?? '',
+    commissionPerOrder: affiliate?.commissionPerOrder ?? '',
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -56,7 +57,7 @@ function AffiliateFormModal({ affiliate, onSave, onClose }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
-      if (!form.name.trim() || !form.slug.trim() || !form.promoCode.trim() || form.discountAmount === '') {
+      if (!form.name.trim() || !form.slug.trim() || !form.promoCode.trim() || form.discountAmount === '' || form.commissionPerOrder === '') {
       setError('All fields are required');
       return;
     }
@@ -64,10 +65,15 @@ function AffiliateFormModal({ affiliate, onSave, onClose }) {
     try {
       const url = isEdit ? `${API_BASE}/affiliates/${affiliate.id}` : `${API_BASE}/affiliates`;
       const method = isEdit ? 'PATCH' : 'POST';
+      const payload = {
+        ...form,
+        discountAmount: Number(form.discountAmount),
+        commissionPerOrder: form.commissionPerOrder !== '' ? Number(form.commissionPerOrder) : null,
+      };
       const res = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...form, discountAmount: Number(form.discountAmount) }),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Save error');
@@ -150,6 +156,19 @@ function AffiliateFormModal({ affiliate, onSave, onClose }) {
               value={form.discountAmount}
               onChange={handleChange}
               placeholder="35"
+              className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+              required
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Commission per order (₪) *</label>
+            <input
+              name="commissionPerOrder"
+              type="number"
+              min="0"
+              value={form.commissionPerOrder}
+              onChange={handleChange}
+              placeholder="20"
               className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
               required
             />
@@ -414,7 +433,9 @@ export default function AffiliatesPanel({ missions = [] }) {
                   <th className="px-4 py-3">Link (Slug)</th>
                   <th className="px-4 py-3">Promo Code</th>
                   <th className="px-4 py-3">Discount</th>
+                  <th className="px-4 py-3">Commission/Order</th>
                   <th className="px-4 py-3">Orders</th>
+                  <th className="px-4 py-3">Total Earnings</th>
                   <th className="px-4 py-3">Status</th>
                   <th className="px-4 py-3">Actions</th>
                 </tr>
@@ -485,6 +506,15 @@ export default function AffiliatesPanel({ missions = [] }) {
                           </span>
                         </td>
                         <td className="px-4 py-3">
+                          {affiliate.commissionPerOrder != null ? (
+                            <span className="flex items-center gap-1 text-sm font-semibold text-violet-600">
+                              ₪{affiliate.commissionPerOrder}
+                            </span>
+                          ) : (
+                            <span className="text-slate-300">—</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
                           <button
                             className="flex items-center gap-1.5 text-sm font-semibold text-indigo-600 hover:text-indigo-800"
                             onClick={(e) => { e.stopPropagation(); setExpandedId(isExpanded ? null : affiliate.id); }}
@@ -497,6 +527,15 @@ export default function AffiliatesPanel({ missions = [] }) {
                               <ChevronDown className="w-3.5 h-3.5" />
                             )}
                           </button>
+                        </td>
+                        <td className="px-4 py-3">
+                          {affiliate.commissionPerOrder != null ? (
+                            <span className="flex items-center gap-1 text-sm font-bold text-violet-700">
+                              ₪{(affiliate.commissionPerOrder * affiliateOrders.length).toLocaleString()}
+                            </span>
+                          ) : (
+                            <span className="text-slate-300">—</span>
+                          )}
                         </td>
                         <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                           <button
@@ -539,7 +578,7 @@ export default function AffiliatesPanel({ missions = [] }) {
                       </tr>
                       {isExpanded && (
                         <tr key={`${affiliate.id}-orders`} className="bg-indigo-50/40">
-                          <td colSpan={7} className="px-0 py-0">
+                          <td colSpan={9} className="px-0 py-0">
                             <div className="border-t border-indigo-100">
                               <div className="px-4 py-2 text-xs font-semibold text-indigo-700 flex items-center gap-2 bg-indigo-50">
                                 <Package className="w-3.5 h-3.5" />
