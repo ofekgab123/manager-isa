@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Package,
   Truck,
@@ -14,6 +14,7 @@ import {
   AlertTriangle,
   Users,
   MapPin,
+  Tag,
 } from 'lucide-react';
 import CreateMissionModal from './components/CreateMissionModal';
 import MissionDetails from './components/MissionDetails';
@@ -121,9 +122,22 @@ function useMissionStats() {
 
 const isMissingAddress = (m) => m.type === 'pickup' ? !m.receiverAddress?.lat : !m.address?.lat;
 
+function useAffiliates() {
+  const [affiliates, setAffiliates] = useState([]);
+  const fetchAffiliates = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/affiliates`);
+      if (res.ok) setAffiliates(await res.json());
+    } catch {}
+  }, []);
+  useEffect(() => { fetchAffiliates(); }, [fetchAffiliates]);
+  return affiliates;
+}
+
 export default function App() {
   const [activeTab, setActiveTab] = useState('missions');
   const [newMissionAlert, setNewMissionAlert] = useState(null);
+  const affiliates = useAffiliates();
 
   const handleNewMissions = (newOnes) => {
     const fromCustomer = newOnes.filter((m) => m.createdBy === 'customer');
@@ -154,10 +168,11 @@ export default function App() {
   const [filterDateFrom, setFilterDateFrom] = useState('');
   const [filterDateTo, setFilterDateTo] = useState('');
   const [filterBoxType, setFilterBoxType] = useState('');
+  const [filterAffiliate, setFilterAffiliate] = useState('');
 
   const [visibleColumns, setVisibleColumns] = useState({
     type: true, status: true, sender: true, pickupAddr: true,
-    receiver: true, deliveryAddr: true, boxes: true, source: true, date: true,
+    receiver: true, deliveryAddr: true, boxes: true, source: true, date: true, affiliate: true,
   });
   const toggleColumn = (key) => setVisibleColumns((p) => ({ ...p, [key]: !p[key] }));
 
@@ -167,7 +182,7 @@ export default function App() {
   const [showCreateMission, setShowCreateMission] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
 
-  const activeFilterCount = [filterType, filterStatus, filterCreatedBy, filterMissingAddress, filterName, filterPhone, filterReceiverName, filterReceiverPhone, filterPickupAddr, filterDeliveryAddr, filterDateFrom, filterDateTo, filterBoxType].filter(Boolean).length;
+  const activeFilterCount = [filterType, filterStatus, filterCreatedBy, filterMissingAddress, filterName, filterPhone, filterReceiverName, filterReceiverPhone, filterPickupAddr, filterDeliveryAddr, filterDateFrom, filterDateTo, filterBoxType, filterAffiliate].filter(Boolean).length;
 
   const filtered = missions.filter((m) => {
     if (filterType && m.type !== filterType) return false;
@@ -185,6 +200,7 @@ export default function App() {
     if (filterDateTo && m.createdAt && new Date(m.createdAt) > new Date(filterDateTo + 'T23:59:59')) return false;
     if (filterBoxType === 'large' && !(m.boxSelection?.large > 0)) return false;
     if (filterBoxType === 'small' && !(m.boxSelection?.small > 0)) return false;
+    if (filterAffiliate && m.affiliateName !== filterAffiliate) return false;
     return true;
   });
 
@@ -192,7 +208,7 @@ export default function App() {
     setFilterType(''); setFilterStatus(''); setFilterCreatedBy(''); setFilterMissingAddress('');
     setFilterName(''); setFilterPhone(''); setFilterReceiverName(''); setFilterReceiverPhone('');
     setFilterPickupAddr(''); setFilterDeliveryAddr('');
-    setFilterDateFrom(''); setFilterDateTo(''); setFilterBoxType('');
+    setFilterDateFrom(''); setFilterDateTo(''); setFilterBoxType(''); setFilterAffiliate('');
   };
 
   const handleDelete = async (id) => {
@@ -296,7 +312,7 @@ export default function App() {
       </div>
 
       <main className="max-w-7xl mx-auto p-4 sm:p-6">
-        {activeTab === 'affiliates' && <AffiliatesPanel orders={[]} />}
+        {activeTab === 'affiliates' && <AffiliatesPanel missions={missions} />}
         {activeTab === 'users' && <UsersPanel />}
 
         {activeTab === 'missions' && (
@@ -440,6 +456,15 @@ export default function App() {
                         </select>
                       </div>
                       <div>
+                        <ColLabel label="Affiliate" colKey="affiliate" vis={visibleColumns} toggle={toggleColumn} />
+                        <select value={filterAffiliate} onChange={(e) => setFilterAffiliate(e.target.value)} className="w-full px-2.5 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300">
+                          <option value="">All affiliates</option>
+                          {affiliates.map((a) => (
+                            <option key={a.id} value={a.name}>{a.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
                         <ColLabel label="From date" colKey="date" vis={visibleColumns} toggle={toggleColumn} />
                         <input type="date" value={filterDateFrom} onChange={(e) => setFilterDateFrom(e.target.value)} className="w-full px-2.5 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
                       </div>
@@ -484,6 +509,7 @@ export default function App() {
                         {visibleColumns.deliveryAddr && <th className="px-3 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap w-44">Delivery Addr</th>}
                         {visibleColumns.boxes       && <th className="px-3 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap w-24">Boxes</th>}
                         {visibleColumns.source      && <th className="px-3 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap w-16">Source</th>}
+                        {visibleColumns.affiliate   && <th className="px-3 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap w-28">Affiliate</th>}
                         {visibleColumns.date        && <th className="px-3 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap w-32">Date</th>}
                         <th className="px-3 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide w-16"></th>
                       </tr>
@@ -596,6 +622,18 @@ export default function App() {
                             )}
                             {visibleColumns.source && (
                               <td className="px-3 py-3 text-xs text-slate-500 whitespace-nowrap">{CREATED_BY_LABELS[mission.createdBy] || mission.createdBy}</td>
+                            )}
+                            {visibleColumns.affiliate && (
+                              <td className="px-3 py-3">
+                                {mission.affiliateName ? (
+                                  <span className="inline-flex items-center gap-1 text-xs font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-full whitespace-nowrap">
+                                    <Tag className="w-3 h-3 shrink-0" />
+                                    {mission.affiliateName}
+                                  </span>
+                                ) : (
+                                  <span className="text-slate-300 text-xs">—</span>
+                                )}
+                              </td>
                             )}
                             {visibleColumns.date && (
                               <td className="px-3 py-3 text-xs text-slate-500 whitespace-nowrap">

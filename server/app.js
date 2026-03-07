@@ -257,7 +257,7 @@ app.get('/api/missions/stats', async (req, res) => {
 app.get('/api/missions', async (req, res) => {
   try {
     const missions = await readMissions();
-    const { status, type, createdBy, customerPhone } = req.query;
+    const { status, type, createdBy, customerPhone, affiliate } = req.query;
     let filtered = missions;
     if (status) filtered = filtered.filter((m) => m.status === status);
     if (type) filtered = filtered.filter((m) => m.type === type);
@@ -266,6 +266,7 @@ app.get('/api/missions', async (req, res) => {
       const phone = customerPhone.replace(/\D/g, '');
       filtered = filtered.filter((m) => (m.customerPhone || '').replace(/\D/g, '') === phone);
     }
+    if (affiliate) filtered = filtered.filter((m) => m.affiliateName === affiliate);
     res.json(filtered);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -294,14 +295,35 @@ app.post('/api/missions', async (req, res) => {
       createdBy: body.createdBy || 'customer',
       createdAt: body.createdAt || new Date().toISOString(),
       fullName: body.fullName || '',
+      firstName: body.firstName || null,
+      lastName: body.lastName || null,
       customerPhone: body.customerPhone || '',
       address: body.address || null,
+      senderAddress: body.senderAddress || null,
+      receiverName: body.receiverName || null,
+      receiverPhone: body.receiverPhone || null,
+      receiverAddress: body.receiverAddress || null,
+      boxes: body.boxes || 0,
       boxSelection: body.boxSelection || { large: 0, small: 0 },
       bringBoxes: body.bringBoxes !== undefined ? body.bringBoxes : true,
-      notes: body.notes || null,
+      notes: body.notes || body.orderNotes || null,
+      affiliateName: body.affiliateName || null,
+      discountAmount: body.discountAmount || null,
     };
     missions.unshift(newMission);
     await writeMissions(missions);
+
+    if (body.affiliateName) {
+      try {
+        const affiliates = await readAffiliates();
+        const idx = affiliates.findIndex((a) => a.name === body.affiliateName);
+        if (idx !== -1) {
+          affiliates[idx] = { ...affiliates[idx], orderCount: (affiliates[idx].orderCount || 0) + 1 };
+          await writeAffiliates(affiliates);
+        }
+      } catch {}
+    }
+
     res.status(201).json(newMission);
   } catch (err) {
     res.status(500).json({ error: err.message });

@@ -257,7 +257,7 @@ function AffiliateOrdersTable({ orders }) {
   );
 }
 
-export default function AffiliatesPanel({ orders = [] }) {
+export default function AffiliatesPanel({ missions = [] }) {
   const [affiliates, setAffiliates] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -326,7 +326,7 @@ export default function AffiliatesPanel({ orders = [] }) {
     setEditingAffiliate(null);
   };
 
-  const totalOrders = affiliates.reduce((s, a) => s + (a.orderCount || 0), 0);
+  const totalOrders = missions.filter((m) => m.affiliateName).length;
 
   return (
     <div className="space-y-6">
@@ -391,8 +391,8 @@ export default function AffiliatesPanel({ orders = [] }) {
               <tbody>
                 {affiliates.map((affiliate) => {
                   const trackingLink = `${SITE_URL}/?ref=${affiliate.slug}`;
-                  const affiliateOrders = orders.filter(
-                    (o) => o.affiliateName === affiliate.name,
+                  const affiliateOrders = missions.filter(
+                    (m) => m.affiliateName === affiliate.name,
                   );
                   const isExpanded = expandedId === affiliate.id;
                   return (
