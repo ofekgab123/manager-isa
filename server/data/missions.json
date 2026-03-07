@@ -18,10 +18,10 @@
       "floor": ""
     },
     "boxSelection": {
-      "large": 0,
+      "large": 1,
       "small": 0
     },
-    "bringBoxes": false,
+    "bringBoxes": true,
     "notes": null,
     "pickupBoxCount": 1,
     "deliveries": [
