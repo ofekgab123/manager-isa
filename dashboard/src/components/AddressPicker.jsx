@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useJsApiLoader, GoogleMap, Marker, Autocomplete } from '@react-google-maps/api';
-import { X, Video, Square, RotateCcw, Camera, Upload } from 'lucide-react';
+import { X, Video, Square, RotateCcw, Camera, Upload, Search } from 'lucide-react';
 
 const LIBRARIES = ['places'];
 const DEFAULT_CENTER = { lat: 32.0853, lng: 34.7818 };
@@ -38,9 +38,13 @@ export default function AddressPicker({ isOpen, onClose, onSelect, initialPositi
   const [confirming, setConfirming] = useState(false);
   const [videoRecording, setVideoRecording] = useState(false);
   const [videoError, setVideoError] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searching, setSearching] = useState(false);
+  const [searchError, setSearchError] = useState('');
 
   const mapRef = useRef(null);
   const autocompleteRef = useRef(null);
+  const searchInputRef = useRef(null);
   const streamRef = useRef(null);
   const mediaRecorderRef = useRef(null);
   const videoPreviewRef = useRef(null);
@@ -78,11 +82,38 @@ export default function AddressPicker({ isOpen, onClose, onSelect, initialPositi
     setPosition({ lat, lng });
     setAddressText(place.formatted_address || '');
     setAddressDetails(parseAddressComponents(place.address_components));
+    setSearchQuery('');
+    setSearchError('');
     if (mapRef.current) {
       mapRef.current.panTo({ lat, lng });
       mapRef.current.setZoom(16);
     }
   }, []);
+
+  const handleSearchAddress = useCallback(() => {
+    const q = searchQuery.trim();
+    if (!q || !window.google) return;
+    setSearching(true);
+    setSearchError('');
+    const geocoder = new window.google.maps.Geocoder();
+    geocoder.geocode({ address: q }, (results, status) => {
+      setSearching(false);
+      if (status === 'OK' && results[0]) {
+        const lat = results[0].geometry.location.lat();
+        const lng = results[0].geometry.location.lng();
+        setPosition({ lat, lng });
+        setAddressText(results[0].formatted_address);
+        setAddressDetails(parseAddressComponents(results[0].address_components));
+        setSearchQuery('');
+        if (mapRef.current) {
+          mapRef.current.panTo({ lat, lng });
+          mapRef.current.setZoom(16);
+        }
+      } else {
+        setSearchError('Address not found. Try a more specific search.');
+      }
+    });
+  }, [searchQuery]);
 
   const MAX_PAYLOAD_BYTES = 3 * 1024 * 1024;
 
@@ -314,19 +345,38 @@ export default function AddressPicker({ isOpen, onClose, onSelect, initialPositi
           </button>
         </div>
 
-        <div className="p-3 sm:p-4 border-b bg-slate-50">
+        <div className="p-3 sm:p-4 border-b bg-slate-50 space-y-2">
           {isLoaded ? (
-            <Autocomplete
-              onLoad={(ac) => { autocompleteRef.current = ac; }}
-              onPlaceChanged={onPlaceChanged}
-              options={{}}
-            >
-              <input
-                type="text"
-                placeholder="Search address (e.g. Herzl 12 Haifa)"
-                className="w-full px-3 py-2.5 border rounded-lg focus:ring-2 focus:ring-slate-500 focus:border-slate-500"
-              />
-            </Autocomplete>
+            <>
+              <div className="flex gap-2">
+                <Autocomplete
+                  onLoad={(ac) => { autocompleteRef.current = ac; }}
+                  onPlaceChanged={onPlaceChanged}
+                  options={{}}
+                  className="flex-1"
+                >
+                  <input
+                    ref={searchInputRef}
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => { setSearchQuery(e.target.value); setSearchError(''); }}
+                    onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleSearchAddress())}
+                    placeholder="Type an address and click Find…"
+                    className="w-full px-3 py-2.5 border rounded-lg focus:ring-2 focus:ring-slate-500 focus:border-slate-500"
+                  />
+                </Autocomplete>
+                <button
+                  type="button"
+                  onClick={handleSearchAddress}
+                  disabled={searching || !searchQuery.trim()}
+                  className="flex items-center gap-2 px-4 py-2.5 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-sm font-medium disabled:opacity-40 shrink-0"
+                >
+                  <Search className="w-4 h-4" />
+                  {searching ? '...' : 'Find'}
+                </button>
+              </div>
+              {searchError && <p className="text-red-500 text-sm">{searchError}</p>}
+            </>
           ) : (
             <input
               type="text"
