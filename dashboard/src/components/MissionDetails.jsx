@@ -66,7 +66,7 @@ function AddressBlock({ addr, onChange, title = 'Address', missing = false }) {
         isOpen={pickerOpen}
         onClose={() => setPickerOpen(false)}
         onSelect={(a) => {
-          onChange({ ...data, displayAddress: a.displayAddress, lat: a.lat, lng: a.lng, city: a.city, street: a.street, houseNumber: a.houseNumber });
+          onChange({ ...data, ...a });
           setPickerOpen(false);
         }}
         initialPosition={data.lat != null ? [data.lat, data.lng] : undefined}
@@ -116,6 +116,136 @@ function AddressBlock({ addr, onChange, title = 'Address', missing = false }) {
       )}
       {imagePreview && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={() => setImagePreview(null)} role="button" tabIndex={0} onKeyDown={(e) => e.key === 'Escape' && setImagePreview(null)}>
+          <img src={imagePreview} alt="Enlarged" className="max-w-full max-h-full object-contain rounded-lg" onClick={(e) => e.stopPropagation()} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DeliveryEditCard({ delivery, idx, onChange }) {
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [imagePreview, setImagePreview] = useState(null);
+  const addr = delivery.address || {};
+
+  return (
+    <div className="p-4 rounded-xl border-2 border-slate-200 bg-white space-y-3">
+      <div className="flex items-center gap-2">
+        <span className="w-6 h-6 rounded-full bg-indigo-600 text-white text-xs font-bold flex items-center justify-center flex-shrink-0">
+          {idx + 1}
+        </span>
+        <span className="text-xs font-bold text-slate-500 uppercase tracking-wide">
+          Delivery {idx + 1}
+        </span>
+        {delivery.boxCount != null && (
+          <span className="ml-auto text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-medium">
+            {delivery.boxCount} box{delivery.boxCount !== 1 ? 'es' : ''}
+          </span>
+        )}
+      </div>
+
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <label className="block text-xs font-medium text-slate-500 mb-1">Receiver name</label>
+          <input
+            value={delivery.receiverName || ''}
+            onChange={(e) => onChange({ ...delivery, receiverName: e.target.value })}
+            placeholder="Full name"
+            className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200"
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-slate-500 mb-1">Receiver phone</label>
+          <input
+            value={delivery.receiverPhone || ''}
+            onChange={(e) => onChange({ ...delivery, receiverPhone: e.target.value })}
+            placeholder="050..."
+            className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200"
+          />
+        </div>
+      </div>
+
+      <button
+        type="button"
+        onClick={() => setPickerOpen(true)}
+        className={`w-full flex items-center gap-2 px-3 py-2.5 border-2 border-dashed rounded-lg text-sm transition-colors ${
+          addr.lat
+            ? 'border-green-300 bg-green-50 text-green-700 hover:border-green-400'
+            : 'border-slate-300 text-slate-500 hover:border-indigo-400 hover:bg-indigo-50'
+        }`}
+      >
+        <MapPin className="w-4 h-4 flex-shrink-0" />
+        <span className="truncate">{addr.displayAddress || 'Pick location on map…'}</span>
+      </button>
+      {addr.displayAddress && (
+        <button type="button" onClick={() => onChange({ ...delivery, address: {} })} className="text-xs text-red-500 hover:underline -mt-1">
+          Clear address
+        </button>
+      )}
+      <AddressPicker
+        isOpen={pickerOpen}
+        onClose={() => setPickerOpen(false)}
+        onSelect={(a) => {
+          onChange({ ...delivery, address: { ...addr, ...a } });
+          setPickerOpen(false);
+        }}
+        initialPosition={addr.lat != null ? [addr.lat, addr.lng] : undefined}
+      />
+
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+        <EditableField label="City"      value={addr.city}        onChange={(v) => onChange({ ...delivery, address: { ...addr, city: v } })} />
+        <EditableField label="Street"    value={addr.street}      onChange={(v) => onChange({ ...delivery, address: { ...addr, street: v } })} />
+        <EditableField label="House no." value={addr.houseNumber} onChange={(v) => onChange({ ...delivery, address: { ...addr, houseNumber: v } })} />
+        <EditableField label="Apartment" value={addr.apartment}   onChange={(v) => onChange({ ...delivery, address: { ...addr, apartment: v } })} />
+        <EditableField label="Floor"     value={addr.floor}       onChange={(v) => onChange({ ...delivery, address: { ...addr, floor: v } })} />
+      </div>
+
+      {addr.lat != null && (
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-xs font-medium text-slate-500">Coords:</span>
+          <code className="text-xs font-mono bg-slate-100 px-2 py-1 rounded">
+            {typeof addr.lat === 'number' ? addr.lat.toFixed(6) : addr.lat},{' '}
+            {typeof addr.lng === 'number' ? addr.lng.toFixed(6) : addr.lng}
+          </code>
+          <button
+            type="button"
+            onClick={() => navigator.clipboard?.writeText(`${addr.lat}, ${addr.lng}`)}
+            className="p-1 hover:bg-slate-200 rounded"
+            title="Copy coordinates"
+          >
+            <Copy className="w-3.5 h-3.5 text-slate-500" />
+          </button>
+        </div>
+      )}
+
+      {addr.videoUrl && (
+        <div>
+          <div className="flex items-center gap-2 text-xs font-medium text-slate-500 mb-1">
+            <Video className="w-4 h-4" /> Verification video
+          </div>
+          <video src={addr.videoUrl} controls className="w-full max-w-xs max-h-40 rounded-lg border bg-black" />
+        </div>
+      )}
+
+      {addr.imageUrl && (
+        <div>
+          <div className="flex items-center gap-2 text-xs font-medium text-slate-500 mb-1">
+            <Image className="w-4 h-4" /> Verification photo
+          </div>
+          <button type="button" onClick={() => setImagePreview(addr.imageUrl)} className="block">
+            <img src={addr.imageUrl} alt="Verification" className="max-w-xs max-h-40 rounded-lg border object-contain cursor-zoom-in hover:opacity-90" />
+          </button>
+        </div>
+      )}
+
+      {imagePreview && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+          onClick={() => setImagePreview(null)}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => e.key === 'Escape' && setImagePreview(null)}
+        >
           <img src={imagePreview} alt="Enlarged" className="max-w-full max-h-full object-contain rounded-lg" onClick={(e) => e.stopPropagation()} />
         </div>
       )}
@@ -183,7 +313,11 @@ export default function MissionDetails({ mission, onSave, onClose, onDelete }) {
   const [affiliatePickerOpen, setAffiliatePickerOpen] = useState(false);
 
   const isPickup = edit.type === 'pickup';
-  const missingAddress = isPickup ? !edit.receiverAddress?.lat : !edit.address?.lat;
+  const missingAddress = isPickup
+    ? (edit.deliveries?.length > 0
+        ? edit.deliveries.some((d) => !d.address?.lat)
+        : !edit.receiverAddress?.lat)
+    : !edit.address?.lat;
 
   const update = (path, value) => {
     if (path.includes('.')) {
@@ -287,116 +421,48 @@ export default function MissionDetails({ mission, onSave, onClose, onDelete }) {
         onChange={(a) => update('address', a)}
       />
 
-      {/* Receiver details — pickup only */}
+      {/* Deliveries — pickup only */}
       {isPickup && (
-        <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
-          <h4 className="font-semibold text-slate-800 flex items-center gap-2 text-sm">
-            <User className="w-4 h-4" /> Receiver Details
-            {!edit.receiverName && !edit.receiverPhone && (
-              <span className="ml-auto text-xs font-semibold text-amber-600 bg-amber-100 px-2 py-0.5 rounded-full flex items-center gap-1">
-                <AlertTriangle className="w-3 h-3" /> Missing
-              </span>
-            )}
-          </h4>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <EditableField label="Receiver name" value={edit.receiverName} onChange={(v) => update('receiverName', v)} placeholder="Full name" />
-            <div>
-              <label className="block text-xs font-medium text-slate-500 mb-1">Receiver phone</label>
-              <PhoneInput value={edit.receiverPhone} onChange={(v) => update('receiverPhone', v)} placeholder="501234567" />
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Delivery address — pickup only */}
-      {isPickup && (
-        <AddressBlock
-          title="Delivery Address"
-          addr={edit.receiverAddress || {}}
-          onChange={(a) => update('receiverAddress', a)}
-          missing={!edit.receiverAddress?.lat}
-        />
-      )}
-
-      {/* All deliveries with numbering — shown when deliveries array exists */}
-      {isPickup && edit.deliveries?.length > 0 && (
         <div className="space-y-3">
           <h4 className="font-semibold text-slate-700 text-sm flex items-center gap-2">
             <MapPin className="w-4 h-4 text-indigo-500" />
-            All delivery addresses ({edit.deliveries.length})
+            {edit.deliveries?.length > 1
+              ? `Delivery addresses (${edit.deliveries.length})`
+              : 'Delivery address'}
           </h4>
-          {edit.deliveries.map((d, idx) => (
-            <div key={d.id || idx} className="p-4 rounded-xl border-2 border-slate-200 bg-white space-y-2">
-              <div className="flex items-center gap-2">
-                <span className="w-6 h-6 rounded-full bg-indigo-600 text-white text-xs font-bold flex items-center justify-center flex-shrink-0">
-                  {idx + 1}
-                </span>
-                <span className="text-xs font-bold text-slate-500 uppercase tracking-wide">
-                  Delivery {idx + 1}
-                </span>
-                {d.boxCount != null && (
-                  <span className="ml-auto text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-medium">
-                    {d.boxCount} box{d.boxCount !== 1 ? 'es' : ''}
-                  </span>
-                )}
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <p className="text-xs font-medium text-slate-500 mb-0.5">Receiver name</p>
-                  <input
-                    value={d.receiverName || ''}
-                    onChange={(e) => {
-                      const updated = edit.deliveries.map((r, i) => i === idx ? { ...r, receiverName: e.target.value } : r);
-                      setEdit((p) => ({ ...p, deliveries: updated }));
-                    }}
-                    placeholder="Full name"
-                    className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200"
-                  />
-                </div>
-                <div>
-                  <p className="text-xs font-medium text-slate-500 mb-0.5">Receiver phone</p>
-                  <input
-                    value={d.receiverPhone || ''}
-                    onChange={(e) => {
-                      const updated = edit.deliveries.map((r, i) => i === idx ? { ...r, receiverPhone: e.target.value } : r);
-                      setEdit((p) => ({ ...p, deliveries: updated }));
-                    }}
-                    placeholder="050..."
-                    className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200"
-                  />
-                </div>
-              </div>
-
-              {d.address?.displayAddress ? (
-                <div className="flex items-start gap-2">
-                  <MapPin className="w-3.5 h-3.5 text-slate-400 mt-0.5 flex-shrink-0" />
-                  <span className="text-sm text-slate-700">{d.address.displayAddress}</span>
-                </div>
-              ) : (
-                <p className="text-sm text-amber-600 italic flex items-center gap-1">
-                  <AlertTriangle className="w-3.5 h-3.5" /> No address set
-                </p>
-              )}
-
-              {d.address?.lat != null && (
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-xs font-medium text-slate-500">Coords:</span>
-                  <code className="text-xs font-mono bg-slate-100 px-2 py-1 rounded">
-                    {typeof d.address.lat === 'number' ? d.address.lat.toFixed(6) : d.address.lat},{' '}
-                    {typeof d.address.lng === 'number' ? d.address.lng.toFixed(6) : d.address.lng}
-                  </code>
-                  <button
-                    type="button"
-                    onClick={() => navigator.clipboard?.writeText(`${d.address.lat}, ${d.address.lng}`)}
-                    className="p-1 hover:bg-slate-200 rounded"
-                    title="Copy coordinates"
-                  >
-                    <Copy className="w-3.5 h-3.5 text-slate-500" />
-                  </button>
-                </div>
-              )}
-            </div>
+          {(edit.deliveries?.length > 0 ? edit.deliveries : [
+            {
+              id: 'd-legacy',
+              receiverName: edit.receiverName || '',
+              receiverPhone: edit.receiverPhone || '',
+              address: edit.receiverAddress || {},
+              boxCount: edit.pickupBoxCount,
+            }
+          ]).map((d, idx) => (
+            <DeliveryEditCard
+              key={d.id || idx}
+              delivery={d}
+              idx={idx}
+              onChange={(updated) => {
+                if (edit.deliveries?.length > 0) {
+                  const arr = edit.deliveries.map((r, i) => i === idx ? updated : r);
+                  setEdit((p) => ({
+                    ...p,
+                    deliveries: arr,
+                    receiverName: arr[0]?.receiverName || p.receiverName,
+                    receiverPhone: arr[0]?.receiverPhone || p.receiverPhone,
+                    receiverAddress: arr[0]?.address || p.receiverAddress,
+                  }));
+                } else {
+                  setEdit((p) => ({
+                    ...p,
+                    receiverName: updated.receiverName,
+                    receiverPhone: updated.receiverPhone,
+                    receiverAddress: updated.address,
+                  }));
+                }
+              }}
+            />
           ))}
         </div>
       )}
