@@ -1,6 +1,6 @@
 import express from 'express';
 import cors from 'cors';
-import { readOrders, writeOrders, readAffiliates, writeAffiliates } from './storage.js';
+import { readOrders, writeOrders, readAffiliates, writeAffiliates, readMissions, writeMissions, readUsers, writeUsers } from './storage.js';
 
 const app = express();
 app.use(cors({
@@ -228,6 +228,111 @@ app.delete('/api/orders/:id/missions/:missionId', async (req, res) => {
   }
 });
 
+// ─── Missions (top-level) ──────────────────────────────────────────────────────
+
+const VALID_MISSION_TOP_TYPES = ['empty_box', 'pickup'];
+
+app.get('/api/missions/stats', async (req, res) => {
+  try {
+    const missions = await readMissions();
+    const byStatus = {};
+    const byType = {};
+    const byCreatedBy = {};
+    let totalBoxes = 0;
+    let missingAddress = 0;
+    missions.forEach((m) => {
+      const status = normalizeStatus(m.status);
+      byStatus[status] = (byStatus[status] || 0) + 1;
+      byType[m.type] = (byType[m.type] || 0) + 1;
+      byCreatedBy[m.createdBy || 'unknown'] = (byCreatedBy[m.createdBy || 'unknown'] || 0) + 1;
+      totalBoxes += (m.boxSelection?.large || 0) + (m.boxSelection?.small || 0);
+      if (m.type === 'pickup' ? !m.receiverAddress?.lat : !m.address?.lat) missingAddress++;
+    });
+    res.json({ total: missions.length, totalBoxes, missingAddress, byStatus, byType, byCreatedBy });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/missions', async (req, res) => {
+  try {
+    const missions = await readMissions();
+    const { status, type, createdBy, customerPhone } = req.query;
+    let filtered = missions;
+    if (status) filtered = filtered.filter((m) => m.status === status);
+    if (type) filtered = filtered.filter((m) => m.type === type);
+    if (createdBy) filtered = filtered.filter((m) => m.createdBy === createdBy);
+    if (customerPhone) {
+      const phone = customerPhone.replace(/\D/g, '');
+      filtered = filtered.filter((m) => (m.customerPhone || '').replace(/\D/g, '') === phone);
+    }
+    res.json(filtered);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/missions/:id', async (req, res) => {
+  try {
+    const missions = await readMissions();
+    const mission = missions.find((m) => m.id === req.params.id);
+    if (!mission) return res.status(404).json({ error: 'Mission not found' });
+    res.json(mission);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/missions', async (req, res) => {
+  try {
+    const missions = await readMissions();
+    const body = req.body;
+    const newMission = {
+      id: `MSN-${Date.now()}`,
+      type: VALID_MISSION_TOP_TYPES.includes(body.type) ? body.type : 'pickup',
+      status: body.status ?? (body.createdBy === 'customer' ? 'received' : 'linewhel_transferred'),
+      createdBy: body.createdBy || 'customer',
+      createdAt: body.createdAt || new Date().toISOString(),
+      fullName: body.fullName || '',
+      customerPhone: body.customerPhone || '',
+      address: body.address || null,
+      boxSelection: body.boxSelection || { large: 0, small: 0 },
+      bringBoxes: body.bringBoxes !== undefined ? body.bringBoxes : true,
+      notes: body.notes || null,
+    };
+    missions.unshift(newMission);
+    await writeMissions(missions);
+    res.status(201).json(newMission);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.patch('/api/missions/:id', async (req, res) => {
+  try {
+    const missions = await readMissions();
+    const idx = missions.findIndex((m) => m.id === req.params.id);
+    if (idx === -1) return res.status(404).json({ error: 'Mission not found' });
+    missions[idx] = { ...missions[idx], ...req.body };
+    await writeMissions(missions);
+    res.json(missions[idx]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/missions/:id', async (req, res) => {
+  try {
+    const missions = await readMissions();
+    const filtered = missions.filter((m) => m.id !== req.params.id);
+    if (filtered.length === missions.length) return res.status(404).json({ error: 'Mission not found' });
+    await writeMissions(filtered);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── Affiliates ────────────────────────────────────────────────────────────────
 
 app.get('/api/affiliates', async (req, res) => {
@@ -339,6 +444,68 @@ app.post('/api/promo/validate', async (req, res) => {
       affiliateId: affiliate.id,
       discountAmount: affiliate.discountAmount,
     });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/* ─── Users ─────────────────────────────────────────────────── */
+
+app.get('/api/users', async (req, res) => {
+  try {
+    const users = await readUsers();
+    const q = (req.query.q || '').toLowerCase();
+    const result = q
+      ? users.filter((u) =>
+          (u.fullName || '').toLowerCase().includes(q) ||
+          (u.phone || '').replace(/\D/g, '').includes(q.replace(/\D/g, ''))
+        )
+      : users;
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/users', async (req, res) => {
+  try {
+    const users = await readUsers();
+    const body = req.body;
+    const newUser = {
+      id: `USR-${Date.now()}`,
+      fullName: body.fullName || '',
+      phone: body.phone || '',
+      address: body.address || null,
+      notes: body.notes || '',
+      createdAt: new Date().toISOString(),
+    };
+    users.unshift(newUser);
+    await writeUsers(users);
+    res.status(201).json(newUser);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.patch('/api/users/:id', async (req, res) => {
+  try {
+    const users = await readUsers();
+    const idx = users.findIndex((u) => u.id === req.params.id);
+    if (idx === -1) return res.status(404).json({ error: 'User not found' });
+    users[idx] = { ...users[idx], ...req.body };
+    await writeUsers(users);
+    res.json(users[idx]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/users/:id', async (req, res) => {
+  try {
+    const users = await readUsers();
+    const filtered = users.filter((u) => u.id !== req.params.id);
+    await writeUsers(filtered);
+    res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

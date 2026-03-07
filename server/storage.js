@@ -4,6 +4,8 @@
  */
 const KEY = 'manager-isa:orders';
 const AFFILIATES_KEY = 'manager-isa:affiliates';
+const MISSIONS_KEY = 'manager-isa:missions';
+const USERS_KEY = 'manager-isa:users';
 
 async function getRedis() {
   const { Redis } = await import('@upstash/redis');
@@ -85,4 +87,80 @@ export async function writeAffiliates(affiliates) {
   const dir = path.dirname(file);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(file, JSON.stringify(affiliates, null, 2), 'utf-8');
+}
+
+export async function readMissions() {
+  if (process.env.UPSTASH_REDIS_REST_URL) {
+    const redis = await getRedis();
+    const data = await redis.get(MISSIONS_KEY);
+    return Array.isArray(data) ? data : [];
+  }
+  const fs = await import('fs');
+  const path = await import('path');
+  const { fileURLToPath } = await import('url');
+  const __dirname = path.dirname(fileURLToPath(import.meta.url));
+  const file = path.join(__dirname, 'data', 'missions.json');
+  const dir = path.dirname(file);
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  if (!fs.existsSync(file)) return [];
+  try {
+    const data = fs.readFileSync(file, 'utf-8');
+    return JSON.parse(data);
+  } catch {
+    return [];
+  }
+}
+
+export async function writeMissions(missions) {
+  if (process.env.UPSTASH_REDIS_REST_URL) {
+    const redis = await getRedis();
+    await redis.set(MISSIONS_KEY, missions);
+    return;
+  }
+  const fs = await import('fs');
+  const path = await import('path');
+  const { fileURLToPath } = await import('url');
+  const __dirname = path.dirname(fileURLToPath(import.meta.url));
+  const file = path.join(__dirname, 'data', 'missions.json');
+  const dir = path.dirname(file);
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(file, JSON.stringify(missions, null, 2), 'utf-8');
+}
+
+export async function readUsers() {
+  if (process.env.UPSTASH_REDIS_REST_URL) {
+    const redis = await getRedis();
+    const data = await redis.get(USERS_KEY);
+    return Array.isArray(data) ? data : [];
+  }
+  const fs = await import('fs');
+  const path = await import('path');
+  const { fileURLToPath } = await import('url');
+  const __dirname = path.dirname(fileURLToPath(import.meta.url));
+  const file = path.join(__dirname, 'data', 'users.json');
+  const dir = path.dirname(file);
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  if (!fs.existsSync(file)) return [];
+  try {
+    const data = fs.readFileSync(file, 'utf-8');
+    return JSON.parse(data);
+  } catch {
+    return [];
+  }
+}
+
+export async function writeUsers(users) {
+  if (process.env.UPSTASH_REDIS_REST_URL) {
+    const redis = await getRedis();
+    await redis.set(USERS_KEY, users);
+    return;
+  }
+  const fs = await import('fs');
+  const path = await import('path');
+  const { fileURLToPath } = await import('url');
+  const __dirname = path.dirname(fileURLToPath(import.meta.url));
+  const file = path.join(__dirname, 'data', 'users.json');
+  const dir = path.dirname(file);
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(file, JSON.stringify(users, null, 2), 'utf-8');
 }

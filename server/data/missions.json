@@ -1,0 +1,128 @@
+[
+  {
+    "id": "MSN-1772846684129",
+    "type": "pickup",
+    "status": "linewhel_transferred",
+    "createdBy": "customer_service",
+    "createdAt": "2026-03-07T01:24:44.129Z",
+    "fullName": "123",
+    "customerPhone": "123",
+    "address": {
+      "displayAddress": "David Yellin St 11, Tel Aviv-Yafo, Israel",
+      "lat": 32.08848375019519,
+      "lng": 34.78510448150635,
+      "city": "Tel Aviv-Yafo",
+      "street": "David Yellin Street",
+      "houseNumber": "11",
+      "apartment": "",
+      "floor": ""
+    },
+    "boxSelection": {
+      "large": 0,
+      "small": 0
+    },
+    "bringBoxes": false,
+    "notes": null,
+    "pickupBoxCount": 1,
+    "deliveries": [
+      {
+        "id": "d-1772848143962",
+        "receiverName": "dfokasd",
+        "receiverPhone": "+972123123123",
+        "address": {
+          "lat": 32.08106619034895,
+          "lng": 34.783774105834965,
+          "displayAddress": "Modigliani St 11, Tel Aviv-Yafo, Israel",
+          "city": "Tel Aviv-Yafo",
+          "street": "Modigliani Street",
+          "houseNumber": "11"
+        },
+        "boxCount": 1
+      }
+    ],
+    "receiverName": "dfokasd",
+    "receiverPhone": "+972123123123",
+    "receiverAddress": {
+      "lat": 32.08106619034895,
+      "lng": 34.783774105834965,
+      "displayAddress": "Modigliani St 11, Tel Aviv-Yafo, Israel",
+      "city": "Tel Aviv-Yafo",
+      "street": "Modigliani Street",
+      "houseNumber": "11"
+    }
+  },
+  {
+    "id": "MSN-1772846553669",
+    "type": "empty_box",
+    "status": "linewhel_transferred",
+    "createdBy": "customer_service",
+    "createdAt": "2026-03-07T01:22:33.669Z",
+    "fullName": "ofek",
+    "customerPhone": "of23",
+    "address": {
+      "displayAddress": "Soutine St 19, Tel Aviv-Yafo, 6468411, Israel",
+      "lat": 32.08237521524378,
+      "lng": 34.78561946563721,
+      "city": "Tel Aviv-Yafo",
+      "street": "Soutine Street",
+      "houseNumber": "19",
+      "apartment": "",
+      "floor": ""
+    },
+    "boxSelection": {
+      "large": 1,
+      "small": 0
+    },
+    "bringBoxes": true,
+    "notes": null
+  },
+  {
+    "id": "MSN-1772844602167",
+    "type": "empty_box",
+    "status": "linewhel_transferred",
+    "createdBy": "customer_service",
+    "createdAt": "2026-03-07T00:50:02.167Z",
+    "fullName": "23",
+    "customerPhone": "123",
+    "address": {
+      "displayAddress": "Lessin St 2, Tel Aviv-Yafo, Israel",
+      "lat": 32.085138650677365,
+      "lng": 34.791026799011235,
+      "city": "Tel Aviv-Yafo",
+      "street": "Lessin Street",
+      "houseNumber": "2",
+      "apartment": "",
+      "floor": ""
+    },
+    "boxSelection": {
+      "large": 0,
+      "small": 1
+    },
+    "bringBoxes": true,
+    "notes": null
+  },
+  {
+    "id": "MSN-1772844272914",
+    "type": "pickup",
+    "status": "linewhel_transferred",
+    "createdBy": "customer_service",
+    "createdAt": "2026-03-07T00:44:32.914Z",
+    "fullName": "213",
+    "customerPhone": "123",
+    "address": {
+      "displayAddress": "Zeev Jabotinsky St 106, Tel Aviv-Yafo, 6219102, Israel",
+      "lat": 32.08673849615846,
+      "lng": 34.78544780426026,
+      "city": "Tel Aviv-Yafo",
+      "street": "Zeev Jabotinsky Street",
+      "houseNumber": "106",
+      "apartment": "",
+      "floor": ""
+    },
+    "boxSelection": {
+      "large": 0,
+      "small": 0
+    },
+    "notes": null
+  }
+]

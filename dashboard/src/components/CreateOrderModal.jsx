@@ -1,17 +1,10 @@
 import { useState } from 'react';
-import { X, Package, Truck, MapPin, User, Home, FileText, CheckCircle, ChevronRight, ChevronLeft, ClipboardList, Box, Plus, Minus } from 'lucide-react';
+import { X, Package, Truck, MapPin, User, Home, CheckCircle, ChevronRight, ChevronLeft, ClipboardList, Box, Plus, Minus } from 'lucide-react';
 import AddressPicker from './AddressPicker';
 import { geocodeAddress } from '../utils/geocode';
 import { API_BASE } from '../config';
 
 /* ─── Step definitions ───────────────────────────────────────── */
-const EMPTY_BOX_STEPS = [
-  { id: 1, label: 'Customer',  icon: User },
-  { id: 2, label: 'Address',   icon: Home },
-  { id: 3, label: 'Boxes',     icon: Package },
-  { id: 4, label: 'Notes',     icon: FileText },
-  { id: 5, label: 'Summary',   icon: CheckCircle },
-];
 
 const BOX_TYPES = [
   { id: 'large', label: 'ISA-BOX-70',  sub: 'Large – 45×45×70 cm · up to 50 kg', icon: Box,     color: 'indigo' },
@@ -152,7 +145,7 @@ function AddressBlock({ mapAddr, form, prefix, onMap, onClear }) {
 
 /* ─── Main component ─────────────────────────────────────────── */
 export default function CreateOrderModal({ isOpen, onClose, onCreated }) {
-  const [orderType, setOrderType] = useState('pickup'); // 'pickup' | 'empty_box'
+  const [orderType, setOrderType] = useState(null); // null | 'pickup' | 'empty_box'
   const [step, setStep] = useState(1);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -168,13 +161,6 @@ export default function CreateOrderModal({ isOpen, onClose, onCreated }) {
   const [senderMapAddress, setSenderMapAddress] = useState(null);
   const [receiverMapAddress, setReceiverMapAddress] = useState(null);
 
-  // Empty box form
-  const [emptyBoxForm, setEmptyBoxForm] = useState({
-    firstName: '', lastName: '', phone: '',
-    city: '', streetName: '', houseNumber: '', apartment: '', floor: '',
-    orderNotes: '',
-  });
-  const [emptyBoxAddress, setEmptyBoxAddress] = useState(null);
   const [boxCounts, setBoxCounts] = useState({ large: 0, small: 0 });
   const changeBoxCount = (type, delta) =>
     setBoxCounts((p) => ({ ...p, [type]: Math.max(0, p[type] + delta) }));
@@ -185,9 +171,8 @@ export default function CreateOrderModal({ isOpen, onClose, onCreated }) {
   const [missionSmallBoxes, setMissionSmallBoxes] = useState('');
 
   const handlePickupChange = (e) => setPickupForm((p) => ({ ...p, [e.target.name]: e.target.value }));
-  const handleEmptyChange  = (e) => setEmptyBoxForm((p) => ({ ...p, [e.target.name]: e.target.value }));
 
-  const steps = orderType === 'pickup' ? PICKUP_STEPS : EMPTY_BOX_STEPS;
+  const steps = orderType ? PICKUP_STEPS : [];
   const totalSteps = steps.length;
 
   /* ─── Address select handlers ───────────────────────────────── */
@@ -201,28 +186,13 @@ export default function CreateOrderModal({ isOpen, onClose, onCreated }) {
     }
   };
 
-  const handleEmptyBoxAddressSelect = (addr) => {
-    setEmptyBoxAddress(addr);
-    setEmptyBoxForm((p) => ({ ...p, city: addr.city || p.city, streetName: addr.street || p.streetName, houseNumber: addr.houseNumber || p.houseNumber }));
-  };
-
   /* ─── Validation per step ───────────────────────────────────── */
   const canProceed = () => {
-    if (orderType === 'empty_box') {
-      if (step === 1) return emptyBoxForm.firstName.trim() && emptyBoxForm.lastName.trim() && emptyBoxForm.phone.trim();
-      if (step === 2) return !!emptyBoxAddress;
-      if (step === 3) return boxCounts.large + boxCounts.small > 0;
-      return true;
-    }
-    if (orderType === 'pickup') {
-      if (step === 1) return pickupForm.fullName.trim() && pickupForm.israeliPhone.trim();
-      if (step === 2) return !!senderMapAddress;
-      if (step === 3) return boxCounts.large + boxCounts.small > 0;
-      if (step === 4) return true; // optional
-      if (step === 5) return true; // optional
-      return true;
-    }
-    return false;
+    if (!orderType) return false;
+    if (step === 1) return pickupForm.fullName.trim() && pickupForm.israeliPhone.trim();
+    if (step === 2) return !!senderMapAddress;
+    if (step === 3) return boxCounts.large + boxCounts.small > 0;
+    return true;
   };
 
   /* ─── Submit helpers ─────────────────────────────────────────── */
@@ -243,48 +213,6 @@ export default function CreateOrderModal({ isOpen, onClose, onCreated }) {
     });
   };
 
-  const submitEmptyBox = async () => {
-    setSubmitting(true); setError('');
-    try {
-      const { firstName, lastName, phone, city, streetName, houseNumber, apartment, floor, orderNotes } = emptyBoxForm;
-      const coords = await resolveCoords(emptyBoxAddress, city, streetName, houseNumber);
-      const address = emptyBoxAddress || { displayAddress: [streetName, houseNumber, city].filter(Boolean).join(', '), lat: coords?.lat, lng: coords?.lng, city, street: streetName, houseNumber };
-      const fullAddress = { ...address, apartment, floor };
-      const totalBoxes = boxCounts.large + boxCounts.small;
-      const res = await fetch(`${API_BASE}/orders`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          type: 'empty_box',
-          boxes: totalBoxes,
-          boxSelection: { large: boxCounts.large, small: boxCounts.small },
-          address: fullAddress,
-          customerPhone: phone.trim(),
-          firstName: firstName.trim(), lastName: lastName.trim(),
-          fullName: [firstName, lastName].filter(Boolean).join(' ').trim(),
-          orderNotes: orderNotes.trim() || undefined,
-          createdBy: 'customer_service', contacted: true, status: 'linewhel_transferred',
-        }),
-      });
-      if (!res.ok) throw new Error('Save error');
-      const order = await res.json();
-      if (createMission) {
-        const missionAddr = { label: 'Order address', ...fullAddress };
-        await createMissionForOrder(order.id, {
-          type: 'ready_for_box',
-          status: 'received',
-          addresses: [missionAddr],
-          pickupLocation: missionAddr,
-          customerDetails: { name: order.fullName || '', phone: phone.trim() },
-          largeBoxes: boxCounts.large,
-          smallBoxes: boxCounts.small,
-        });
-      }
-      onCreated?.(order);
-      handleClose();
-    } catch (e) { setError(e.message || 'Error'); }
-    finally { setSubmitting(false); }
-  };
-
   const submitPickup = async () => {
     setSubmitting(true); setError('');
     try {
@@ -298,7 +226,7 @@ export default function CreateOrderModal({ isOpen, onClose, onCreated }) {
       const res = await fetch(`${API_BASE}/orders`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          type: 'pickup',
+          type: orderType,
           boxes: totalBoxes,
           boxSelection: { large: boxCounts.large, small: boxCounts.small },
           createdBy: 'customer_service', contacted: true, status: 'linewhel_transferred',
@@ -333,11 +261,9 @@ export default function CreateOrderModal({ isOpen, onClose, onCreated }) {
   };
 
   const handleClose = () => {
-    setOrderType('pickup'); setStep(1); setError('');
+    setOrderType(null); setStep(1); setError('');
     setPickupForm({ israeliPhone: '', fullName: '', senderCity: '', senderStreet: '', senderHouseNumber: '', senderApartment: '', senderFloor: '', receiverName: '', receiverPhone: '', receiverCity: '', receiverStreet: '', receiverHouseNumber: '', receiverApartment: '', receiverFloor: '' });
-    setSenderMapAddress(null); setReceiverMapAddress(null);
-    setEmptyBoxForm({ firstName: '', lastName: '', phone: '', city: '', streetName: '', houseNumber: '', apartment: '', floor: '', orderNotes: '' });
-    setEmptyBoxAddress(null); setAddressMapOpenFor(null);
+    setSenderMapAddress(null); setReceiverMapAddress(null); setAddressMapOpenFor(null);
     setBoxCounts({ large: 0, small: 0 });
     setCreateMission(false); setMissionLargeBoxes(''); setMissionSmallBoxes('');
     onClose();
@@ -355,7 +281,7 @@ export default function CreateOrderModal({ isOpen, onClose, onCreated }) {
         <div className="flex items-center justify-between px-5 py-4 border-b flex-shrink-0">
           <div className="flex items-center gap-2">
             <h2 className="text-lg font-bold text-slate-800">
-              {orderType === 'pickup' ? 'Pickup' : 'Empty Box'}
+              {orderType === 'pickup' ? 'Pickup Order' : orderType === 'empty_box' ? 'Empty Box Order' : 'Create New Order'}
             </h2>
           </div>
           <button onClick={handleClose} className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-500 transition-colors">
@@ -366,137 +292,39 @@ export default function CreateOrderModal({ isOpen, onClose, onCreated }) {
         {/* Body */}
         <div className="flex-1 overflow-y-auto px-5 py-5">
 
+          {/* ── Type Selection ── */}
+          {!orderType && (
+            <div>
+              <p className="text-slate-500 text-sm mb-5">Select order type:</p>
+              <div className="grid grid-cols-2 gap-4">
+                <button
+                  type="button"
+                  onClick={() => setOrderType('empty_box')}
+                  className="p-6 rounded-xl border-2 border-slate-200 hover:border-indigo-400 hover:bg-indigo-50 flex flex-col items-center gap-3 transition-all"
+                >
+                  <Package className="w-10 h-10 text-indigo-500" />
+                  <span className="font-semibold text-slate-800">Empty Box</span>
+                  <span className="text-xs text-slate-500 text-center">Send empty boxes to customer address</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setOrderType('pickup')}
+                  className="p-6 rounded-xl border-2 border-slate-200 hover:border-indigo-400 hover:bg-indigo-50 flex flex-col items-center gap-3 transition-all"
+                >
+                  <Truck className="w-10 h-10 text-indigo-500" />
+                  <span className="font-semibold text-slate-800">Pickup Box</span>
+                  <span className="text-xs text-slate-500 text-center">Pick up packed boxes from customer</span>
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* ── Steps ── */}
-          <div>
+          {orderType && <div>
               <StepBar steps={steps} current={step} />
 
-              {/* ── Empty Box steps ── */}
-              {orderType === 'empty_box' && (
-                <>
-                  {step === 1 && (
-                    <div className="space-y-4">
-                      <h3 className="font-semibold text-slate-800 text-base mb-1">Customer Details</h3>
-                      <div className="grid grid-cols-2 gap-3">
-                        <Field label="First name" required>
-                          <input className={inputCls} name="firstName" value={emptyBoxForm.firstName} onChange={handleEmptyChange} placeholder="First name" />
-                        </Field>
-                        <Field label="Last name" required>
-                          <input className={inputCls} name="lastName" value={emptyBoxForm.lastName} onChange={handleEmptyChange} placeholder="Last name" />
-                        </Field>
-                      </div>
-                      <Field label="Phone" required>
-                        <input className={inputCls} name="phone" type="tel" value={emptyBoxForm.phone} onChange={handleEmptyChange} placeholder="050-1234567" />
-                      </Field>
-                    </div>
-                  )}
-
-                  {step === 2 && (
-                    <div className="space-y-4">
-                      <h3 className="font-semibold text-slate-800 text-base mb-1">Delivery Address</h3>
-                      <AddressBlock
-                        mapAddr={emptyBoxAddress}
-                        form={emptyBoxForm}
-                        prefix=""
-                        onMap={() => setAddressMapOpenFor('empty_box')}
-                        onClear={() => { setEmptyBoxAddress(null); setEmptyBoxForm((p) => ({ ...p, city: '', streetName: '', houseNumber: '' })); }}
-                      />
-                    </div>
-                  )}
-
-                  {step === 3 && (
-                    <div className="space-y-4">
-                      <h3 className="font-semibold text-slate-800 text-base mb-1">Box Selection</h3>
-                      <p className="text-sm text-slate-500 -mt-2">Select at least one box to continue.</p>
-                      <div className="space-y-3">
-                        {BOX_TYPES.map((bt) => {
-                          const count = boxCounts[bt.id];
-                          const BtIcon = bt.icon;
-                          return (
-                            <div key={bt.id} className={`flex items-center gap-4 p-4 rounded-xl border-2 transition-all ${count > 0 ? 'border-indigo-400 bg-indigo-50' : 'border-slate-200 bg-white'}`}>
-                              <div className={`w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 ${count > 0 ? 'bg-indigo-100' : 'bg-slate-100'}`}>
-                                <BtIcon className={`w-6 h-6 ${count > 0 ? 'text-indigo-600' : 'text-slate-400'}`} />
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <p className="font-semibold text-slate-800 text-sm">{bt.label}</p>
-                                <p className="text-xs text-slate-500">{bt.sub}</p>
-                              </div>
-                              <div className="flex items-center gap-2 flex-shrink-0">
-                                <button type="button" onClick={() => changeBoxCount(bt.id, -1)} disabled={count === 0}
-                                  className="w-8 h-8 rounded-full bg-indigo-600 text-white flex items-center justify-center disabled:opacity-30 hover:bg-indigo-700 transition">
-                                  <Minus className="w-3.5 h-3.5" />
-                                </button>
-                                <span className="w-7 text-center font-bold text-slate-800 text-base">{count}</span>
-                                <button type="button" onClick={() => changeBoxCount(bt.id, 1)}
-                                  className="w-8 h-8 rounded-full bg-indigo-600 text-white flex items-center justify-center hover:bg-indigo-700 transition">
-                                  <Plus className="w-3.5 h-3.5" />
-                                </button>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                      {(boxCounts.large + boxCounts.small) > 0 && (
-                        <p className="text-sm font-medium text-indigo-700 bg-indigo-50 px-3 py-2 rounded-lg">
-                          Total: {boxCounts.large + boxCounts.small} boxes
-                          {boxCounts.large > 0 && ` · ${boxCounts.large} Large`}
-                          {boxCounts.small > 0 && ` · ${boxCounts.small} Small`}
-                        </p>
-                      )}
-                    </div>
-                  )}
-
-                  {step === 4 && (
-                    <div className="space-y-4">
-                      <h3 className="font-semibold text-slate-800 text-base mb-1">Notes <span className="text-slate-400 font-normal text-sm">(optional)</span></h3>
-                      <Field label="Order notes">
-                        <textarea
-                          name="orderNotes"
-                          value={emptyBoxForm.orderNotes}
-                          onChange={handleEmptyChange}
-                          rows={4}
-                          placeholder="Delivery notes, special instructions..."
-                          className={inputCls + ' resize-none'}
-                        />
-                      </Field>
-                    </div>
-                  )}
-
-                  {step === 5 && (
-                    <div className="space-y-4">
-                      <h3 className="font-semibold text-slate-800 text-base mb-1">Order Summary</h3>
-                      <div className="space-y-3">
-                        <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
-                          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Customer Details</p>
-                          <SummaryRow label="Name" value={[emptyBoxForm.firstName, emptyBoxForm.lastName].filter(Boolean).join(' ')} />
-                          <SummaryRow label="Phone" value={emptyBoxForm.phone} />
-                        </div>
-                        <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
-                          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Delivery Address</p>
-                          <SummaryRow label="Address" value={emptyBoxAddress?.displayAddress} />
-                          {emptyBoxForm.apartment && <SummaryRow label="Apt" value={emptyBoxForm.apartment} />}
-                          {emptyBoxForm.floor && <SummaryRow label="Floor" value={emptyBoxForm.floor} />}
-                        </div>
-                        <div className="p-4 rounded-xl bg-indigo-50 border border-indigo-200 space-y-2">
-                          <p className="text-xs font-semibold text-indigo-600 uppercase tracking-wide mb-2">Boxes</p>
-                          {boxCounts.large > 0 && <SummaryRow label="ISA-BOX-70 (Large)" value={String(boxCounts.large)} />}
-                          {boxCounts.small > 0 && <SummaryRow label="ISA-BOX-35 (Small)" value={String(boxCounts.small)} />}
-                          <SummaryRow label="Total" value={String(boxCounts.large + boxCounts.small)} />
-                        </div>
-                        {emptyBoxForm.orderNotes && (
-                          <div className="p-4 rounded-xl bg-slate-50 border border-slate-200">
-                            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Notes</p>
-                            <p className="text-sm text-slate-700">{emptyBoxForm.orderNotes}</p>
-                          </div>
-                        )}
-                        <MissionCheckbox checked={createMission} onChange={setCreateMission} missionType="ready_for_box" />
-                      </div>
-                    </div>
-                  )}
-                </>
-              )}
-
-              {/* ── Pickup steps ── */}
-              {orderType === 'pickup' && (
+              {/* ── Steps (shared for both pickup and empty_box) ── */}
+              {orderType && (
                 <>
                   {step === 1 && (
                     <div className="space-y-4">
@@ -626,20 +454,20 @@ export default function CreateOrderModal({ isOpen, onClose, onCreated }) {
               )}
 
               {error && <p className="text-red-500 text-sm mt-3">{error}</p>}
-            </div>
+            </div>}
         </div>
 
         {/* Footer */}
         <div className="flex gap-3 px-5 py-4 border-t flex-shrink-0 bg-white">
             <button
               type="button"
-              onClick={() => step > 1 ? setStep((s) => s - 1) : handleClose()}
+              onClick={() => !orderType ? handleClose() : step > 1 ? setStep((s) => s - 1) : setOrderType(null)}
               className="flex items-center gap-1 px-4 py-2.5 border border-slate-200 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors"
             >
               <ChevronLeft className="w-4 h-4" />
-              {step > 1 ? 'Back' : 'Cancel'}
+              {!orderType ? 'Cancel' : step > 1 ? 'Back' : 'Back'}
             </button>
-            {step < totalSteps ? (
+            {orderType && (step < totalSteps ? (
               <button
                 type="button"
                 disabled={!canProceed()}
@@ -653,13 +481,13 @@ export default function CreateOrderModal({ isOpen, onClose, onCreated }) {
               <button
                 type="button"
                 disabled={submitting}
-                onClick={orderType === 'pickup' ? submitPickup : submitEmptyBox}
+                onClick={submitPickup}
                 className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white rounded-xl text-sm font-semibold transition-colors"
               >
                 <CheckCircle className="w-4 h-4" />
                 {submitting ? 'Saving...' : 'Create Order'}
               </button>
-            )}
+            ))}
           </div>
         </div>
       </div>
@@ -671,13 +499,11 @@ export default function CreateOrderModal({ isOpen, onClose, onCreated }) {
         onSelect={(addr) => {
           if (addressMapOpenFor === 'sender') handlePickupAddressSelect(addr, 'sender');
           else if (addressMapOpenFor === 'receiver') handlePickupAddressSelect(addr, 'receiver');
-          else if (addressMapOpenFor === 'empty_box') handleEmptyBoxAddressSelect(addr);
           setAddressMapOpenFor(null);
         }}
         initialPosition={
           addressMapOpenFor === 'sender' && senderMapAddress?.lat != null ? [senderMapAddress.lat, senderMapAddress.lng] :
           addressMapOpenFor === 'receiver' && receiverMapAddress?.lat != null ? [receiverMapAddress.lat, receiverMapAddress.lng] :
-          addressMapOpenFor === 'empty_box' && emptyBoxAddress?.lat != null ? [emptyBoxAddress.lat, emptyBoxAddress.lng] :
           undefined
         }
       />

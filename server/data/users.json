@@ -1,0 +1,19 @@
+[
+  {
+    "id": "USR-1772846684132",
+    "fullName": "123",
+    "phone": "123",
+    "address": {
+      "displayAddress": "David Yellin St 11, Tel Aviv-Yafo, Israel",
+      "lat": 32.08848375019519,
+      "lng": 34.78510448150635,
+      "city": "Tel Aviv-Yafo",
+      "street": "David Yellin Street",
+      "houseNumber": "11",
+      "apartment": "",
+      "floor": ""
+    },
+    "notes": "",
+    "createdAt": "2026-03-07T01:24:44.132Z"
+  }
+]
