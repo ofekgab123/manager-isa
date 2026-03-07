@@ -1,10 +1,10 @@
 export async function geocodeAddress({ city, street, houseNumber }) {
-  const parts = [street, houseNumber, city, 'Israel'].filter(Boolean);
+  const parts = [street, houseNumber, city].filter(Boolean);
   const query = parts.join(', ');
   if (!query.trim()) return null;
   try {
     const res = await fetch(
-      `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&countrycodes=il&limit=1`,
+      `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1`,
       {
         headers: {
           'Accept-Language': 'he,en',

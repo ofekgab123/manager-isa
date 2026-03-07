@@ -14,7 +14,7 @@ export default function AddressSearch({ value, onChange, onClear, placeholder = 
     setResults([]);
     try {
       const res = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query.trim())}&countrycodes=il&addressdetails=1&limit=8`,
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query.trim())}&addressdetails=1&limit=8`,
         { headers: { 'Accept-Language': 'he,en', 'User-Agent': 'ISA-Express-Address-Search/1.0' } }
       );
       const data = await res.json();

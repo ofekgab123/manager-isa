@@ -319,7 +319,7 @@ export default function AddressPicker({ isOpen, onClose, onSelect, initialPositi
             <Autocomplete
               onLoad={(ac) => { autocompleteRef.current = ac; }}
               onPlaceChanged={onPlaceChanged}
-              options={{ componentRestrictions: { country: 'il' } }}
+              options={{}}
             >
               <input
                 type="text"
