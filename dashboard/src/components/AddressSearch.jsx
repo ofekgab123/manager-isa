@@ -1,6 +1,8 @@
 import { useState, useCallback } from 'react';
 import { Search, MapPin, X } from 'lucide-react';
 
+const GOOGLE_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+
 export default function AddressSearch({ value, onChange, onClear, placeholder = 'Search address (street, city)' }) {
   const [query, setQuery] = useState('');
   const [searching, setSearching] = useState(false);
@@ -14,11 +16,14 @@ export default function AddressSearch({ value, onChange, onClear, placeholder = 
     setResults([]);
     try {
       const res = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query.trim())}&addressdetails=1&limit=8`,
-        { headers: { 'Accept-Language': 'he,en', 'User-Agent': 'ISA-Express-Address-Search/1.0' } }
+        `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(query.trim())}&key=${GOOGLE_API_KEY}`
       );
       const data = await res.json();
-      setResults(Array.isArray(data) ? data : []);
+      if (data.status === 'OK' && Array.isArray(data.results)) {
+        setResults(data.results.slice(0, 8));
+      } else {
+        setResults([]);
+      }
     } catch {
       setError('Search error');
     } finally {
@@ -26,15 +31,24 @@ export default function AddressSearch({ value, onChange, onClear, placeholder = 
     }
   }, [query]);
 
+  const parseComponents = (components = []) => {
+    const get = (type) => components.find((c) => c.types.includes(type))?.long_name || '';
+    return {
+      city: get('locality') || get('administrative_area_level_2') || get('administrative_area_level_1') || '',
+      street: get('route') || '',
+      houseNumber: get('street_number') || '',
+    };
+  };
+
   const selectResult = (item) => {
-    const addr = item.address || {};
+    const { city, street, houseNumber } = parseComponents(item.address_components);
     onChange({
-      displayAddress: item.display_name,
-      lat: parseFloat(item.lat),
-      lng: parseFloat(item.lon),
-      city: addr.city || addr.town || addr.village || addr.municipality || '',
-      street: addr.road || addr.street || addr.pedestrian || '',
-      houseNumber: addr.house_number || '',
+      displayAddress: item.formatted_address,
+      lat: item.geometry.location.lat,
+      lng: item.geometry.location.lng,
+      city,
+      street,
+      houseNumber,
     });
     setQuery('');
     setResults([]);
@@ -79,14 +93,14 @@ export default function AddressSearch({ value, onChange, onClear, placeholder = 
       {error && <p className="text-red-500 text-sm">{error}</p>}
       {results.length > 0 && !value && (
         <ul className="border rounded-lg shadow-lg bg-white max-h-48 overflow-y-auto">
-          {results.map((item) => (
+          {results.map((item, i) => (
             <li
-              key={item.place_id}
+              key={i}
               onClick={() => selectResult(item)}
               className="px-4 py-2.5 cursor-pointer text-sm hover:bg-slate-50 border-b last:border-0 flex items-center gap-2"
             >
               <MapPin className="w-4 h-4 text-slate-400 shrink-0" />
-              {item.display_name}
+              {item.formatted_address}
             </li>
           ))}
         </ul>
