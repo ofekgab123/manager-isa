@@ -166,14 +166,26 @@ export default function App() {
   const [filterPickupAddr, setFilterPickupAddr] = useState('');
   const [filterDeliveryAddr, setFilterDeliveryAddr] = useState('');
   const [filterDateFrom, setFilterDateFrom] = useState('');
-  const [filterDateTo, setFilterDateTo] = useState('');
   const [filterBoxType, setFilterBoxType] = useState('');
   const [filterAffiliate, setFilterAffiliate] = useState('');
 
   const [visibleColumns, setVisibleColumns] = useState({
     type: true, status: true, sender: true, pickupAddr: true,
     receiver: true, deliveryAddr: true, boxes: true, source: true, date: true, affiliate: true,
+    senderPhone: true, receiverPhone: true, missingInfo: true,
   });
+  const [sectionVisible, setSectionVisible] = useState({ sender: true, receiver: true });
+  const toggleSection = (key) => {
+    setSectionVisible((p) => {
+      const newVal = !p[key];
+      if (key === 'sender') {
+        setVisibleColumns((vc) => ({ ...vc, sender: newVal, senderPhone: newVal, pickupAddr: newVal }));
+      } else if (key === 'receiver') {
+        setVisibleColumns((vc) => ({ ...vc, receiver: newVal, receiverPhone: newVal, deliveryAddr: newVal, missingInfo: newVal }));
+      }
+      return { ...p, [key]: newVal };
+    });
+  };
   const toggleColumn = (key) => setVisibleColumns((p) => ({ ...p, [key]: !p[key] }));
 
   const [showFilters, setShowFilters] = useState(false);
@@ -182,7 +194,7 @@ export default function App() {
   const [showCreateMission, setShowCreateMission] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
 
-  const activeFilterCount = [filterType, filterStatus, filterCreatedBy, filterMissingAddress, filterName, filterPhone, filterReceiverName, filterReceiverPhone, filterPickupAddr, filterDeliveryAddr, filterDateFrom, filterDateTo, filterBoxType, filterAffiliate].filter(Boolean).length;
+  const activeFilterCount = [filterType, filterStatus, filterCreatedBy, filterMissingAddress, filterName, filterPhone, filterReceiverName, filterReceiverPhone, filterPickupAddr, filterDeliveryAddr, filterDateFrom, filterBoxType, filterAffiliate].filter(Boolean).length;
 
   const filtered = missions.filter((m) => {
     if (filterType && m.type !== filterType) return false;
@@ -197,7 +209,6 @@ export default function App() {
     if (filterPickupAddr && !(m.address?.displayAddress || '').toLowerCase().includes(filterPickupAddr.toLowerCase())) return false;
     if (filterDeliveryAddr && !(m.receiverAddress?.displayAddress || '').toLowerCase().includes(filterDeliveryAddr.toLowerCase())) return false;
     if (filterDateFrom && m.createdAt && new Date(m.createdAt) < new Date(filterDateFrom)) return false;
-    if (filterDateTo && m.createdAt && new Date(m.createdAt) > new Date(filterDateTo + 'T23:59:59')) return false;
     if (filterBoxType === 'large' && !(m.boxSelection?.large > 0)) return false;
     if (filterBoxType === 'small' && !(m.boxSelection?.small > 0)) return false;
     if (filterAffiliate && m.affiliateName !== filterAffiliate) return false;
@@ -208,7 +219,7 @@ export default function App() {
     setFilterType(''); setFilterStatus(''); setFilterCreatedBy(''); setFilterMissingAddress('');
     setFilterName(''); setFilterPhone(''); setFilterReceiverName(''); setFilterReceiverPhone('');
     setFilterPickupAddr(''); setFilterDeliveryAddr('');
-    setFilterDateFrom(''); setFilterDateTo(''); setFilterBoxType(''); setFilterAffiliate('');
+    setFilterDateFrom(''); setFilterBoxType(''); setFilterAffiliate('');
   };
 
   const handleDelete = async (id) => {
@@ -380,47 +391,71 @@ export default function App() {
                 <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm space-y-4">
                   {/* Row 1: Sender */}
                   <div>
-                    <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2">Sender</p>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-                      <div>
-                        <ColLabel label="Sender name" colKey="sender" vis={visibleColumns} toggle={toggleColumn} />
-                        <input type="text" value={filterName} onChange={(e) => setFilterName(e.target.value)} placeholder="Name..." className="w-full px-2.5 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+                    <label className="flex items-center gap-2 cursor-pointer select-none mb-2 w-fit">
+                      <input
+                        type="checkbox"
+                        checked={sectionVisible.sender}
+                        onChange={() => toggleSection('sender')}
+                        className="w-3.5 h-3.5 accent-indigo-600 cursor-pointer"
+                      />
+                      <span className={`text-[11px] font-semibold uppercase tracking-wider ${sectionVisible.sender ? 'text-slate-400' : 'text-slate-300 line-through'}`}>
+                        Sender
+                      </span>
+                    </label>
+                    {sectionVisible.sender && (
+                      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                        <div>
+                          <ColLabel label="Sender name" colKey="sender" vis={visibleColumns} toggle={toggleColumn} />
+                          <input type="text" value={filterName} onChange={(e) => setFilterName(e.target.value)} placeholder="Name..." className="w-full px-2.5 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+                        </div>
+                        <div>
+                          <ColLabel label="Sender phone" colKey="senderPhone" vis={visibleColumns} toggle={toggleColumn} />
+                          <input type="text" value={filterPhone} onChange={(e) => setFilterPhone(e.target.value)} placeholder="050..." className="w-full px-2.5 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+                        </div>
+                        <div>
+                          <ColLabel label="Pickup address" colKey="pickupAddr" vis={visibleColumns} toggle={toggleColumn} />
+                          <input type="text" value={filterPickupAddr} onChange={(e) => setFilterPickupAddr(e.target.value)} placeholder="Street / city..." className="w-full px-2.5 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+                        </div>
                       </div>
-                      <div>
-                        <label className="block text-xs font-medium text-slate-500 mb-1">Sender phone</label>
-                        <input type="text" value={filterPhone} onChange={(e) => setFilterPhone(e.target.value)} placeholder="050..." className="w-full px-2.5 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
-                      </div>
-                      <div>
-                        <ColLabel label="Pickup address" colKey="pickupAddr" vis={visibleColumns} toggle={toggleColumn} />
-                        <input type="text" value={filterPickupAddr} onChange={(e) => setFilterPickupAddr(e.target.value)} placeholder="Street / city..." className="w-full px-2.5 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
-                      </div>
-                    </div>
+                    )}
                   </div>
                   {/* Row 2: Receiver */}
                   <div>
-                    <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2">Receiver (pickup only)</p>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-                      <div>
-                        <ColLabel label="Receiver name" colKey="receiver" vis={visibleColumns} toggle={toggleColumn} />
-                        <input type="text" value={filterReceiverName} onChange={(e) => setFilterReceiverName(e.target.value)} placeholder="Name..." className="w-full px-2.5 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+                    <label className="flex items-center gap-2 cursor-pointer select-none mb-2 w-fit">
+                      <input
+                        type="checkbox"
+                        checked={sectionVisible.receiver}
+                        onChange={() => toggleSection('receiver')}
+                        className="w-3.5 h-3.5 accent-indigo-600 cursor-pointer"
+                      />
+                      <span className={`text-[11px] font-semibold uppercase tracking-wider ${sectionVisible.receiver ? 'text-slate-400' : 'text-slate-300 line-through'}`}>
+                        Receiver (pickup only)
+                      </span>
+                    </label>
+                    {sectionVisible.receiver && (
+                      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                        <div>
+                          <ColLabel label="Receiver name" colKey="receiver" vis={visibleColumns} toggle={toggleColumn} />
+                          <input type="text" value={filterReceiverName} onChange={(e) => setFilterReceiverName(e.target.value)} placeholder="Name..." className="w-full px-2.5 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+                        </div>
+                        <div>
+                          <ColLabel label="Receiver phone" colKey="receiverPhone" vis={visibleColumns} toggle={toggleColumn} />
+                          <input type="text" value={filterReceiverPhone} onChange={(e) => setFilterReceiverPhone(e.target.value)} placeholder="050..." className="w-full px-2.5 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+                        </div>
+                        <div>
+                          <ColLabel label="Delivery address" colKey="deliveryAddr" vis={visibleColumns} toggle={toggleColumn} />
+                          <input type="text" value={filterDeliveryAddr} onChange={(e) => setFilterDeliveryAddr(e.target.value)} placeholder="Street / city..." className="w-full px-2.5 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+                        </div>
+                        <div>
+                          <ColLabel label="Missing info" colKey="missingInfo" vis={visibleColumns} toggle={toggleColumn} />
+                          <select value={filterMissingAddress} onChange={(e) => setFilterMissingAddress(e.target.value)} className="w-full px-2.5 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300">
+                            <option value="">All</option>
+                            <option value="yes">Missing address</option>
+                            <option value="no">Has address</option>
+                          </select>
+                        </div>
                       </div>
-                      <div>
-                        <label className="block text-xs font-medium text-slate-500 mb-1">Receiver phone</label>
-                        <input type="text" value={filterReceiverPhone} onChange={(e) => setFilterReceiverPhone(e.target.value)} placeholder="050..." className="w-full px-2.5 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
-                      </div>
-                      <div>
-                        <ColLabel label="Delivery address" colKey="deliveryAddr" vis={visibleColumns} toggle={toggleColumn} />
-                        <input type="text" value={filterDeliveryAddr} onChange={(e) => setFilterDeliveryAddr(e.target.value)} placeholder="Street / city..." className="w-full px-2.5 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-slate-500 mb-1">Missing info</label>
-                        <select value={filterMissingAddress} onChange={(e) => setFilterMissingAddress(e.target.value)} className="w-full px-2.5 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300">
-                          <option value="">All</option>
-                          <option value="yes">Missing address</option>
-                          <option value="no">Has address</option>
-                        </select>
-                      </div>
-                    </div>
+                    )}
                   </div>
                   {/* Row 3: Mission */}
                   <div>
@@ -467,10 +502,6 @@ export default function App() {
                       <div>
                         <ColLabel label="From date" colKey="date" vis={visibleColumns} toggle={toggleColumn} />
                         <input type="date" value={filterDateFrom} onChange={(e) => setFilterDateFrom(e.target.value)} className="w-full px-2.5 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-slate-500 mb-1">To date</label>
-                        <input type="date" value={filterDateTo} onChange={(e) => setFilterDateTo(e.target.value)} className="w-full px-2.5 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
                       </div>
                     </div>
                   </div>

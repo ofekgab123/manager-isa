@@ -268,6 +268,18 @@ export default function MissionDetails({ mission, onSave, onClose, onDelete }) {
 
       {/* Box selection */}
       <div className="p-4 rounded-xl bg-blue-50 border border-blue-200 space-y-3">
+        {isPickup && (
+          <div>
+            <label className="block text-xs font-medium text-slate-500 mb-1">Boxes to collect from customer</label>
+            <input
+              type="number" min="0"
+              value={edit.pickupBoxCount ?? ''}
+              onChange={(e) => setEdit((p) => ({ ...p, pickupBoxCount: parseInt(e.target.value) || 0 }))}
+              placeholder="0"
+              className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+            />
+          </div>
+        )}
         <div className="flex items-center justify-between">
           <h4 className="font-semibold text-blue-800 text-sm">Box types</h4>
           {isPickup && (
