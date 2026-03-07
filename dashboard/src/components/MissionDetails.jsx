@@ -124,7 +124,7 @@ function AddressBlock({ addr, onChange, title = 'Address', missing = false }) {
 }
 
 export default function MissionDetails({ mission, onSave, onClose, onDelete }) {
-  const [edit, setEdit] = useState({ ...mission });
+  const [edit, setEdit] = useState({ ...mission, bringBoxes: mission.bringBoxes === true });
   const [saving, setSaving]   = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);

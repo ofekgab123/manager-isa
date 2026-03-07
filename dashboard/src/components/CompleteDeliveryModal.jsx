@@ -97,7 +97,7 @@ export default function CompleteDeliveryModal({ isOpen, mission, onClose, onSave
     1;
 
   const [pickupBoxCount, setPickupBoxCount] = useState(initialBoxCount);
-  const [bringBoxes, setBringBoxes] = useState(mission.bringBoxes !== false);
+  const [bringBoxes, setBringBoxes] = useState(mission.bringBoxes === true);
   const [boxSelection, setBoxSelection] = useState(
     mission.boxSelection ?? { large: 0, small: 0 }
   );
