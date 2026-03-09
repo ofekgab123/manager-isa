@@ -16,10 +16,13 @@ import {
   MapPin,
   Tag,
   BarChart2,
+  Info,
 } from 'lucide-react';
 import CreateMissionModal from './components/CreateMissionModal';
+import EmptyBoxMissionPickerModal from './components/EmptyBoxMissionPickerModal';
 import MissionDetails from './components/MissionDetails';
 import CompleteDeliveryModal from './components/CompleteDeliveryModal';
+import MissionPreviewModal from './components/MissionPreviewModal';
 import AffiliatesPanel from './components/AffiliatesPanel';
 import UsersPanel from './components/UsersPanel';
 import StatisticsPanel from './components/StatisticsPanel';
@@ -192,6 +195,9 @@ export default function App() {
 
   const [showFilters, setShowFilters] = useState(false);
   const [editingMission, setEditingMission] = useState(null);
+  const [previewMission, setPreviewMission] = useState(null);
+  const [previewMissionSecondary, setPreviewMissionSecondary] = useState(null);
+  const [linkingMission, setLinkingMission] = useState(null);
   const [completingMission, setCompletingMission] = useState(null);
   const [showCreateMission, setShowCreateMission] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
@@ -694,6 +700,13 @@ export default function App() {
                             )}
                             <td className="px-4 py-3">
                               <div className="flex items-center gap-1">
+                                <button
+                                  onClick={() => setPreviewMission(mission)}
+                                  className="p-1.5 rounded-lg hover:bg-indigo-50 text-slate-400 hover:text-indigo-600 transition-colors"
+                                  title="Mission preview"
+                                >
+                                  <Info className="w-4 h-4" />
+                                </button>
                                 {mission.type === 'pickup' && (
                                   <button
                                     onClick={() => setCompletingMission(mission)}
@@ -758,6 +771,7 @@ export default function App() {
                 onSave={() => { refetch(); refetchStats(); setEditingMission(null); }}
                 onClose={() => setEditingMission(null)}
                 onDelete={() => { refetch(); refetchStats(); setEditingMission(null); }}
+                onOpenPreview={setPreviewMission}
               />
             </div>
           </div>
@@ -768,6 +782,60 @@ export default function App() {
         isOpen={showCreateMission}
         onClose={() => setShowCreateMission(false)}
         onCreated={() => { refetch(); refetchStats(); setShowCreateMission(false); }}
+      />
+
+      {(previewMission || previewMissionSecondary) && (
+        <div
+          className="fixed inset-0 z-50 flex items-start justify-center gap-4 p-4 bg-black/50 overflow-y-auto"
+          onClick={() => { setPreviewMission(null); setPreviewMissionSecondary(null); }}
+        >
+          <div className="flex items-start justify-center gap-4 flex-wrap my-6" onClick={(e) => e.stopPropagation()}>
+            {previewMission && (
+              <MissionPreviewModal
+                mission={previewMission}
+                onClose={() => setPreviewMission(null)}
+                onOpenLinkedPreview={setPreviewMissionSecondary}
+                onRequestLinkEmptyBox={setLinkingMission}
+                embedded
+                compact={!!previewMissionSecondary}
+              />
+            )}
+            {previewMissionSecondary && (
+              <MissionPreviewModal
+                mission={previewMissionSecondary}
+                onClose={() => setPreviewMissionSecondary(null)}
+                onOpenLinkedPreview={setPreviewMissionSecondary}
+                onRequestLinkEmptyBox={setLinkingMission}
+                embedded
+                compact
+              />
+            )}
+          </div>
+        </div>
+      )}
+
+      <EmptyBoxMissionPickerModal
+        isOpen={!!linkingMission}
+        onClose={() => setLinkingMission(null)}
+        onSelect={async (m) => {
+          if (!linkingMission) return;
+          try {
+            const res = await fetch(`${API_BASE}/missions/${linkingMission.id}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ linkedEmptyBoxMissionId: m?.id || null }),
+            });
+            if (res.ok) {
+              const updated = await res.json();
+              if (previewMission && previewMission.id === linkingMission.id) setPreviewMission(updated);
+              if (previewMissionSecondary && previewMissionSecondary.id === linkingMission.id) setPreviewMissionSecondary(updated);
+              if (editingMission && editingMission.id === linkingMission.id) setEditingMission(updated);
+              refetch();
+              refetchStats();
+            }
+          } catch {}
+          setLinkingMission(null);
+        }}
       />
 
       {completingMission && (

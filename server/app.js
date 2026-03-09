@@ -257,7 +257,7 @@ app.get('/api/missions/stats', async (req, res) => {
 app.get('/api/missions', async (req, res) => {
   try {
     const missions = await readMissions();
-    const { status, type, createdBy, customerPhone, affiliate } = req.query;
+    const { status, type, createdBy, customerPhone, affiliate, linkedEmptyBoxMissionId } = req.query;
     let filtered = missions;
     if (status) filtered = filtered.filter((m) => m.status === status);
     if (type) filtered = filtered.filter((m) => m.type === type);
@@ -267,6 +267,7 @@ app.get('/api/missions', async (req, res) => {
       filtered = filtered.filter((m) => (m.customerPhone || '').replace(/\D/g, '') === phone);
     }
     if (affiliate) filtered = filtered.filter((m) => m.affiliateName === affiliate);
+    if (linkedEmptyBoxMissionId) filtered = filtered.filter((m) => m.linkedEmptyBoxMissionId === linkedEmptyBoxMissionId);
     res.json(filtered);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -307,9 +308,11 @@ app.post('/api/missions', async (req, res) => {
       boxSelection: body.boxSelection || { large: 0, small: 0 },
       bringBoxes: body.bringBoxes !== undefined ? body.bringBoxes : null,
       pickupBoxCount: body.pickupBoxCount ?? null,
+      pickupBoxWeights: Array.isArray(body.pickupBoxWeights) ? body.pickupBoxWeights : null,
       notes: body.notes || body.orderNotes || null,
       affiliateName: body.affiliateName || null,
       discountAmount: body.discountAmount || null,
+      linkedEmptyBoxMissionId: body.linkedEmptyBoxMissionId || null,
     };
     missions.unshift(newMission);
     await writeMissions(missions);

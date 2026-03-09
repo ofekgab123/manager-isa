@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
-import { MapPin, User, Save, Trash2, AlertTriangle, Copy, Video, Image, X, Tag } from 'lucide-react';
+import { MapPin, User, Save, Trash2, AlertTriangle, Copy, Video, Image, X, Tag, Link2, Info } from 'lucide-react';
 import AddressPicker from './AddressPicker';
 import PhoneInput from './PhoneInput';
 import { API_BASE } from '../config';
+import EmptyBoxMissionPickerModal from './EmptyBoxMissionPickerModal';
 
 const TYPE_OPTIONS = [
   { value: 'pickup',    label: 'Pickup Box' },
@@ -304,13 +305,38 @@ function AffiliatePickerModal({ isOpen, onClose, onSelect }) {
   );
 }
 
-export default function MissionDetails({ mission, onSave, onClose, onDelete }) {
+export default function MissionDetails({ mission, onSave, onClose, onDelete, onOpenPreview }) {
   const [edit, setEdit] = useState({ ...mission, bringBoxes: mission.bringBoxes === true });
   const [saving, setSaving]   = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [error, setError] = useState('');
   const [affiliatePickerOpen, setAffiliatePickerOpen] = useState(false);
+  const [emptyBoxMissionPickerOpen, setEmptyBoxMissionPickerOpen] = useState(false);
+  const [linkedEmptyBoxMission, setLinkedEmptyBoxMission] = useState(null);
+  const [linkedPickups, setLinkedPickups] = useState([]);
+
+  useEffect(() => {
+    if (edit.linkedEmptyBoxMissionId) {
+      fetch(`${API_BASE}/missions/${edit.linkedEmptyBoxMissionId}`)
+        .then((r) => r.ok ? r.json() : null)
+        .then(setLinkedEmptyBoxMission)
+        .catch(() => setLinkedEmptyBoxMission(null));
+    } else {
+      setLinkedEmptyBoxMission(null);
+    }
+  }, [edit.linkedEmptyBoxMissionId]);
+
+  useEffect(() => {
+    if (edit.type === 'empty_box' && edit.id) {
+      fetch(`${API_BASE}/missions?type=pickup&linkedEmptyBoxMissionId=${encodeURIComponent(edit.id)}`)
+        .then((r) => r.ok ? r.json() : [])
+        .then((data) => setLinkedPickups(Array.isArray(data) ? data : []))
+        .catch(() => setLinkedPickups([]));
+    } else {
+      setLinkedPickups([]);
+    }
+  }, [edit.type, edit.id]);
 
   const isPickup = edit.type === 'pickup';
   const missingAddress = isPickup
@@ -414,6 +440,87 @@ export default function MissionDetails({ mission, onSave, onClose, onDelete }) {
         </div>
       </div>
 
+      {/* Linked pickup missions — empty box only */}
+      {!isPickup && linkedPickups.length > 0 && (
+        <div className="p-4 rounded-xl border-2 border-dashed border-indigo-200 bg-indigo-50/30 space-y-2">
+          <label className="block text-sm font-medium text-slate-700">Linked Pickup Missions</label>
+          <p className="text-xs text-slate-500">Pickup missions that reference this empty box delivery</p>
+          <div className="space-y-2 mt-2">
+            {linkedPickups.map((p) => (
+              <div key={p.id} className="p-3 rounded-xl bg-white border border-slate-200 flex items-center gap-3">
+                <Link2 className="w-5 h-5 text-indigo-600 shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-slate-800 truncate">{p.fullName || '—'}</p>
+                  <p className="text-xs text-slate-500 truncate">{p.address && p.address.displayAddress}</p>
+                  <p className="text-xs font-mono text-indigo-600">{p.id}</p>
+                </div>
+                {onOpenPreview && (
+                  <button
+                    type="button"
+                    onClick={() => onOpenPreview(p)}
+                    className="p-2 hover:bg-indigo-100 rounded-lg text-indigo-600 transition-colors"
+                    title="Preview"
+                  >
+                    <Info className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Link to empty box — pickup only */}
+      {isPickup && (
+        <div className="p-4 rounded-xl border-2 border-dashed border-indigo-200 bg-indigo-50/30 space-y-2">
+          <label className="block text-sm font-medium text-slate-700">Link to Empty Box Mission</label>
+          <p className="text-xs text-slate-500">Associate this pickup with the empty box delivery</p>
+          <button
+            type="button"
+            onClick={() => setEmptyBoxMissionPickerOpen(true)}
+            className={`w-full flex items-center gap-3 p-3 rounded-xl border-2 transition-all text-left ${
+              linkedEmptyBoxMission || edit.linkedEmptyBoxMissionId
+                ? 'border-indigo-400 bg-indigo-100'
+                : 'border-slate-200 bg-white hover:border-indigo-300 hover:bg-indigo-50/50'
+            }`}
+          >
+            <Link2 className="w-5 h-5 text-indigo-600 shrink-0" />
+            {linkedEmptyBoxMission ? (
+              <div className="flex-1 min-w-0 flex items-center gap-2">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-slate-800 truncate">{linkedEmptyBoxMission.fullName}</p>
+                  <p className="text-xs text-slate-500 truncate">{linkedEmptyBoxMission.address && linkedEmptyBoxMission.address.displayAddress}</p>
+                  <p className="text-xs font-mono text-indigo-600">{linkedEmptyBoxMission.id}</p>
+                </div>
+                {onOpenPreview && (
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); onOpenPreview(linkedEmptyBoxMission); }}
+                    className="p-2 hover:bg-indigo-100 rounded-lg text-indigo-600 transition-colors shrink-0"
+                    title="Preview"
+                  >
+                    <Info className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+            ) : edit.linkedEmptyBoxMissionId ? (
+              <span className="text-sm text-slate-600 font-mono">{edit.linkedEmptyBoxMissionId}</span>
+            ) : (
+              <span className="text-sm text-slate-500">Select empty box mission…</span>
+            )}
+            {(linkedEmptyBoxMission || edit.linkedEmptyBoxMissionId) && (
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); setEdit((p) => ({ ...p, linkedEmptyBoxMissionId: null })); setLinkedEmptyBoxMission(null); }}
+                className="text-xs text-red-500 hover:underline"
+              >
+                Remove
+              </button>
+            )}
+          </button>
+        </div>
+      )}
+
       {/* Pickup / sender address */}
       <AddressBlock
         title={isPickup ? 'Pickup Address' : 'Address'}
@@ -470,16 +577,21 @@ export default function MissionDetails({ mission, onSave, onClose, onDelete }) {
       {/* Box selection */}
       <div className="p-4 rounded-xl bg-blue-50 border border-blue-200 space-y-3">
         {isPickup && (
-          <div>
-            <label className="block text-xs font-medium text-slate-500 mb-1">Boxes to collect from customer</label>
-            <input
-              type="number" min="0"
-              value={edit.pickupBoxCount ?? ''}
-              onChange={(e) => setEdit((p) => ({ ...p, pickupBoxCount: parseInt(e.target.value) || 0 }))}
-              placeholder="0"
-              className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
-            />
-          </div>
+          <>
+            <div>
+              <label className="block text-xs font-medium text-slate-500 mb-1">Boxes to collect from customer</label>
+              <input
+                type="number" min="0"
+                value={edit.pickupBoxCount ?? ''}
+                onChange={(e) => {
+                  const count = parseInt(e.target.value) || 0;
+                  setEdit((p) => ({ ...p, pickupBoxCount: count }));
+                }}
+                placeholder="0"
+                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+              />
+            </div>
+          </>
         )}
         <div className="flex items-center justify-between">
           <h4 className="font-semibold text-blue-800 text-sm">Box types</h4>
@@ -637,6 +749,16 @@ export default function MissionDetails({ mission, onSave, onClose, onDelete }) {
         onSelect={(a) => {
           setEdit((p) => ({ ...p, affiliateName: a.name, discountAmount: a.discountAmount }));
           setAffiliatePickerOpen(false);
+        }}
+      />
+
+      <EmptyBoxMissionPickerModal
+        isOpen={emptyBoxMissionPickerOpen}
+        onClose={() => setEmptyBoxMissionPickerOpen(false)}
+        onSelect={(m) => {
+          setEdit((p) => ({ ...p, linkedEmptyBoxMissionId: m?.id || null }));
+          setLinkedEmptyBoxMission(m || null);
+          setEmptyBoxMissionPickerOpen(false);
         }}
       />
     </div>

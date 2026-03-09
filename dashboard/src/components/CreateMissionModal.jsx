@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
-import { X, Package, Truck, MapPin, User, Home, CheckCircle, ChevronRight, ChevronLeft, Box, Plus, Minus } from 'lucide-react';
+import { X, Package, Truck, MapPin, User, Home, CheckCircle, ChevronRight, ChevronLeft, Box, Plus, Minus, Link2 } from 'lucide-react';
 import AddressPicker from './AddressPicker';
 import PhoneInput from './PhoneInput';
 import { geocodeAddress } from '../utils/geocode';
 import { API_BASE } from '../config';
+import EmptyBoxMissionPickerModal from './EmptyBoxMissionPickerModal';
 
 const BOX_TYPES = [
   { id: 'large', label: 'ISA-BOX-70', sub: 'Large – 45×45×70 cm · up to 50 kg', icon: Box,     color: 'indigo' },
@@ -195,6 +196,10 @@ export default function CreateMissionModal({ isOpen, onClose, onCreated }) {
   const [error, setError] = useState('');
   const [mapOpen, setMapOpen] = useState(false);
 
+  /* ─── Link to empty box (pickup only) ─────────────────── */
+  const [linkedEmptyBoxMission, setLinkedEmptyBoxMission] = useState(null);
+  const [emptyBoxMissionPickerOpen, setEmptyBoxMissionPickerOpen] = useState(false);
+
   /* ─── Affiliate ──────────────────────────────────────── */
   const [viaAffiliate, setViaAffiliate] = useState(false);
   const [selectedAffiliate, setSelectedAffiliate] = useState(null);
@@ -347,6 +352,7 @@ export default function CreateMissionModal({ isOpen, onClose, onCreated }) {
           boxSelection: { large: boxCounts.large, small: boxCounts.small },
           bringBoxes: bringBoxes !== false,
           pickupBoxCount: missionType === 'pickup' ? (pickupBoxCount ?? 0) : null,
+          linkedEmptyBoxMissionId: missionType === 'pickup' && linkedEmptyBoxMission ? linkedEmptyBoxMission.id : null,
           createdBy: 'customer_service',
           affiliateName: viaAffiliate && selectedAffiliate ? selectedAffiliate.name : null,
           discountAmount: viaAffiliate && selectedAffiliate ? selectedAffiliate.discountAmount : null,
@@ -378,6 +384,7 @@ export default function CreateMissionModal({ isOpen, onClose, onCreated }) {
     setForm({ fullName: '', israeliPhone: '', senderCity: '', senderStreet: '', senderHouseNumber: '', senderApartment: '', senderFloor: '' });
     setMapAddress(null); setBoxCounts({ large: 0, small: 0 }); setBringBoxes(null);
     setPickupBoxCount(null); setPickupBoxCountInput('');
+    setLinkedEmptyBoxMission(null);
     setViaAffiliate(false); setSelectedAffiliate(null);
     onClose();
   };
@@ -436,6 +443,42 @@ export default function CreateMissionModal({ isOpen, onClose, onCreated }) {
 
                 {step === 1 && (
                   <div className="space-y-4" ref={suggestRef}>
+                    {missionType === 'pickup' && (
+                      <div className="p-4 rounded-xl border-2 border-dashed border-indigo-200 bg-indigo-50/50 space-y-2">
+                        <label className="block text-sm font-medium text-slate-700">Link to Empty Box Mission</label>
+                        <p className="text-xs text-slate-500">Optional — link this pickup to an existing empty box delivery to auto-fill details</p>
+                        <button
+                          type="button"
+                          onClick={() => setEmptyBoxMissionPickerOpen(true)}
+                          className={`w-full flex items-center gap-3 p-3 rounded-xl border-2 transition-all text-left ${
+                            linkedEmptyBoxMission
+                              ? 'border-indigo-400 bg-indigo-100'
+                              : 'border-slate-200 bg-white hover:border-indigo-300 hover:bg-indigo-50/50'
+                          }`}
+                        >
+                          <Link2 className="w-5 h-5 text-indigo-600 shrink-0" />
+                          {linkedEmptyBoxMission ? (
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-semibold text-slate-800 truncate">{linkedEmptyBoxMission.fullName}</p>
+                              <p className="text-xs text-slate-500 truncate">{linkedEmptyBoxMission.address?.displayAddress}</p>
+                              <p className="text-xs font-mono text-indigo-600">{linkedEmptyBoxMission.id}</p>
+                            </div>
+                          ) : (
+                            <span className="text-sm text-slate-500">Select empty box mission…</span>
+                          )}
+                          {linkedEmptyBoxMission && (
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); setLinkedEmptyBoxMission(null); }}
+                              className="text-xs text-red-500 hover:underline"
+                            >
+                              Remove
+                            </button>
+                          )}
+                        </button>
+                      </div>
+                    )}
+
                     <h3 className="font-semibold text-slate-800 text-base mb-1">Sender Details</h3>
 
                     {/* Phone with autocomplete */}
@@ -503,7 +546,8 @@ export default function CreateMissionModal({ isOpen, onClose, onCreated }) {
                           autoFocus
                         />
                       </>
-                    ) : missionType === 'pickup' && bringBoxes === null ? (
+                    ) : null}
+                    {missionType === 'pickup' && bringBoxes === null && pickupBoxCount !== null && (
                       <>
                         <h3 className="font-semibold text-slate-800 text-base mb-1">Boxes</h3>
                         <p className="text-sm text-slate-500 -mt-2">Does the customer need empty boxes delivered?</p>
@@ -528,7 +572,8 @@ export default function CreateMissionModal({ isOpen, onClose, onCreated }) {
                           </button>
                         </div>
                       </>
-                    ) : (
+                    )}
+                    {(missionType === 'empty_box' || (missionType === 'pickup' && bringBoxes === true)) && (
                       <>
                         <div className="flex items-center justify-between">
                           <h3 className="font-semibold text-slate-800 text-base">Box Selection</h3>
@@ -599,6 +644,13 @@ export default function CreateMissionModal({ isOpen, onClose, onCreated }) {
                         {boxCounts.large > 0 && <SummaryRow label="ISA-BOX-70 (Large)" value={String(boxCounts.large)} />}
                         {boxCounts.small > 0 && <SummaryRow label="ISA-BOX-35 (Small)" value={String(boxCounts.small)} />}
                         <SummaryRow label="Total" value={String(boxCounts.large + boxCounts.small)} />
+                      </div>
+                    )}
+                    {missionType === 'pickup' && linkedEmptyBoxMission && (
+                      <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
+                        <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Linked to Empty Box</p>
+                        <SummaryRow label="Mission" value={linkedEmptyBoxMission.id} />
+                        <SummaryRow label="Customer" value={linkedEmptyBoxMission.fullName} />
                       </div>
                     )}
                     {missionType === 'pickup' && (
@@ -697,6 +749,28 @@ export default function CreateMissionModal({ isOpen, onClose, onCreated }) {
         onClose={() => setMapOpen(false)}
         onSelect={(addr) => { handleAddressSelect(addr); setMapOpen(false); }}
         initialPosition={mapAddress?.lat != null ? [mapAddress.lat, mapAddress.lng] : undefined}
+      />
+
+      <EmptyBoxMissionPickerModal
+        isOpen={emptyBoxMissionPickerOpen}
+        onClose={() => setEmptyBoxMissionPickerOpen(false)}
+        onSelect={(m) => {
+          setLinkedEmptyBoxMission(m);
+          setEmptyBoxMissionPickerOpen(false);
+          if (m) {
+            setForm((p) => ({
+              ...p,
+              fullName: m.fullName || p.fullName,
+              israeliPhone: m.customerPhone || p.israeliPhone,
+              senderCity: m.address?.city || p.senderCity,
+              senderStreet: m.address?.street || p.senderStreet,
+              senderHouseNumber: m.address?.houseNumber || p.senderHouseNumber,
+              senderApartment: m.address?.apartment || p.senderApartment,
+              senderFloor: m.address?.floor || p.senderFloor,
+            }));
+            if (m.address?.lat) setMapAddress(m.address);
+          }
+        }}
       />
 
       <AffiliatePickerModal

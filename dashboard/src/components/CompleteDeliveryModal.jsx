@@ -1,7 +1,8 @@
-import { useState } from 'react';
-import { X, Plus, Trash2, MapPin, CheckCircle, Truck, Package, AlertTriangle, Copy } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { X, Plus, Trash2, MapPin, CheckCircle, Truck, Package, AlertTriangle, Copy, Link2 } from 'lucide-react';
 import AddressPicker from './AddressPicker';
 import PhoneInput from './PhoneInput';
+import EmptyBoxMissionPickerModal from './EmptyBoxMissionPickerModal';
 import { API_BASE } from '../config';
 
 /* ─── Single delivery row ────────────────────────────────────── */
@@ -97,11 +98,59 @@ function DeliveryRow({ row, idx, totalPickup, otherAssigned, onChange, onDelete,
           value={row.boxCount}
           onChange={(e) => {
             const val = Math.min(maxForRow, Math.max(1, parseInt(e.target.value) || 1));
-            onChange({ ...row, boxCount: val });
+            const prevWeights = row.boxWeights ?? [];
+            const prevIds = row.boxTrackingIds ?? [];
+            const boxWeights = Array.from({ length: val }, (_, i) => (prevWeights[i] !== undefined && prevWeights[i] !== '') ? prevWeights[i] : '');
+            const boxTrackingIds = Array.from({ length: val }, (_, i) => (prevIds[i] !== undefined && prevIds[i] !== '') ? prevIds[i] : '');
+            onChange({ ...row, boxCount: val, boxWeights, boxTrackingIds });
           }}
           className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200"
         />
       </div>
+      {(row.boxCount ?? 0) > 0 && (
+        <div className="space-y-3">
+          <div>
+            <label className="block text-xs font-medium text-slate-500 mb-1.5">Weight & Tracking ID per box</label>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {Array.from({ length: row.boxCount }, (_, i) => (
+                <div key={i} className="p-3 rounded-lg border border-slate-200 bg-slate-50/50 space-y-2">
+                  <label className="block text-[10px] text-slate-500 font-medium">Box {i + 1}</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <input
+                        type="number" min="0" step="0.1"
+                        value={(row.boxWeights ?? [])[i] ?? ''}
+                        onChange={(e) => {
+                          const next = [...(row.boxWeights ?? [])];
+                          next[i] = e.target.value;
+                          onChange({ ...row, boxWeights: next });
+                        }}
+                        placeholder="kg"
+                        className="w-full px-2 py-1.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                      />
+                      <span className="text-[10px] text-slate-400">Weight</span>
+                    </div>
+                    <div>
+                      <input
+                        type="text"
+                        value={(row.boxTrackingIds ?? [])[i] ?? ''}
+                        onChange={(e) => {
+                          const next = [...(row.boxTrackingIds ?? [])];
+                          next[i] = e.target.value;
+                          onChange({ ...row, boxTrackingIds: next });
+                        }}
+                        placeholder="Tracking ID"
+                        className="w-full px-2 py-1.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                      />
+                      <span className="text-[10px] text-slate-400">Tracking ID</span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -119,18 +168,54 @@ export default function CompleteDeliveryModal({ isOpen, mission, onClose, onSave
     mission.boxSelection ?? { large: 0, small: 0 }
   );
   const [deliveries, setDeliveries] = useState(() => {
-    if (mission.deliveries?.length) return mission.deliveries;
+    if (mission.deliveries?.length) {
+      return mission.deliveries.map((d) => {
+        const count = d.boxCount ?? 0;
+        const boxWeights = d.boxWeights && Array.isArray(d.boxWeights)
+          ? d.boxWeights.map(String)
+          : Array.from({ length: count }, () => '');
+        const boxTrackingIds = d.boxTrackingIds && Array.isArray(d.boxTrackingIds)
+          ? d.boxTrackingIds.map(String)
+          : Array.from({ length: count }, () => '');
+        return { ...d, boxWeights, boxTrackingIds };
+      });
+    }
+    const w = mission.pickupBoxWeights;
+    const initialWeights = Array.isArray(w) && w.length === initialBoxCount ? w.map(String) : Array.from({ length: initialBoxCount }, () => '');
+    const initialTrackingIds = Array.from({ length: initialBoxCount }, () => '');
     return [{
       id: `d-${Date.now()}`,
       receiverName:  mission.receiverName  || '',
       receiverPhone: mission.receiverPhone || '',
       address:       mission.receiverAddress || null,
       boxCount:      initialBoxCount,
+      boxWeights:    initialWeights,
+      boxTrackingIds: initialTrackingIds,
     }];
   });
 
   const [saving, setSaving] = useState(false);
   const [error, setError]   = useState('');
+  const [linkedEmptyBoxMissionId, setLinkedEmptyBoxMissionId] = useState(mission.linkedEmptyBoxMissionId ?? null);
+  const [linkedEmptyBoxMission, setLinkedEmptyBoxMission] = useState(null);
+  const [emptyBoxMissionPickerOpen, setEmptyBoxMissionPickerOpen] = useState(false);
+
+  useEffect(() => {
+    if (linkedEmptyBoxMissionId) {
+      fetch(`${API_BASE}/missions/${linkedEmptyBoxMissionId}`)
+        .then((r) => r.ok ? r.json() : null)
+        .then(setLinkedEmptyBoxMission)
+        .catch(() => setLinkedEmptyBoxMission(null));
+    } else {
+      setLinkedEmptyBoxMission(null);
+    }
+  }, [linkedEmptyBoxMissionId]);
+
+  useEffect(() => {
+    if (isOpen) {
+      setLinkedEmptyBoxMissionId(mission.linkedEmptyBoxMissionId ?? null);
+    }
+  }, [isOpen, mission.linkedEmptyBoxMissionId]);
 
   if (!isOpen) return null;
 
@@ -143,7 +228,10 @@ export default function CompleteDeliveryModal({ isOpen, mission, onClose, onSave
     const n = Math.max(1, val);
     setPickupBoxCount(n);
     if (deliveries.length === 1) {
-      setDeliveries([{ ...deliveries[0], boxCount: n }]);
+      const prev = deliveries[0];
+      const boxWeights = Array.from({ length: n }, (_, i) => (prev.boxWeights?.[i] !== undefined && prev.boxWeights[i] !== '') ? prev.boxWeights[i] : '');
+      const boxTrackingIds = Array.from({ length: n }, (_, i) => (prev.boxTrackingIds?.[i] !== undefined && prev.boxTrackingIds[i] !== '') ? prev.boxTrackingIds[i] : '');
+      setDeliveries([{ ...prev, boxCount: n, boxWeights, boxTrackingIds }]);
     }
   };
 
@@ -154,7 +242,7 @@ export default function CompleteDeliveryModal({ isOpen, mission, onClose, onSave
     if (remaining <= 0) return;
     setDeliveries((prev) => [
       ...prev,
-      { id: `d-${Date.now()}`, receiverName: '', receiverPhone: '', address: null, boxCount: remaining },
+      { id: `d-${Date.now()}`, receiverName: '', receiverPhone: '', address: null, boxCount: remaining, boxWeights: Array.from({ length: remaining }, () => ''), boxTrackingIds: Array.from({ length: remaining }, () => '') },
     ]);
   };
 
@@ -169,9 +257,11 @@ export default function CompleteDeliveryModal({ isOpen, mission, onClose, onSave
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           pickupBoxCount,
+          pickupBoxWeights: pickupBoxCount > 0 ? deliveries.flatMap((d) => (d.boxWeights ?? []).map((w) => parseFloat(w) || 0)) : null,
           bringBoxes,
           boxSelection: bringBoxes ? boxSelection : { large: 0, small: 0 },
           deliveries,
+          linkedEmptyBoxMissionId,
           // keep first delivery as the primary receiver for backwards compat
           receiverName:    deliveries[0]?.receiverName  || '',
           receiverPhone:   deliveries[0]?.receiverPhone || '',
@@ -206,20 +296,58 @@ export default function CompleteDeliveryModal({ isOpen, mission, onClose, onSave
         {/* Body */}
         <div className="flex-1 overflow-y-auto px-5 py-5 space-y-5">
 
+          {/* Link to empty box */}
+          <div className="p-4 rounded-xl border-2 border-dashed border-indigo-200 bg-indigo-50/30 space-y-2">
+            <label className="block text-sm font-medium text-slate-700">Link to Empty Box Mission</label>
+            <p className="text-xs text-slate-500">Associate this pickup with the empty box delivery</p>
+            <button
+              type="button"
+              onClick={() => setEmptyBoxMissionPickerOpen(true)}
+              className={`w-full flex items-center gap-3 p-3 rounded-xl border-2 transition-all text-left ${
+                linkedEmptyBoxMission || linkedEmptyBoxMissionId
+                  ? 'border-indigo-400 bg-indigo-100'
+                  : 'border-slate-200 bg-white hover:border-indigo-300 hover:bg-indigo-50/50'
+              }`}
+            >
+              <Link2 className="w-5 h-5 text-indigo-600 shrink-0" />
+              {linkedEmptyBoxMission ? (
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-slate-800 truncate">{linkedEmptyBoxMission.fullName}</p>
+                  <p className="text-xs text-slate-500 truncate">{linkedEmptyBoxMission.address && linkedEmptyBoxMission.address.displayAddress}</p>
+                  <p className="text-xs font-mono text-indigo-600">{linkedEmptyBoxMission.id}</p>
+                </div>
+              ) : linkedEmptyBoxMissionId ? (
+                <span className="text-sm text-slate-600 font-mono">{linkedEmptyBoxMissionId}</span>
+              ) : (
+                <span className="text-sm text-slate-500">Select empty box mission…</span>
+              )}
+              {(linkedEmptyBoxMission || linkedEmptyBoxMissionId) && (
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); setLinkedEmptyBoxMissionId(null); setLinkedEmptyBoxMission(null); }}
+                  className="text-xs text-red-500 hover:underline"
+                >
+                  Remove
+                </button>
+              )}
+            </button>
+          </div>
+
           {/* Pickup info */}
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                Boxes to collect from customer
-              </label>
-              <input
-                type="number"
-                min="1"
-                value={pickupBoxCount}
-                onChange={(e) => handlePickupBoxCountChange(parseInt(e.target.value) || 1)}
-                className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200"
-              />
-            </div>
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                  Boxes to collect from customer
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  value={pickupBoxCount}
+                  onChange={(e) => handlePickupBoxCountChange(parseInt(e.target.value) || 1)}
+                  className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                />
+              </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1.5">
                 Bring empty boxes to customer?
@@ -248,6 +376,7 @@ export default function CompleteDeliveryModal({ isOpen, mission, onClose, onSave
                   <Truck className="w-3.5 h-3.5" /> No
                 </button>
               </div>
+            </div>
             </div>
           </div>
 
@@ -335,6 +464,15 @@ export default function CompleteDeliveryModal({ isOpen, mission, onClose, onSave
 
           {error && <p className="text-red-500 text-sm">{error}</p>}
         </div>
+
+        <EmptyBoxMissionPickerModal
+          isOpen={emptyBoxMissionPickerOpen}
+          onClose={() => setEmptyBoxMissionPickerOpen(false)}
+          onSelect={(m) => {
+            setLinkedEmptyBoxMissionId(m?.id || null);
+            setEmptyBoxMissionPickerOpen(false);
+          }}
+        />
 
         {/* Footer */}
         <div className="flex gap-3 px-5 py-4 border-t flex-shrink-0 bg-white">

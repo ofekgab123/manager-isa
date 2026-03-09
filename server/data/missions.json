@@ -1,5 +1,82 @@
 [
   {
+    "id": "MSN-1773075328297",
+    "type": "pickup",
+    "status": "linewhel_transferred",
+    "createdBy": "customer_service",
+    "createdAt": "2026-03-09T16:55:28.297Z",
+    "fullName": "1232323",
+    "firstName": null,
+    "lastName": null,
+    "customerPhone": "+972123123",
+    "address": {
+      "displayAddress": "Sderot Sha'ul HaMelech 27, Tel Aviv-Jaffa, Israel",
+      "lat": 32.07719290460556,
+      "lng": 34.786062240600586,
+      "city": "Tel Aviv-Jaffa",
+      "street": "Sderot Sha'ul HaMelech",
+      "houseNumber": "27",
+      "apartment": "",
+      "floor": ""
+    },
+    "senderAddress": null,
+    "receiverName": null,
+    "receiverPhone": null,
+    "receiverAddress": null,
+    "boxes": 0,
+    "boxSelection": {
+      "large": 0,
+      "small": 0
+    },
+    "bringBoxes": false,
+    "pickupBoxCount": 2,
+    "pickupBoxWeights": null,
+    "notes": null,
+    "affiliateName": null,
+    "discountAmount": null,
+    "linkedEmptyBoxMissionId": "MSN-1772898434828"
+  },
+  {
+    "id": "MSN-1773074318527",
+    "type": "pickup",
+    "status": "linewhel_transferred",
+    "createdBy": "customer_service",
+    "createdAt": "2026-03-09T16:38:38.527Z",
+    "fullName": "1232323",
+    "firstName": null,
+    "lastName": null,
+    "customerPhone": "+972123123",
+    "address": {
+      "displayAddress": "Sderot Sha'ul HaMelech 27, Tel Aviv-Jaffa, Israel",
+      "lat": 32.07719290460556,
+      "lng": 34.786062240600586,
+      "city": "Tel Aviv-Jaffa",
+      "street": "Sderot Sha'ul HaMelech",
+      "houseNumber": "27",
+      "apartment": "",
+      "floor": ""
+    },
+    "senderAddress": null,
+    "receiverName": null,
+    "receiverPhone": null,
+    "receiverAddress": null,
+    "boxes": 0,
+    "boxSelection": {
+      "large": 0,
+      "small": 0
+    },
+    "bringBoxes": false,
+    "pickupBoxCount": 2,
+    "pickupBoxWeights": [
+      2,
+      2
+    ],
+    "notes": null,
+    "affiliateName": null,
+    "discountAmount": null,
+    "linkedEmptyBoxMissionId": null
+  },
+  {
     "id": "MSN-1772898434828",
     "type": "empty_box",
     "status": "linewhel_transferred",
@@ -55,8 +132,8 @@
       "floor": ""
     },
     "senderAddress": null,
-    "receiverName": null,
-    "receiverPhone": null,
+    "receiverName": "",
+    "receiverPhone": "",
     "receiverAddress": null,
     "boxes": 0,
     "boxSelection": {
@@ -67,7 +144,33 @@
     "pickupBoxCount": 2,
     "notes": null,
     "affiliateName": null,
-    "discountAmount": null
+    "discountAmount": null,
+    "pickupBoxWeights": [
+      2,
+      23
+    ],
+    "deliveries": [
+      {
+        "id": "d-1773073612987",
+        "receiverName": "",
+        "receiverPhone": "",
+        "address": null,
+        "boxCount": 1,
+        "boxWeights": [
+          "2"
+        ]
+      },
+      {
+        "id": "d-1773073630432",
+        "receiverName": "",
+        "receiverPhone": "",
+        "address": null,
+        "boxCount": 1,
+        "boxWeights": [
+          "23"
+        ]
+      }
+    ]
   },
   {
     "id": "MSN-1772855278528",
@@ -90,9 +193,16 @@
       "floor": ""
     },
     "senderAddress": null,
-    "receiverName": null,
-    "receiverPhone": null,
-    "receiverAddress": null,
+    "receiverName": "222",
+    "receiverPhone": "+972222",
+    "receiverAddress": {
+      "lat": 32.08493639549031,
+      "lng": 34.777036396789555,
+      "displayAddress": "Itzik Manger St 5, Tel Aviv-Yafo, Israel",
+      "city": "Tel Aviv-Yafo",
+      "street": "Itzik Manger Street",
+      "houseNumber": "5"
+    },
     "boxes": 0,
     "boxSelection": {
       "large": 1,
@@ -102,7 +212,48 @@
     "pickupBoxCount": 2,
     "notes": null,
     "affiliateName": null,
-    "discountAmount": null
+    "discountAmount": null,
+    "pickupBoxWeights": [
+      2,
+      4
+    ],
+    "deliveries": [
+      {
+        "id": "d-1773073781868",
+        "receiverName": "222",
+        "receiverPhone": "+972222",
+        "address": {
+          "lat": 32.08493639549031,
+          "lng": 34.777036396789555,
+          "displayAddress": "Itzik Manger St 5, Tel Aviv-Yafo, Israel",
+          "city": "Tel Aviv-Yafo",
+          "street": "Itzik Manger Street",
+          "houseNumber": "5"
+        },
+        "boxCount": 1,
+        "boxWeights": [
+          "2"
+        ]
+      },
+      {
+        "id": "d-1773073788955",
+        "receiverName": "223",
+        "receiverPhone": "+972222",
+        "address": {
+          "lat": 32.08653624451209,
+          "lng": 34.774804798889164,
+          "displayAddress": "Dizengoff St 191, Tel Aviv-Yafo, Israel",
+          "city": "Tel Aviv-Yafo",
+          "street": "Dizengoff Street",
+          "houseNumber": "191"
+        },
+        "boxCount": 1,
+        "boxWeights": [
+          "4"
+        ]
+      }
+    ],
+    "linkedEmptyBoxMissionId": "MSN-1772898434828"
   },
   {
     "id": "MSN-1772854130058",
