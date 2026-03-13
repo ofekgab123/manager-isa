@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { MapPin, User, Save, Trash2, AlertTriangle, Copy, Video, Image, X, Tag, Link2, Info } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { MapPin, User, Save, Trash2, AlertTriangle, Copy, Video, Image, X, Tag, Link2, Info, Plus } from 'lucide-react';
 import AddressPicker from './AddressPicker';
 import PhoneInput from './PhoneInput';
 import { API_BASE } from '../config';
@@ -124,10 +124,19 @@ function AddressBlock({ addr, onChange, title = 'Address', missing = false }) {
   );
 }
 
-function DeliveryEditCard({ delivery, idx, onChange }) {
+function DeliveryEditCard({ delivery, idx, onChange, totalPickup, otherAssigned, parcelContentTypes }) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [imagePreview, setImagePreview] = useState(null);
   const addr = delivery.address || {};
+  const maxForRow = (totalPickup ?? 1) - (otherAssigned ?? 0);
+  const boxCount = delivery.boxCount ?? 1;
+
+  const ensureBoxContents = (count) => {
+    const prev = delivery.boxContents ?? [];
+    return Array.from({ length: count }, (_, i) =>
+      Array.isArray(prev[i]) ? prev[i] : []
+    );
+  };
 
   return (
     <div className="p-4 rounded-xl border-2 border-slate-200 bg-white space-y-3">
@@ -138,11 +147,25 @@ function DeliveryEditCard({ delivery, idx, onChange }) {
         <span className="text-xs font-bold text-slate-500 uppercase tracking-wide">
           Delivery {idx + 1}
         </span>
-        {delivery.boxCount != null && (
-          <span className="ml-auto text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-medium">
-            {delivery.boxCount} box{delivery.boxCount !== 1 ? 'es' : ''}
-          </span>
-        )}
+      </div>
+
+      <div>
+        <label className="block text-xs font-medium text-slate-500 mb-1">
+          Boxes for this address
+          {maxForRow > 0 && <span className="text-slate-400 font-normal ml-1">(max {maxForRow})</span>}
+        </label>
+        <input
+          type="number"
+          min="1"
+          max={Math.max(1, maxForRow)}
+          value={boxCount}
+          onChange={(e) => {
+            const val = Math.min(Math.max(1, maxForRow), Math.max(1, parseInt(e.target.value) || 1));
+            const boxContents = ensureBoxContents(val);
+            onChange({ ...delivery, boxCount: val, boxContents });
+          }}
+          className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200"
+        />
       </div>
 
       <div className="grid grid-cols-2 gap-2">
@@ -216,6 +239,96 @@ function DeliveryEditCard({ delivery, idx, onChange }) {
           >
             <Copy className="w-3.5 h-3.5 text-slate-500" />
           </button>
+        </div>
+      )}
+
+      {/* Parcel content per box */}
+      {boxCount > 0 && (
+        <div className="space-y-2 pt-2 border-t border-slate-200">
+          <label className="block text-xs font-medium text-slate-500">Parcel content per box</label>
+          <div className="space-y-3">
+            {Array.from({ length: boxCount }, (_, i) => (
+              <div key={i} className="p-3 rounded-lg border border-slate-200 bg-slate-50/50 space-y-2">
+                <label className="block text-[10px] text-slate-500 font-medium">Box {i + 1}</label>
+                {((delivery.boxContents ?? [])[i] ?? []).map((item, j) => (
+                  <div key={j} className="flex flex-wrap gap-2">
+                    <select
+                      value={item.description || ''}
+                      onChange={(e) => {
+                        const contents = [...(delivery.boxContents ?? [])];
+                        if (!contents[i]) contents[i] = [];
+                        contents[i] = contents[i].map((it, k) =>
+                          k === j ? { ...it, description: e.target.value } : it
+                        );
+                        onChange({ ...delivery, boxContents: contents });
+                      }}
+                      className="flex-1 min-w-[100px] px-2 py-1.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                    >
+                      <option value="">Select type</option>
+                      {(parcelContentTypes ?? []).map((t) => (
+                        <option key={t.id} value={t.label}>{t.label}</option>
+                      ))}
+                    </select>
+                    <input
+                      type="number"
+                      min="1"
+                      value={item.qty ?? ''}
+                      onChange={(e) => {
+                        const contents = [...(delivery.boxContents ?? [])];
+                        if (!contents[i]) contents[i] = [];
+                        contents[i] = contents[i].map((it, k) =>
+                          k === j ? { ...it, qty: parseInt(e.target.value) || 0 } : it
+                        );
+                        onChange({ ...delivery, boxContents: contents });
+                      }}
+                      placeholder="qty"
+                      className="w-14 px-2 py-1.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                    />
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={item.price ?? ''}
+                      onChange={(e) => {
+                        const contents = [...(delivery.boxContents ?? [])];
+                        if (!contents[i]) contents[i] = [];
+                        contents[i] = contents[i].map((it, k) =>
+                          k === j ? { ...it, price: parseFloat(e.target.value) || 0 } : it
+                        );
+                        onChange({ ...delivery, boxContents: contents });
+                      }}
+                      placeholder="₪"
+                      className="w-16 px-2 py-1.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const contents = [...(delivery.boxContents ?? [])];
+                        if (!contents[i]) contents[i] = [];
+                        contents[i] = contents[i].filter((_, k) => k !== j);
+                        onChange({ ...delivery, boxContents: contents });
+                      }}
+                      className="p-1 text-red-400 hover:text-red-600 hover:bg-red-50 rounded"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => {
+                    const contents = [...(delivery.boxContents ?? [])];
+                    if (!contents[i]) contents[i] = [];
+                    contents[i] = [...contents[i], { description: '', qty: 1, price: 0 }];
+                    onChange({ ...delivery, boxContents: contents });
+                  }}
+                  className="text-xs text-indigo-600 hover:underline flex items-center gap-1"
+                >
+                  <Plus className="w-3 h-3" /> Add item
+                </button>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
@@ -315,6 +428,18 @@ export default function MissionDetails({ mission, onSave, onClose, onDelete, onO
   const [emptyBoxMissionPickerOpen, setEmptyBoxMissionPickerOpen] = useState(false);
   const [linkedEmptyBoxMission, setLinkedEmptyBoxMission] = useState(null);
   const [linkedPickups, setLinkedPickups] = useState([]);
+  const [parcelContentTypes, setParcelContentTypes] = useState([]);
+
+  const fetchParcelContentTypes = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/parcel-content-types`);
+      if (res.ok) setParcelContentTypes(await res.json());
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    fetchParcelContentTypes();
+  }, [fetchParcelContentTypes]);
 
   useEffect(() => {
     if (edit.linkedEmptyBoxMissionId) {
@@ -543,13 +668,28 @@ export default function MissionDetails({ mission, onSave, onClose, onDelete, onO
               receiverName: edit.receiverName || '',
               receiverPhone: edit.receiverPhone || '',
               address: edit.receiverAddress || {},
-              boxCount: edit.pickupBoxCount,
+              boxCount: edit.pickupBoxCount ?? 1,
+              boxContents: edit.deliveries?.[0]?.boxContents ?? Array.from({ length: edit.pickupBoxCount ?? 1 }, () => []),
             }
-          ]).map((d, idx) => (
+          ]).map((d, idx) => {
+            const deliveriesList = edit.deliveries?.length > 0 ? edit.deliveries : [{
+              id: 'd-legacy',
+              receiverName: edit.receiverName || '',
+              receiverPhone: edit.receiverPhone || '',
+              address: edit.receiverAddress || {},
+              boxCount: edit.pickupBoxCount ?? 1,
+              boxContents: [],
+            }];
+            const totalPickup = edit.pickupBoxCount ?? 1;
+            const otherAssigned = deliveriesList.reduce((s, r, i) => (i !== idx ? s + (r.boxCount || 0) : s), 0);
+            return (
             <DeliveryEditCard
               key={d.id || idx}
               delivery={d}
               idx={idx}
+              totalPickup={totalPickup}
+              otherAssigned={otherAssigned}
+              parcelContentTypes={parcelContentTypes}
               onChange={(updated) => {
                 if (edit.deliveries?.length > 0) {
                   const arr = edit.deliveries.map((r, i) => i === idx ? updated : r);
@@ -563,14 +703,17 @@ export default function MissionDetails({ mission, onSave, onClose, onDelete, onO
                 } else {
                   setEdit((p) => ({
                     ...p,
+                    deliveries: [updated],
                     receiverName: updated.receiverName,
                     receiverPhone: updated.receiverPhone,
                     receiverAddress: updated.address,
+                    pickupBoxCount: updated.boxCount ?? p.pickupBoxCount,
                   }));
                 }
               }}
             />
-          ))}
+            );
+          })}
         </div>
       )}
 

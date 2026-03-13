@@ -73,7 +73,7 @@ export default function MissionPreviewModal({ mission, onClose, onOpenPreview, o
 
   const card = (
     <div
-      className="bg-white rounded-2xl shadow-2xl w-full max-w-xl my-6 flex flex-col max-h-[90vh]"
+      className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl my-6 flex flex-col max-h-[90vh]"
       style={embedded ? { minWidth: compact ? 320 : 360, maxWidth: compact ? 400 : 540 } : {}}
       onClick={(e) => e.stopPropagation()}
     >
@@ -251,6 +251,32 @@ export default function MissionPreviewModal({ mission, onClose, onOpenPreview, o
                               </span>
                             );
                           })}
+                        </div>
+                      )}
+                      {(d.boxContents?.length > 0) && (
+                        <div className="mt-2 pt-2 border-t border-slate-100">
+                          <p className="text-[10px] font-semibold text-slate-500 uppercase mb-1">Parcel content</p>
+                          <div className="space-y-1">
+                            {d.boxContents.map((boxItems, bi) => {
+                              const items = Array.isArray(boxItems) ? boxItems : [];
+                              const str = items
+                                .filter((it) => it?.description)
+                                .map((it) => {
+                                  const base = `${it.description} ×${it.qty ?? 1}`;
+                                  const price = it.price != null && it.price !== '' && Number(it.price) > 0
+                                    ? ` ₪${Number(it.price).toLocaleString()}`
+                                    : '';
+                                  return base + price;
+                                })
+                                .join(', ');
+                              if (!str) return null;
+                              return (
+                                <div key={bi} className="text-xs text-slate-700">
+                                  <span className="font-medium text-slate-500">Box {bi + 1}:</span> {str}
+                                </div>
+                              );
+                            })}
+                          </div>
                         </div>
                       )}
                     </div>

@@ -1,6 +1,11 @@
 import express from 'express';
 import cors from 'cors';
-import { readOrders, writeOrders, readAffiliates, writeAffiliates, readMissions, writeMissions, readUsers, writeUsers } from './storage.js';
+import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
+import pool from './db.js';
+import { readOrders, writeOrders, readAffiliates, writeAffiliates, readMissions, writeMissions, readUsers, writeUsers, readContainers, writeContainers, readParcelContentTypes, writeParcelContentTypes } from './storage.js';
+
+const JWT_SECRET = process.env.JWT_SECRET || 'isa-manager-jwt-secret-key';
 
 const app = express();
 app.use(cors({
@@ -22,6 +27,122 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization'],
 }));
 app.use(express.json());
+
+// ─── Auth middleware ───────────────────────────────────────────────────────────
+
+function requireAuth(req, res, next) {
+  const header = req.headers['authorization'];
+  if (!header || !header.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  try {
+    req.user = jwt.verify(header.slice(7), JWT_SECRET);
+    next();
+  } catch {
+    return res.status(401).json({ error: 'Invalid or expired token' });
+  }
+}
+
+function requireAdmin(req, res, next) {
+  if (!req.user?.isAdmin) return res.status(403).json({ error: 'Forbidden' });
+  next();
+}
+
+// ─── Auth routes (public) ──────────────────────────────────────────────────────
+
+app.post('/api/auth/login', async (req, res) => {
+  try {
+    const { username, password } = req.body;
+    if (!username || !password) return res.status(400).json({ error: 'Username and password required' });
+    const { rows } = await pool.query('SELECT * FROM auth_users WHERE username = $1', [username]);
+    const user = rows[0];
+    if (!user) return res.status(401).json({ error: 'Invalid credentials' });
+    const valid = await bcrypt.compare(password, user.password_hash);
+    if (!valid) return res.status(401).json({ error: 'Invalid credentials' });
+    const token = jwt.sign(
+      { id: user.id, username: user.username, isAdmin: user.is_admin },
+      JWT_SECRET,
+      { expiresIn: '7d' }
+    );
+    res.json({ token, username: user.username, isAdmin: user.is_admin });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/auth/me', requireAuth, (req, res) => {
+  res.json({ username: req.user.username, isAdmin: req.user.isAdmin });
+});
+
+// ─── Auth users CRUD (admin only) ─────────────────────────────────────────────
+
+app.get('/api/auth/users', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      'SELECT id, username, is_admin, created_at FROM auth_users ORDER BY created_at ASC'
+    );
+    res.json(rows.map((r) => ({ id: r.id, username: r.username, isAdmin: r.is_admin, createdAt: r.created_at })));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/auth/users', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { username, password, isAdmin } = req.body;
+    if (!username || !password) return res.status(400).json({ error: 'Username and password required' });
+    const hash = await bcrypt.hash(password, 10);
+    const id = `AU-${Date.now()}`;
+    await pool.query(
+      'INSERT INTO auth_users (id, username, password_hash, is_admin) VALUES ($1, $2, $3, $4)',
+      [id, username.trim(), hash, !!isAdmin]
+    );
+    res.status(201).json({ id, username: username.trim(), isAdmin: !!isAdmin });
+  } catch (err) {
+    if (err.code === '23505') return res.status(409).json({ error: 'Username already exists' });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.patch('/api/auth/users/:id', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { username, password, isAdmin } = req.body;
+    const { rows } = await pool.query('SELECT * FROM auth_users WHERE id = $1', [req.params.id]);
+    if (!rows[0]) return res.status(404).json({ error: 'User not found' });
+    const updates = [];
+    const values = [];
+    let idx = 1;
+    if (username !== undefined) { updates.push(`username = $${idx++}`); values.push(username.trim()); }
+    if (password)               { updates.push(`password_hash = $${idx++}`); values.push(await bcrypt.hash(password, 10)); }
+    if (isAdmin !== undefined)  { updates.push(`is_admin = $${idx++}`); values.push(!!isAdmin); }
+    if (updates.length === 0) return res.status(400).json({ error: 'Nothing to update' });
+    values.push(req.params.id);
+    await pool.query(`UPDATE auth_users SET ${updates.join(', ')} WHERE id = $${idx}`, values);
+    const { rows: updated } = await pool.query(
+      'SELECT id, username, is_admin, created_at FROM auth_users WHERE id = $1', [req.params.id]
+    );
+    const u = updated[0];
+    res.json({ id: u.id, username: u.username, isAdmin: u.is_admin, createdAt: u.created_at });
+  } catch (err) {
+    if (err.code === '23505') return res.status(409).json({ error: 'Username already exists' });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/auth/users/:id', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    if (req.user.id === req.params.id) return res.status(400).json({ error: 'Cannot delete your own account' });
+    const { rowCount } = await pool.query('DELETE FROM auth_users WHERE id = $1', [req.params.id]);
+    if (rowCount === 0) return res.status(404).json({ error: 'User not found' });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Apply auth to all other /api routes ──────────────────────────────────────
+
+app.use('/api', requireAuth);
 
 const normalizeStatus = (s) => {
   if (s === 'recorded' || s === 'pending') return s === 'recorded' ? 'received' : 'linewhel_transferred';
@@ -257,7 +378,7 @@ app.get('/api/missions/stats', async (req, res) => {
 app.get('/api/missions', async (req, res) => {
   try {
     const missions = await readMissions();
-    const { status, type, createdBy, customerPhone, affiliate, linkedEmptyBoxMissionId } = req.query;
+    const { status, type, createdBy, customerPhone, affiliate, linkedEmptyBoxMissionId, containerId } = req.query;
     let filtered = missions;
     if (status) filtered = filtered.filter((m) => m.status === status);
     if (type) filtered = filtered.filter((m) => m.type === type);
@@ -268,6 +389,13 @@ app.get('/api/missions', async (req, res) => {
     }
     if (affiliate) filtered = filtered.filter((m) => m.affiliateName === affiliate);
     if (linkedEmptyBoxMissionId) filtered = filtered.filter((m) => m.linkedEmptyBoxMissionId === linkedEmptyBoxMissionId);
+    if (containerId !== undefined) {
+      if (containerId === '' || containerId === 'none') {
+        filtered = filtered.filter((m) => !m.containerId);
+      } else if (containerId) {
+        filtered = filtered.filter((m) => m.containerId === containerId);
+      }
+    }
     res.json(filtered);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -313,6 +441,7 @@ app.post('/api/missions', async (req, res) => {
       affiliateName: body.affiliateName || null,
       discountAmount: body.discountAmount || null,
       linkedEmptyBoxMissionId: body.linkedEmptyBoxMissionId || null,
+      containerId: body.type === 'pickup' ? (body.containerId || null) : null,
     };
     missions.unshift(newMission);
     await writeMissions(missions);
@@ -339,7 +468,11 @@ app.patch('/api/missions/:id', async (req, res) => {
     const missions = await readMissions();
     const idx = missions.findIndex((m) => m.id === req.params.id);
     if (idx === -1) return res.status(404).json({ error: 'Mission not found' });
-    missions[idx] = { ...missions[idx], ...req.body };
+    const updates = { ...req.body };
+    if (updates.containerId !== undefined && missions[idx].type !== 'pickup') {
+      updates.containerId = null;
+    }
+    missions[idx] = { ...missions[idx], ...updates };
     await writeMissions(missions);
     res.json(missions[idx]);
   } catch (err) {
@@ -353,6 +486,149 @@ app.delete('/api/missions/:id', async (req, res) => {
     const filtered = missions.filter((m) => m.id !== req.params.id);
     if (filtered.length === missions.length) return res.status(404).json({ error: 'Mission not found' });
     await writeMissions(filtered);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Containers ────────────────────────────────────────────────────────────────
+
+app.get('/api/containers', async (req, res) => {
+  try {
+    const containers = await readContainers();
+    res.json(containers);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/containers', async (req, res) => {
+  try {
+    const containers = await readContainers();
+    const body = req.body;
+    const maxWeight = Number(body.maxWeight);
+    const maxPackages = Number(body.maxPackages);
+    if (!(maxWeight > 0) || !(maxPackages > 0)) {
+      return res.status(400).json({ error: 'maxWeight and maxPackages must be positive numbers' });
+    }
+    const newContainer = {
+      id: `CNT-${Date.now()}`,
+      name: body.name || null,
+      country: body.country || null,
+      maxWeight,
+      maxPackages,
+      createdAt: body.createdAt || new Date().toISOString(),
+    };
+    containers.push(newContainer);
+    await writeContainers(containers);
+    res.status(201).json(newContainer);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.patch('/api/containers/:id', async (req, res) => {
+  try {
+    const containers = await readContainers();
+    const idx = containers.findIndex((c) => c.id === req.params.id);
+    if (idx === -1) return res.status(404).json({ error: 'Container not found' });
+    const body = req.body;
+    const updated = { ...containers[idx] };
+    if (body.name !== undefined) updated.name = body.name || null;
+    if (body.country !== undefined) updated.country = body.country || null;
+    if (body.maxWeight !== undefined) {
+      const v = Number(body.maxWeight);
+      if (!(v > 0)) return res.status(400).json({ error: 'maxWeight must be a positive number' });
+      updated.maxWeight = v;
+    }
+    if (body.maxPackages !== undefined) {
+      const v = Number(body.maxPackages);
+      if (!(v > 0)) return res.status(400).json({ error: 'maxPackages must be a positive number' });
+      updated.maxPackages = v;
+    }
+    containers[idx] = updated;
+    await writeContainers(containers);
+    res.json(updated);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/containers/:id', async (req, res) => {
+  try {
+    const containers = await readContainers();
+    const idx = containers.findIndex((c) => c.id === req.params.id);
+    if (idx === -1) return res.status(404).json({ error: 'Container not found' });
+    const containerId = containers[idx].id;
+    const missions = await readMissions();
+    const hasPackages = missions.some((m) => m.type === 'pickup' && m.containerId === containerId);
+    if (hasPackages) {
+      const updatedMissions = missions.map((m) =>
+        m.type === 'pickup' && m.containerId === containerId ? { ...m, containerId: null } : m
+      );
+      await writeMissions(updatedMissions);
+    }
+    const filtered = containers.filter((c) => c.id !== req.params.id);
+    await writeContainers(filtered);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Parcel Content Types ──────────────────────────────────────────────────────
+
+app.get('/api/parcel-content-types', async (req, res) => {
+  try {
+    const types = await readParcelContentTypes();
+    res.json(types);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/parcel-content-types', async (req, res) => {
+  try {
+    const types = await readParcelContentTypes();
+    const { label } = req.body;
+    if (!label || !String(label).trim()) {
+      return res.status(400).json({ error: 'label is required' });
+    }
+    const newType = {
+      id: `pct-${Date.now()}`,
+      label: String(label).trim(),
+    };
+    types.push(newType);
+    await writeParcelContentTypes(types);
+    res.status(201).json(newType);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.patch('/api/parcel-content-types/:id', async (req, res) => {
+  try {
+    const types = await readParcelContentTypes();
+    const idx = types.findIndex((t) => t.id === req.params.id);
+    if (idx === -1) return res.status(404).json({ error: 'Parcel content type not found' });
+    const { label } = req.body;
+    const updated = { ...types[idx] };
+    if (label !== undefined) updated.label = String(label).trim();
+    types[idx] = updated;
+    await writeParcelContentTypes(types);
+    res.json(updated);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/parcel-content-types/:id', async (req, res) => {
+  try {
+    const types = await readParcelContentTypes();
+    const filtered = types.filter((t) => t.id !== req.params.id);
+    if (filtered.length === types.length) return res.status(404).json({ error: 'Parcel content type not found' });
+    await writeParcelContentTypes(filtered);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });

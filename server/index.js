@@ -1,9 +1,15 @@
 import app from './app.js';
+import { initDb } from './db.js';
 
 if (process.env.VERCEL !== '1') {
   const PORT = process.env.PORT || 3002;
-  app.listen(PORT, () => {
-    console.log(`Manager ISA API running at http://localhost:${PORT}`);
+  initDb().then(() => {
+    app.listen(PORT, () => {
+      console.log(`Manager ISA API running at http://localhost:${PORT}`);
+    });
+  }).catch((err) => {
+    console.error('Failed to initialize database:', err);
+    process.exit(1);
   });
 }
 

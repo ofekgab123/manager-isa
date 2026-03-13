@@ -1,0 +1,16 @@
+[
+  { "id": "pct-1", "label": "Food Products" },
+  { "id": "pct-2", "label": "Cosmetics" },
+  { "id": "pct-3", "label": "Clothes" },
+  { "id": "pct-4", "label": "Shoes" },
+  { "id": "pct-5", "label": "Pillows" },
+  { "id": "pct-6", "label": "Blanket" },
+  { "id": "pct-7", "label": "Bed Linen" },
+  { "id": "pct-8", "label": "Kitchen Tools" },
+  { "id": "pct-9", "label": "Dishes" },
+  { "id": "pct-10", "label": "Cans" },
+  { "id": "pct-11", "label": "Detergent" },
+  { "id": "pct-12", "label": "Home Chemicals" },
+  { "id": "pct-13", "label": "Personal Hygiene" },
+  { "id": "pct-14", "label": "Toys" }
+]

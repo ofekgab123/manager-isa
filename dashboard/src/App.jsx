@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Package,
+  Box,
   Truck,
   TrendingUp,
   RefreshCw,
@@ -17,6 +18,10 @@ import {
   Tag,
   BarChart2,
   Info,
+  Check,
+  List,
+  LogOut,
+  ShieldCheck,
 } from 'lucide-react';
 import CreateMissionModal from './components/CreateMissionModal';
 import EmptyBoxMissionPickerModal from './components/EmptyBoxMissionPickerModal';
@@ -26,6 +31,10 @@ import MissionPreviewModal from './components/MissionPreviewModal';
 import AffiliatesPanel from './components/AffiliatesPanel';
 import UsersPanel from './components/UsersPanel';
 import StatisticsPanel from './components/StatisticsPanel';
+import PackagesPanel from './components/PackagesPanel';
+import ContainersPanel from './components/ContainersPanel';
+import ParcelContentTypesPanel from './components/ParcelContentTypesPanel';
+import LoginPage from './components/LoginPage';
 import { API_BASE } from './config';
 
 const TYPE_LABELS = {
@@ -140,6 +149,47 @@ function useAffiliates() {
 }
 
 export default function App() {
+  const [authUser, setAuthUser] = useState(null);
+  const [authChecked, setAuthChecked] = useState(false);
+
+  useEffect(() => {
+    const token = localStorage.getItem('isa_auth_token');
+    if (!token) { setAuthChecked(true); return; }
+    fetch(`${API_BASE}/auth/me`)
+      .then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then((u) => setAuthUser(u))
+      .catch(() => {
+        localStorage.removeItem('isa_auth_token');
+      })
+      .finally(() => setAuthChecked(true));
+  }, []);
+
+  const handleLogin = ({ token, username, isAdmin }) => {
+    localStorage.setItem('isa_auth_token', token);
+    setAuthUser({ username, isAdmin });
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('isa_auth_token');
+    setAuthUser(null);
+  };
+
+  if (!authChecked) {
+    return (
+      <div className="min-h-screen bg-slate-800 flex items-center justify-center">
+        <div className="text-white text-lg font-medium opacity-70">Loading…</div>
+      </div>
+    );
+  }
+
+  if (!authUser) {
+    return <LoginPage onLogin={handleLogin} />;
+  }
+
+  return <Dashboard authUser={authUser} onLogout={handleLogout} />;
+}
+
+function Dashboard({ authUser, onLogout }) {
   const [activeTab, setActiveTab] = useState('missions');
   const [newMissionAlert, setNewMissionAlert] = useState(null);
   const affiliates = useAffiliates();
@@ -159,6 +209,32 @@ export default function App() {
 
   const { missions, loading, error, refetch } = useMissions(handleNewMissions);
   const { stats, loading: statsLoading, refetch: refetchStats } = useMissionStats();
+
+  const [containers, setContainers] = useState([]);
+  const [capacityAlertDismissed, setCapacityAlertDismissed] = useState(false);
+  const fetchContainers = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/containers`);
+      if (res.ok) setContainers(await res.json());
+    } catch {}
+  }, []);
+  useEffect(() => {
+    fetchContainers();
+    const interval = setInterval(fetchContainers, 10000);
+    return () => clearInterval(interval);
+  }, [fetchContainers]);
+  const packagesByContainer = missions.reduce((acc, m) => {
+    if (m.type === 'pickup' && m.containerId) acc[m.containerId] = (acc[m.containerId] || 0) + 1;
+    return acc;
+  }, {});
+  const containersOver70 = containers
+    .map((c) => {
+      const count = packagesByContainer[c.id] || 0;
+      const pct = c.maxPackages > 0 ? Math.round((count / c.maxPackages) * 100) : 0;
+      return { ...c, packagesCount: count, capacityPercent: pct };
+    })
+    .filter((c) => c.capacityPercent >= 70);
+  const showCapacityFloating = containersOver70.length > 0 && !capacityAlertDismissed;
 
   const [filterType, setFilterType] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
@@ -249,7 +325,30 @@ export default function App() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className={`min-h-screen bg-slate-50 ${showCapacityFloating ? 'pt-12' : ''}`}>
+      {showCapacityFloating && (
+        <div className="fixed top-0 left-0 right-0 z-[100] shadow-lg border-b border-red-200 bg-red-50 px-4 py-2 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3 flex-wrap justify-center flex-1">
+            <p className="text-sm font-bold text-red-700 flex items-center gap-1.5">
+              <AlertTriangle className="w-4 h-4" />
+              Capacity alert:
+            </p>
+            {containersOver70.map((c) => (
+              <span key={c.id} className="text-sm text-red-800 font-medium">
+                {c.name || c.id} <span className="font-bold">{c.capacityPercent}%</span>
+              </span>
+            ))}
+          </div>
+          <button
+            onClick={() => setCapacityAlertDismissed(true)}
+            className="flex items-center justify-center gap-1 px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium shrink-0"
+          >
+            <Check className="w-4 h-4" />
+            OK
+          </button>
+        </div>
+      )}
+
       {newMissionAlert && (
         <div className="sticky top-0 z-50 bg-amber-500 text-white px-4 py-3 flex items-center justify-between gap-4 shadow-lg">
           <span className="font-semibold">
@@ -273,7 +372,7 @@ export default function App() {
               <p className="text-slate-300 text-sm">Mission management — ISA Express</p>
             </div>
           </div>
-          <div className="flex gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             {activeTab === 'missions' && (
               <>
                 <button
@@ -293,6 +392,20 @@ export default function App() {
                 </button>
               </>
             )}
+            <div className="flex items-center gap-2 pl-2 border-l border-slate-600 ml-1">
+              <span className="flex items-center gap-1.5 text-sm text-slate-300">
+                {authUser.isAdmin && <ShieldCheck className="w-4 h-4 text-amber-400" />}
+                {authUser.username}
+              </span>
+              <button
+                onClick={onLogout}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-700 hover:bg-slate-600 rounded-lg text-sm font-medium transition-colors"
+                title="Sign out"
+              >
+                <LogOut className="w-4 h-4" />
+                Sign out
+              </button>
+            </div>
           </div>
         </div>
       </header>
@@ -310,6 +423,24 @@ export default function App() {
             Missions
           </button>
           <button
+            onClick={() => setActiveTab('packages')}
+            className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === 'packages' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-600 hover:text-slate-800'
+            }`}
+          >
+            <Package className="w-4 h-4" />
+            Packages
+          </button>
+          <button
+            onClick={() => setActiveTab('containers')}
+            className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === 'containers' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-600 hover:text-slate-800'
+            }`}
+          >
+            <Box className="w-4 h-4" />
+            Containers
+          </button>
+          <button
             onClick={() => setActiveTab('affiliates')}
             className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
               activeTab === 'affiliates' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-600 hover:text-slate-800'
@@ -318,15 +449,17 @@ export default function App() {
             <Users className="w-4 h-4" />
             Affiliates
           </button>
-          <button
-            onClick={() => setActiveTab('users')}
-            className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
-              activeTab === 'users' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-600 hover:text-slate-800'
-            }`}
-          >
-            <Users className="w-4 h-4" />
-            Users
-          </button>
+          {authUser.isAdmin && (
+            <button
+              onClick={() => setActiveTab('users')}
+              className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === 'users' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-600 hover:text-slate-800'
+              }`}
+            >
+              <Users className="w-4 h-4" />
+              Users
+            </button>
+          )}
           <button
             onClick={() => setActiveTab('statistics')}
             className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
@@ -336,12 +469,23 @@ export default function App() {
             <BarChart2 className="w-4 h-4" />
             Statistics
           </button>
+          <button
+            onClick={() => setActiveTab('settings')}
+            className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === 'settings' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-600 hover:text-slate-800'
+            }`}
+          >
+            <List className="w-4 h-4" />
+            Settings
+          </button>
         </div>
       </div>
 
       <main className="p-4 sm:p-6">
+        {activeTab === 'packages' && <PackagesPanel />}
+        {activeTab === 'containers' && <ContainersPanel />}
         {activeTab === 'affiliates' && <AffiliatesPanel missions={missions} />}
-        {activeTab === 'users' && <UsersPanel />}
+        {activeTab === 'users' && authUser.isAdmin && <UsersPanel />}
         {activeTab === 'statistics' && (
           <StatisticsPanel
             missions={missions}
@@ -350,6 +494,7 @@ export default function App() {
             loading={loading}
           />
         )}
+        {activeTab === 'settings' && <ParcelContentTypesPanel />}
 
         {activeTab === 'missions' && (
           <>
@@ -553,7 +698,7 @@ export default function App() {
                 <div className="p-8 text-center text-slate-500">No missions to display</div>
               ) : (
                 <div className="overflow-x-auto">
-                  <table className="w-full text-left">
+                  <table className="w-full text-center">
                     <thead>
                       <tr className="bg-slate-50 border-b border-slate-100">
                         <th className="px-4 py-3 text-sm font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap w-40">ID</th>

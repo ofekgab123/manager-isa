@@ -1,14 +1,21 @@
-import { useState, useEffect } from 'react';
-import { X, Plus, Trash2, MapPin, CheckCircle, Truck, Package, AlertTriangle, Copy, Link2 } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { X, Plus, Trash2, MapPin, CheckCircle, Truck, Package, AlertTriangle, Copy, Link2, Box } from 'lucide-react';
 import AddressPicker from './AddressPicker';
 import PhoneInput from './PhoneInput';
 import EmptyBoxMissionPickerModal from './EmptyBoxMissionPickerModal';
 import { API_BASE } from '../config';
 
 /* ─── Single delivery row ────────────────────────────────────── */
-function DeliveryRow({ row, idx, totalPickup, otherAssigned, onChange, onDelete, canDelete }) {
+function DeliveryRow({ row, idx, totalPickup, otherAssigned, onChange, onDelete, canDelete, parcelContentTypes }) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const maxForRow = totalPickup - otherAssigned;
+
+  const ensureBoxContents = (count) => {
+    const prev = row.boxContents ?? [];
+    return Array.from({ length: count }, (_, i) =>
+      Array.isArray(prev[i]) ? prev[i] : []
+    );
+  };
 
   return (
     <div className="p-4 rounded-xl border-2 border-slate-200 bg-white space-y-3">
@@ -102,7 +109,8 @@ function DeliveryRow({ row, idx, totalPickup, otherAssigned, onChange, onDelete,
             const prevIds = row.boxTrackingIds ?? [];
             const boxWeights = Array.from({ length: val }, (_, i) => (prevWeights[i] !== undefined && prevWeights[i] !== '') ? prevWeights[i] : '');
             const boxTrackingIds = Array.from({ length: val }, (_, i) => (prevIds[i] !== undefined && prevIds[i] !== '') ? prevIds[i] : '');
-            onChange({ ...row, boxCount: val, boxWeights, boxTrackingIds });
+            const boxContents = ensureBoxContents(val);
+            onChange({ ...row, boxCount: val, boxWeights, boxTrackingIds, boxContents });
           }}
           className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200"
         />
@@ -145,6 +153,86 @@ function DeliveryRow({ row, idx, totalPickup, otherAssigned, onChange, onDelete,
                       <span className="text-[10px] text-slate-400">Tracking ID</span>
                     </div>
                   </div>
+                  {/* Parcel content per box */}
+                  <div className="mt-2 pt-2 border-t border-slate-200">
+                    <span className="text-[10px] text-slate-500 font-medium block mb-1.5">Parcel content</span>
+                    {((row.boxContents ?? [])[i] ?? []).map((item, j) => (
+                      <div key={j} className="flex flex-wrap gap-2 mb-1.5">
+                        <select
+                          value={item.description || ''}
+                          onChange={(e) => {
+                            const contents = [...(row.boxContents ?? [])];
+                            if (!contents[i]) contents[i] = [];
+                            contents[i] = contents[i].map((it, k) =>
+                              k === j ? { ...it, description: e.target.value } : it
+                            );
+                            onChange({ ...row, boxContents: contents });
+                          }}
+                          className="flex-1 min-w-[100px] px-2 py-1.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                        >
+                          <option value="">Select type</option>
+                          {(parcelContentTypes ?? []).map((t) => (
+                            <option key={t.id} value={t.label}>{t.label}</option>
+                          ))}
+                        </select>
+                        <input
+                          type="number"
+                          min="1"
+                          value={item.qty ?? ''}
+                          onChange={(e) => {
+                            const contents = [...(row.boxContents ?? [])];
+                            if (!contents[i]) contents[i] = [];
+                            contents[i] = contents[i].map((it, k) =>
+                              k === j ? { ...it, qty: parseInt(e.target.value) || 0 } : it
+                            );
+                            onChange({ ...row, boxContents: contents });
+                          }}
+                          placeholder="qty"
+                          className="w-14 px-2 py-1.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                        />
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={item.price ?? ''}
+                          onChange={(e) => {
+                            const contents = [...(row.boxContents ?? [])];
+                            if (!contents[i]) contents[i] = [];
+                            contents[i] = contents[i].map((it, k) =>
+                              k === j ? { ...it, price: parseFloat(e.target.value) || 0 } : it
+                            );
+                            onChange({ ...row, boxContents: contents });
+                          }}
+                          placeholder="₪"
+                          className="w-16 px-2 py-1.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const contents = [...(row.boxContents ?? [])];
+                            if (!contents[i]) contents[i] = [];
+                            contents[i] = contents[i].filter((_, k) => k !== j);
+                            onChange({ ...row, boxContents: contents });
+                          }}
+                          className="p-1 text-red-400 hover:text-red-600 hover:bg-red-50 rounded"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const contents = [...(row.boxContents ?? [])];
+                        if (!contents[i]) contents[i] = [];
+                        contents[i] = [...contents[i], { description: '', qty: 1, price: 0 }];
+                        onChange({ ...row, boxContents: contents });
+                      }}
+                      className="text-xs text-indigo-600 hover:underline flex items-center gap-1"
+                    >
+                      <Plus className="w-3 h-3" /> Add item
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -177,12 +265,16 @@ export default function CompleteDeliveryModal({ isOpen, mission, onClose, onSave
         const boxTrackingIds = d.boxTrackingIds && Array.isArray(d.boxTrackingIds)
           ? d.boxTrackingIds.map(String)
           : Array.from({ length: count }, () => '');
-        return { ...d, boxWeights, boxTrackingIds };
+        const boxContents = d.boxContents && Array.isArray(d.boxContents)
+          ? d.boxContents.map((bc) => Array.isArray(bc) ? bc.map((it) => ({ description: it.description || '', qty: it.qty ?? 1, price: it.price ?? 0 })) : [])
+          : Array.from({ length: count }, () => []);
+        return { ...d, boxWeights, boxTrackingIds, boxContents };
       });
     }
     const w = mission.pickupBoxWeights;
     const initialWeights = Array.isArray(w) && w.length === initialBoxCount ? w.map(String) : Array.from({ length: initialBoxCount }, () => '');
     const initialTrackingIds = Array.from({ length: initialBoxCount }, () => '');
+    const initialBoxContents = Array.from({ length: initialBoxCount }, () => []);
     return [{
       id: `d-${Date.now()}`,
       receiverName:  mission.receiverName  || '',
@@ -191,6 +283,7 @@ export default function CompleteDeliveryModal({ isOpen, mission, onClose, onSave
       boxCount:      initialBoxCount,
       boxWeights:    initialWeights,
       boxTrackingIds: initialTrackingIds,
+      boxContents:   initialBoxContents,
     }];
   });
 
@@ -199,6 +292,36 @@ export default function CompleteDeliveryModal({ isOpen, mission, onClose, onSave
   const [linkedEmptyBoxMissionId, setLinkedEmptyBoxMissionId] = useState(mission.linkedEmptyBoxMissionId ?? null);
   const [linkedEmptyBoxMission, setLinkedEmptyBoxMission] = useState(null);
   const [emptyBoxMissionPickerOpen, setEmptyBoxMissionPickerOpen] = useState(false);
+  const [containerId, setContainerId] = useState(mission.containerId ?? null);
+  const [containers, setContainers] = useState([]);
+  const [parcelContentTypes, setParcelContentTypes] = useState([]);
+
+  const fetchContainers = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/containers`);
+      if (res.ok) setContainers(await res.json());
+    } catch {}
+  }, []);
+
+  const fetchParcelContentTypes = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/parcel-content-types`);
+      if (res.ok) setParcelContentTypes(await res.json());
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    if (isOpen) {
+      fetchContainers();
+      fetchParcelContentTypes();
+    }
+  }, [isOpen, fetchContainers, fetchParcelContentTypes]);
+
+  useEffect(() => {
+    if (isOpen) {
+      setContainerId(mission.containerId ?? null);
+    }
+  }, [isOpen, mission.containerId]);
 
   useEffect(() => {
     if (linkedEmptyBoxMissionId) {
@@ -231,7 +354,8 @@ export default function CompleteDeliveryModal({ isOpen, mission, onClose, onSave
       const prev = deliveries[0];
       const boxWeights = Array.from({ length: n }, (_, i) => (prev.boxWeights?.[i] !== undefined && prev.boxWeights[i] !== '') ? prev.boxWeights[i] : '');
       const boxTrackingIds = Array.from({ length: n }, (_, i) => (prev.boxTrackingIds?.[i] !== undefined && prev.boxTrackingIds[i] !== '') ? prev.boxTrackingIds[i] : '');
-      setDeliveries([{ ...prev, boxCount: n, boxWeights, boxTrackingIds }]);
+      const boxContents = Array.from({ length: n }, (_, i) => Array.isArray(prev.boxContents?.[i]) ? prev.boxContents[i] : []);
+      setDeliveries([{ ...prev, boxCount: n, boxWeights, boxTrackingIds, boxContents }]);
     }
   };
 
@@ -242,7 +366,16 @@ export default function CompleteDeliveryModal({ isOpen, mission, onClose, onSave
     if (remaining <= 0) return;
     setDeliveries((prev) => [
       ...prev,
-      { id: `d-${Date.now()}`, receiverName: '', receiverPhone: '', address: null, boxCount: remaining, boxWeights: Array.from({ length: remaining }, () => ''), boxTrackingIds: Array.from({ length: remaining }, () => '') },
+      {
+        id: `d-${Date.now()}`,
+        receiverName: '',
+        receiverPhone: '',
+        address: null,
+        boxCount: remaining,
+        boxWeights: Array.from({ length: remaining }, () => ''),
+        boxTrackingIds: Array.from({ length: remaining }, () => ''),
+        boxContents: Array.from({ length: remaining }, () => []),
+      },
     ]);
   };
 
@@ -262,6 +395,7 @@ export default function CompleteDeliveryModal({ isOpen, mission, onClose, onSave
           boxSelection: bringBoxes ? boxSelection : { large: 0, small: 0 },
           deliveries,
           linkedEmptyBoxMissionId,
+          containerId: containerId || null,
           // keep first delivery as the primary receiver for backwards compat
           receiverName:    deliveries[0]?.receiverName  || '',
           receiverPhone:   deliveries[0]?.receiverPhone || '',
@@ -280,7 +414,7 @@ export default function CompleteDeliveryModal({ isOpen, mission, onClose, onSave
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 p-0 sm:p-4">
-      <div className="bg-white rounded-t-2xl sm:rounded-2xl w-full max-w-2xl shadow-2xl flex flex-col max-h-[92vh]">
+      <div className="bg-white rounded-t-2xl sm:rounded-2xl w-full max-w-4xl shadow-2xl flex flex-col max-h-[92vh]">
 
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b flex-shrink-0">
@@ -295,6 +429,27 @@ export default function CompleteDeliveryModal({ isOpen, mission, onClose, onSave
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto px-5 py-5 space-y-5">
+
+          {/* Container assignment */}
+          <div className="p-4 rounded-xl border-2 border-dashed border-slate-200 bg-slate-50/30 space-y-2">
+            <label className="block text-sm font-medium text-slate-700 flex items-center gap-2">
+              <Box className="w-4 h-4" />
+              Assign to container
+            </label>
+            <p className="text-xs text-slate-500">Select which container this package belongs to</p>
+            <select
+              value={containerId || ''}
+              onChange={(e) => setContainerId(e.target.value || null)}
+              className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200"
+            >
+              <option value="">No container</option>
+              {containers.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name || c.id} ({c.maxPackages} max packages)
+                </option>
+              ))}
+            </select>
+          </div>
 
           {/* Link to empty box */}
           <div className="p-4 rounded-xl border-2 border-dashed border-indigo-200 bg-indigo-50/30 space-y-2">
@@ -444,6 +599,7 @@ export default function CompleteDeliveryModal({ isOpen, mission, onClose, onSave
                   onChange={(r) => updateRow(idx, r)}
                   onDelete={() => removeRow(idx)}
                   canDelete={deliveries.length > 1}
+                  parcelContentTypes={parcelContentTypes}
                 />
               );
             })}
