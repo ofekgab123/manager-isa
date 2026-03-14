@@ -10,7 +10,7 @@ import {
   Plus,
 } from 'lucide-react';
 import { API_BASE } from '../config';
-import MissionPreviewModal from './MissionPreviewModal';
+import PackagePreviewModal from './PackagePreviewModal';
 import CreatePackageModal from './CreatePackageModal';
 
 const TYPE_LABELS = {
@@ -46,7 +46,7 @@ export default function PackagesPanel() {
   const [updatingId, setUpdatingId] = useState(null);
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [bulkUpdating, setBulkUpdating] = useState(false);
-  const [previewMission, setPreviewMission] = useState(null);
+  const [previewPackage, setPreviewPackage] = useState(null);
   const [createPackageOpen, setCreatePackageOpen] = useState(false);
   const selectAllRef = useRef(null);
 
@@ -427,9 +427,9 @@ export default function PackagesPanel() {
                     <td className="px-4 py-3">
                       <button
                         type="button"
-                        onClick={() => setPreviewMission(mission)}
+                        onClick={() => setPreviewPackage({ mission, delivery, packageId })}
                         className="p-2 hover:bg-indigo-50 rounded-lg text-slate-500 hover:text-indigo-600 transition-colors"
-                        title="View summary"
+                        title="View package summary"
                       >
                         <Info className="w-4 h-4" />
                       </button>
@@ -442,10 +442,10 @@ export default function PackagesPanel() {
         )}
       </div>
 
-      {previewMission && (
-        <MissionPreviewModal
-          mission={previewMission}
-          onClose={() => setPreviewMission(null)}
+      {previewPackage && (
+        <PackagePreviewModal
+          packageData={previewPackage}
+          onClose={() => setPreviewPackage(null)}
         />
       )}
 
