@@ -32,6 +32,11 @@ app.use(express.json());
 // ─── Auth middleware ───────────────────────────────────────────────────────────
 
 function requireAuth(req, res, next) {
+  // Allow unauthenticated POST /api/missions for customer form submissions (from isa-psi-six)
+  if (req.method === 'POST' && req.path === '/api/missions') {
+    const createdBy = req.body?.createdBy ?? 'customer';
+    if (createdBy === 'customer') return next();
+  }
   const header = req.headers['authorization'];
   if (!header || !header.startsWith('Bearer ')) {
     return res.status(401).json({ error: 'Unauthorized' });
