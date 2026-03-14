@@ -160,6 +160,60 @@ app.get('/api/customers/by-phone', async (req, res) => {
   }
 });
 
+// ─── Public: POST /api/missions (no auth - for customer-facing forms) ──────────
+
+app.post('/api/missions', async (req, res) => {
+  try {
+    const missions = await readMissions();
+    const body = req.body;
+    const validTypes = ['empty_box', 'pickup'];
+    const newMission = {
+      id: `MSN-${Date.now()}`,
+      type: validTypes.includes(body.type) ? body.type : 'pickup',
+      status: body.status ?? (body.createdBy === 'customer' ? 'received' : 'linewhel_transferred'),
+      createdBy: body.createdBy || 'customer',
+      createdAt: body.createdAt || new Date().toISOString(),
+      fullName: body.fullName || '',
+      firstName: body.firstName || null,
+      lastName: body.lastName || null,
+      customerPhone: body.customerPhone || '',
+      address: body.address || null,
+      senderAddress: body.senderAddress || null,
+      receiverName: body.receiverName || null,
+      receiverPhone: body.receiverPhone || null,
+      receiverAddress: body.receiverAddress || null,
+      boxes: body.boxes || 0,
+      boxSelection: body.boxSelection || { large: 0, small: 0 },
+      bringBoxes: body.bringBoxes !== undefined ? body.bringBoxes : null,
+      pickupBoxCount: body.pickupBoxCount ?? null,
+      pickupBoxWeights: Array.isArray(body.pickupBoxWeights) ? body.pickupBoxWeights : null,
+      deliveries: Array.isArray(body.deliveries) ? body.deliveries : undefined,
+      notes: body.notes || body.orderNotes || null,
+      affiliateName: body.affiliateName || null,
+      discountAmount: body.discountAmount || null,
+      linkedEmptyBoxMissionId: body.linkedEmptyBoxMissionId || null,
+      containerId: body.type === 'pickup' ? (body.containerId || null) : null,
+    };
+    missions.unshift(newMission);
+    await writeMissions(missions);
+
+    if (body.affiliateName) {
+      try {
+        const affiliates = await readAffiliates();
+        const idx = affiliates.findIndex((a) => a.name === body.affiliateName);
+        if (idx !== -1) {
+          affiliates[idx] = { ...affiliates[idx], orderCount: (affiliates[idx].orderCount || 0) + 1 };
+          await writeAffiliates(affiliates);
+        }
+      } catch {}
+    }
+
+    res.status(201).json(newMission);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── Apply auth to all other /api routes ──────────────────────────────────────
 
 app.use('/api', requireAuth);
@@ -428,57 +482,6 @@ app.get('/api/missions/:id', async (req, res) => {
     const mission = missions.find((m) => m.id === req.params.id);
     if (!mission) return res.status(404).json({ error: 'Mission not found' });
     res.json(mission);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.post('/api/missions', async (req, res) => {
-  try {
-    const missions = await readMissions();
-    const body = req.body;
-    const newMission = {
-      id: `MSN-${Date.now()}`,
-      type: VALID_MISSION_TOP_TYPES.includes(body.type) ? body.type : 'pickup',
-      status: body.status ?? (body.createdBy === 'customer' ? 'received' : 'linewhel_transferred'),
-      createdBy: body.createdBy || 'customer',
-      createdAt: body.createdAt || new Date().toISOString(),
-      fullName: body.fullName || '',
-      firstName: body.firstName || null,
-      lastName: body.lastName || null,
-      customerPhone: body.customerPhone || '',
-      address: body.address || null,
-      senderAddress: body.senderAddress || null,
-      receiverName: body.receiverName || null,
-      receiverPhone: body.receiverPhone || null,
-      receiverAddress: body.receiverAddress || null,
-      boxes: body.boxes || 0,
-      boxSelection: body.boxSelection || { large: 0, small: 0 },
-      bringBoxes: body.bringBoxes !== undefined ? body.bringBoxes : null,
-      pickupBoxCount: body.pickupBoxCount ?? null,
-      pickupBoxWeights: Array.isArray(body.pickupBoxWeights) ? body.pickupBoxWeights : null,
-      deliveries: Array.isArray(body.deliveries) ? body.deliveries : undefined,
-      notes: body.notes || body.orderNotes || null,
-      affiliateName: body.affiliateName || null,
-      discountAmount: body.discountAmount || null,
-      linkedEmptyBoxMissionId: body.linkedEmptyBoxMissionId || null,
-      containerId: body.type === 'pickup' ? (body.containerId || null) : null,
-    };
-    missions.unshift(newMission);
-    await writeMissions(missions);
-
-    if (body.affiliateName) {
-      try {
-        const affiliates = await readAffiliates();
-        const idx = affiliates.findIndex((a) => a.name === body.affiliateName);
-        if (idx !== -1) {
-          affiliates[idx] = { ...affiliates[idx], orderCount: (affiliates[idx].orderCount || 0) + 1 };
-          await writeAffiliates(affiliates);
-        }
-      } catch {}
-    }
-
-    res.status(201).json(newMission);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
