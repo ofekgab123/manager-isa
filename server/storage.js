@@ -59,6 +59,14 @@ export async function writeUsers(users) {
   return writeTable('users', users);
 }
 
+export async function readReceivers() {
+  return readTable('receivers');
+}
+
+export async function writeReceivers(receivers) {
+  return writeTable('receivers', receivers);
+}
+
 export async function readContainers() {
   return readTable('containers');
 }

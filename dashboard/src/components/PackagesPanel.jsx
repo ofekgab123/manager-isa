@@ -7,9 +7,11 @@ import {
   MapPin,
   X,
   Info,
+  Plus,
 } from 'lucide-react';
 import { API_BASE } from '../config';
 import MissionPreviewModal from './MissionPreviewModal';
+import CreatePackageModal from './CreatePackageModal';
 
 const TYPE_LABELS = {
   pickup: 'Pickup',
@@ -45,6 +47,7 @@ export default function PackagesPanel() {
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [bulkUpdating, setBulkUpdating] = useState(false);
   const [previewMission, setPreviewMission] = useState(null);
+  const [createPackageOpen, setCreatePackageOpen] = useState(false);
   const selectAllRef = useRef(null);
 
   const fetchData = useCallback(async () => {
@@ -106,29 +109,33 @@ export default function PackagesPanel() {
   };
 
   const toggleSelectAll = () => {
-    const allFilteredMissionIds = new Set(filtered.map(({ mission }) => mission.id));
-    if (selectedIds.size === allFilteredMissionIds.size) {
+    const allFilteredPackageIds = new Set(filtered.map(({ packageId }) => packageId));
+    if (selectedIds.size === allFilteredPackageIds.size) {
       setSelectedIds(new Set());
     } else {
-      setSelectedIds(allFilteredMissionIds);
+      setSelectedIds(allFilteredPackageIds);
     }
   };
 
-  // Flatten missions into one row per delivery
+  // Flatten missions into one row per delivery - each package is independent with its own ID
+  // PKG-{missionId}-{0/1/2} when from mission, PKG-{Date.now()} when standalone
   const rows = missions.flatMap((m) => {
     const deliveries = m.deliveries?.length > 0
       ? m.deliveries
       : [{
-          id: 'd-legacy',
           receiverName: m.receiverName || '',
           receiverPhone: m.receiverPhone || '',
           address: m.receiverAddress || null,
           boxCount: m.pickupBoxCount ?? 1,
         }];
-    return deliveries.map((d, idx) => ({ mission: m, delivery: d, deliveryIdx: idx, totalDeliveries: deliveries.length }));
+    return deliveries.map((d, idx) => {
+      const missionNum = m?.id?.replace(/^MSN-/, '') ?? '';
+      const packageId = (d.id && /^PKG-\d+$/.test(d.id)) ? d.id : (missionNum ? `PKG-${missionNum}-${idx}` : `PKG-${Date.now()}`);
+      return { mission: m, delivery: d, deliveryIdx: idx, packageId };
+    });
   });
 
-  const filtered = rows.filter(({ mission: m }) => {
+  const filtered = rows.filter(({ mission: m, delivery: d, packageId }) => {
     if (filterContainer === 'none') {
       if (m.containerId) return false;
     } else if (filterContainer && m.containerId !== filterContainer) {
@@ -139,19 +146,26 @@ export default function PackagesPanel() {
       return (
         (m.fullName || '').toLowerCase().includes(q) ||
         (m.id || '').toLowerCase().includes(q) ||
-        (m.customerPhone || '').replace(/\D/g, '').includes(q.replace(/\D/g, ''))
+        (m.customerPhone || '').replace(/\D/g, '').includes(q.replace(/\D/g, '')) ||
+        (packageId || '').toLowerCase().includes(q) ||
+        (d.receiverName || '').toLowerCase().includes(q) ||
+        (d.receiverPhone || '').replace(/\D/g, '').includes(q.replace(/\D/g, '')) ||
+        (d.boxTrackingIds ?? []).some((tid) => (tid || '').toLowerCase().includes(q))
       );
     }
     return true;
   });
 
   const handleBulkContainerAssign = async (containerId) => {
-    const ids = Array.from(selectedIds);
-    if (ids.length === 0) return;
+    const packageIds = Array.from(selectedIds);
+    if (packageIds.length === 0) return;
+    const missionIds = [...new Set(
+      rows.filter((r) => packageIds.includes(r.packageId)).map((r) => r.mission.id)
+    )];
     setBulkUpdating(true);
     try {
       await Promise.all(
-        ids.map((id) =>
+        missionIds.map((id) =>
           fetch(`${API_BASE}/missions/${id}`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
@@ -160,7 +174,7 @@ export default function PackagesPanel() {
         )
       );
       const results = await Promise.all(
-        ids.map((id) => fetch(`${API_BASE}/missions/${id}`).then((r) => r.json()))
+        missionIds.map((id) => fetch(`${API_BASE}/missions/${id}`).then((r) => r.json()))
       );
       setMissions((prev) =>
         prev.map((m) => {
@@ -176,14 +190,14 @@ export default function PackagesPanel() {
     }
   };
 
-  const filteredMissionIds = new Set(filtered.map(({ mission }) => mission.id));
+  const filteredPackageIds = new Set(filtered.map(({ packageId }) => packageId));
 
   useEffect(() => {
     if (selectAllRef.current) {
       selectAllRef.current.indeterminate =
-        selectedIds.size > 0 && selectedIds.size < filteredMissionIds.size;
+        selectedIds.size > 0 && selectedIds.size < filteredPackageIds.size;
     }
-  }, [selectedIds.size, filteredMissionIds.size]);
+  }, [selectedIds.size, filteredPackageIds.size]);
 
   return (
     <div className="space-y-6">
@@ -210,6 +224,14 @@ export default function PackagesPanel() {
             <Package className="w-5 h-5" />
             Packages ({rows.length})
           </h2>
+          <button
+            type="button"
+            onClick={() => setCreatePackageOpen(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            Create Package
+          </button>
         </div>
         <div className="px-4 py-3 border-b flex flex-wrap gap-3">
           <div className="relative flex-1 min-w-[200px]">
@@ -250,7 +272,7 @@ export default function PackagesPanel() {
         {selectedIds.size > 0 && (
           <div className="px-4 py-3 bg-indigo-50 border-b border-indigo-100 flex items-center justify-between gap-4 flex-wrap">
             <span className="font-medium text-indigo-800">
-              {selectedIds.size} mission{selectedIds.size !== 1 ? 's' : ''} selected
+              {selectedIds.size} package{selectedIds.size !== 1 ? 's' : ''} selected
             </span>
             <div className="flex items-center gap-2">
               <span className="text-sm text-indigo-600">Assign to container:</span>
@@ -299,15 +321,16 @@ export default function PackagesPanel() {
                   <th className="px-4 py-3 w-10">
                     <input
                       type="checkbox"
-                      checked={filteredMissionIds.size > 0 && selectedIds.size === filteredMissionIds.size}
+                      checked={filteredPackageIds.size > 0 && selectedIds.size === filteredPackageIds.size}
                       ref={(el) => {
-                        if (el) el.indeterminate = selectedIds.size > 0 && selectedIds.size < filteredMissionIds.size;
+                        if (el) el.indeterminate = selectedIds.size > 0 && selectedIds.size < filteredPackageIds.size;
                       }}
                       onChange={toggleSelectAll}
                       className="w-4 h-4 accent-indigo-600 cursor-pointer"
                     />
                   </th>
-                  <th className="px-4 py-3">Mission ID</th>
+                  <th className="px-4 py-3">Package ID</th>
+                  <th className="px-4 py-3">Tracking</th>
                   <th className="px-4 py-3">Delivery</th>
                   <th className="px-4 py-3">Status</th>
                   <th className="px-4 py-3">Sender</th>
@@ -318,27 +341,30 @@ export default function PackagesPanel() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map(({ mission, delivery, deliveryIdx, totalDeliveries }) => (
+                {filtered.map(({ mission, delivery, deliveryIdx, packageId }) => (
                   <tr
-                    key={`${mission.id}-${deliveryIdx}`}
+                    key={packageId}
                     className={`border-b border-slate-100 hover:bg-slate-50/50 ${
-                      selectedIds.has(mission.id) ? 'bg-indigo-50/50' : ''
+                      selectedIds.has(packageId) ? 'bg-indigo-50/50' : ''
                     }`}
                   >
                     <td className="px-4 py-3">
-                      {deliveryIdx === 0 && (
-                        <input
-                          type="checkbox"
-                          checked={selectedIds.has(mission.id)}
-                          onChange={() => toggleSelect(mission.id)}
-                          className="w-4 h-4 accent-indigo-600 cursor-pointer"
-                        />
-                      )}
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.has(packageId)}
+                        onChange={() => toggleSelect(packageId)}
+                        className="w-4 h-4 accent-indigo-600 cursor-pointer"
+                      />
                     </td>
                     <td className="px-4 py-3 font-mono font-bold text-blue-600 text-sm">
-                      {deliveryIdx === 0 ? mission.id : (
-                        <span className="text-slate-300 font-normal text-xs">↳</span>
-                      )}
+                      {packageId}
+                    </td>
+                    <td className="px-4 py-3 max-w-[10rem]">
+                      <p className="text-sm font-mono text-slate-600 truncate" title={(delivery.boxTrackingIds ?? []).filter(Boolean).join(', ')}>
+                        {(delivery.boxTrackingIds ?? []).filter(Boolean).length > 0
+                          ? (delivery.boxTrackingIds ?? []).filter(Boolean).join(', ')
+                          : '—'}
+                      </p>
                     </td>
                     <td className="px-4 py-3">
                       <span className="inline-flex items-center gap-1 text-sm font-medium px-2.5 py-1 rounded-full whitespace-nowrap bg-orange-100 text-orange-700">
@@ -382,35 +408,31 @@ export default function PackagesPanel() {
                       )}
                     </td>
                     <td className="px-4 py-3">
-                      {deliveryIdx === 0 && (
-                        <select
-                          value={mission.containerId || ''}
-                          onChange={(e) =>
-                            handleContainerChange(mission.id, e.target.value || null)
-                          }
-                          disabled={updatingId === mission.id}
-                          className="text-sm px-2 py-1.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-200 min-w-[140px]"
-                        >
-                          <option value="">No container</option>
-                          {containers.map((c) => (
-                            <option key={c.id} value={c.id}>
-                              {c.name || c.id}
-                            </option>
-                          ))}
-                        </select>
-                      )}
+                      <select
+                        value={mission.containerId || ''}
+                        onChange={(e) =>
+                          handleContainerChange(mission.id, e.target.value || null)
+                        }
+                        disabled={updatingId === mission.id}
+                        className="text-sm px-2 py-1.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-200 min-w-[140px]"
+                      >
+                        <option value="">No container</option>
+                        {containers.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.name || c.id}
+                          </option>
+                        ))}
+                      </select>
                     </td>
                     <td className="px-4 py-3">
-                      {deliveryIdx === 0 && (
-                        <button
-                          type="button"
-                          onClick={() => setPreviewMission(mission)}
-                          className="p-2 hover:bg-indigo-50 rounded-lg text-slate-500 hover:text-indigo-600 transition-colors"
-                          title="View summary"
-                        >
-                          <Info className="w-4 h-4" />
-                        </button>
-                      )}
+                      <button
+                        type="button"
+                        onClick={() => setPreviewMission(mission)}
+                        className="p-2 hover:bg-indigo-50 rounded-lg text-slate-500 hover:text-indigo-600 transition-colors"
+                        title="View summary"
+                      >
+                        <Info className="w-4 h-4" />
+                      </button>
                     </td>
                   </tr>
                 ))}
@@ -426,6 +448,12 @@ export default function PackagesPanel() {
           onClose={() => setPreviewMission(null)}
         />
       )}
+
+      <CreatePackageModal
+        isOpen={createPackageOpen}
+        onClose={() => setCreatePackageOpen(false)}
+        onCreated={() => { setCreatePackageOpen(false); fetchData(); }}
+      />
     </div>
   );
 }

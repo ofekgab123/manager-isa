@@ -14,6 +14,7 @@ import {
   X,
   AlertTriangle,
   Users,
+  UserCircle2,
   MapPin,
   Tag,
   BarChart2,
@@ -29,6 +30,7 @@ import MissionDetails from './components/MissionDetails';
 import CompleteDeliveryModal from './components/CompleteDeliveryModal';
 import MissionPreviewModal from './components/MissionPreviewModal';
 import AffiliatesPanel from './components/AffiliatesPanel';
+import CustomersPanel from './components/CustomersPanel';
 import UsersPanel from './components/UsersPanel';
 import StatisticsPanel from './components/StatisticsPanel';
 import PackagesPanel from './components/PackagesPanel';
@@ -449,6 +451,15 @@ function Dashboard({ authUser, onLogout }) {
             <Users className="w-4 h-4" />
             Affiliates
           </button>
+          <button
+            onClick={() => setActiveTab('customers')}
+            className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === 'customers' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-600 hover:text-slate-800'
+            }`}
+          >
+            <UserCircle2 className="w-4 h-4" />
+            Customers
+          </button>
           {authUser.isAdmin && (
             <button
               onClick={() => setActiveTab('users')}
@@ -485,6 +496,7 @@ function Dashboard({ authUser, onLogout }) {
         {activeTab === 'packages' && <PackagesPanel />}
         {activeTab === 'containers' && <ContainersPanel />}
         {activeTab === 'affiliates' && <AffiliatesPanel missions={missions} />}
+        {activeTab === 'customers' && <CustomersPanel />}
         {activeTab === 'users' && authUser.isAdmin && <UsersPanel />}
         {activeTab === 'statistics' && (
           <StatisticsPanel

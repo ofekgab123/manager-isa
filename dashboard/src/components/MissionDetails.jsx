@@ -482,10 +482,17 @@ export default function MissionDetails({ mission, onSave, onClose, onDelete, onO
   const handleSave = async () => {
     setSaving(true); setError('');
     try {
+      const payload = { ...edit };
+      if (payload.deliveries?.length) {
+        payload.deliveries = payload.deliveries.map((d, i) => ({
+          ...d,
+          id: `PKG-${(mission.id || '').replace(/^MSN-/, '')}-${i}`,
+        }));
+      }
       const res = await fetch(`${API_BASE}/missions/${mission.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(edit),
+        body: JSON.stringify(payload),
       });
       if (!res.ok) throw new Error('Save error');
       onSave?.(await res.json());
@@ -664,7 +671,7 @@ export default function MissionDetails({ mission, onSave, onClose, onDelete, onO
           </h4>
           {(edit.deliveries?.length > 0 ? edit.deliveries : [
             {
-              id: 'd-legacy',
+              id: edit.id ? `PKG-${(edit.id || '').replace(/^MSN-/, '')}-0` : undefined,
               receiverName: edit.receiverName || '',
               receiverPhone: edit.receiverPhone || '',
               address: edit.receiverAddress || {},
@@ -673,7 +680,7 @@ export default function MissionDetails({ mission, onSave, onClose, onDelete, onO
             }
           ]).map((d, idx) => {
             const deliveriesList = edit.deliveries?.length > 0 ? edit.deliveries : [{
-              id: 'd-legacy',
+              id: edit.id ? `PKG-${(edit.id || '').replace(/^MSN-/, '')}-0` : undefined,
               receiverName: edit.receiverName || '',
               receiverPhone: edit.receiverPhone || '',
               address: edit.receiverAddress || {},

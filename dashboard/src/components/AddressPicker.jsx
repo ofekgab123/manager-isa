@@ -73,6 +73,13 @@ export default function AddressPicker({ isOpen, onClose, onSelect, initialPositi
     reverseGeocode(lat, lng);
   }, [reverseGeocode]);
 
+  const handleMarkerDragEnd = useCallback((e) => {
+    const lat = e.latLng.lat();
+    const lng = e.latLng.lng();
+    setPosition({ lat, lng });
+    reverseGeocode(lat, lng);
+  }, [reverseGeocode]);
+
   const onPlaceChanged = useCallback(() => {
     if (!autocompleteRef.current) return;
     const place = autocompleteRef.current.getPlace();
@@ -398,7 +405,7 @@ export default function AddressPicker({ isOpen, onClose, onSelect, initialPositi
               onLoad={(map) => { mapRef.current = map; }}
               options={MAP_OPTIONS}
             >
-              <Marker position={position} />
+              <Marker position={position} draggable onDragEnd={handleMarkerDragEnd} />
             </GoogleMap>
           ) : (
             <div className="w-full h-full bg-slate-200 flex items-center justify-center text-slate-500">

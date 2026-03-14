@@ -3,7 +3,7 @@ import cors from 'cors';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import pool from './db.js';
-import { readOrders, writeOrders, readAffiliates, writeAffiliates, readMissions, writeMissions, readUsers, writeUsers, readContainers, writeContainers, readParcelContentTypes, writeParcelContentTypes } from './storage.js';
+import { readOrders, writeOrders, readAffiliates, writeAffiliates, readMissions, writeMissions, readUsers, writeUsers, readReceivers, writeReceivers, readContainers, writeContainers, readParcelContentTypes, writeParcelContentTypes } from './storage.js';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'isa-manager-jwt-secret-key';
 
@@ -15,6 +15,7 @@ app.use(cors({
       'https://isa-32uqdb92z-ofekgab123s-projects.vercel.app',
       'https://isa-git-main-ofekgab123s-projects.vercel.app',
       'http://localhost:5173',
+      'http://localhost:5174',
       'http://localhost:3000',
     ];
     if (!origin || allowed.includes(origin) || /^https:\/\/isa-.*-ofekgab123s-projects\.vercel\.app$/.test(origin)) {
@@ -135,6 +136,20 @@ app.delete('/api/auth/users/:id', requireAuth, requireAdmin, async (req, res) =>
     const { rowCount } = await pool.query('DELETE FROM auth_users WHERE id = $1', [req.params.id]);
     if (rowCount === 0) return res.status(404).json({ error: 'User not found' });
     res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Public: lookup customer by phone (for client-side auto-fill, no auth) ──────
+
+app.get('/api/customers/by-phone', async (req, res) => {
+  try {
+    const phone = (req.query.phone || '').replace(/\D/g, '');
+    if (!phone || phone.length < 7) return res.json(null);
+    const users = await readUsers();
+    const match = users.find((u) => (u.phone || '').replace(/\D/g, '') === phone);
+    res.json(match || null);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -437,6 +452,7 @@ app.post('/api/missions', async (req, res) => {
       bringBoxes: body.bringBoxes !== undefined ? body.bringBoxes : null,
       pickupBoxCount: body.pickupBoxCount ?? null,
       pickupBoxWeights: Array.isArray(body.pickupBoxWeights) ? body.pickupBoxWeights : null,
+      deliveries: Array.isArray(body.deliveries) ? body.deliveries : undefined,
       notes: body.notes || body.orderNotes || null,
       affiliateName: body.affiliateName || null,
       discountAmount: body.discountAmount || null,
@@ -828,6 +844,98 @@ app.delete('/api/users/:id', async (req, res) => {
     const users = await readUsers();
     const filtered = users.filter((u) => u.id !== req.params.id);
     await writeUsers(filtered);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/* ─── Receivers (delivery recipients, lookup by phone, save on complete delivery) ─ */
+
+app.get('/api/receivers', async (req, res) => {
+  try {
+    const receivers = await readReceivers();
+    const q = (req.query.q || '').toLowerCase();
+    const result = q
+      ? receivers.filter((r) =>
+          (r.fullName || '').toLowerCase().includes(q) ||
+          (r.phone || '').replace(/\D/g, '').includes(q.replace(/\D/g, ''))
+        )
+      : receivers;
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/receivers/by-phone', async (req, res) => {
+  try {
+    const phone = (req.query.phone || '').replace(/\D/g, '');
+    if (!phone || phone.length < 7) return res.json(null);
+    const receivers = await readReceivers();
+    const match = receivers.find((r) => (r.phone || '').replace(/\D/g, '') === phone);
+    res.json(match || null);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/receivers', async (req, res) => {
+  try {
+    const receivers = await readReceivers();
+    const body = req.body;
+    const normalizedPhone = (body.phone || '').replace(/\D/g, '');
+
+    if (normalizedPhone) {
+      const existingIdx = receivers.findIndex(
+        (r) => (r.phone || '').replace(/\D/g, '') === normalizedPhone
+      );
+      if (existingIdx !== -1) {
+        const updated = {
+          ...receivers[existingIdx],
+          fullName: body.fullName || receivers[existingIdx].fullName,
+          address: body.address || receivers[existingIdx].address,
+        };
+        receivers[existingIdx] = updated;
+        await writeReceivers(receivers);
+        return res.status(200).json(updated);
+      }
+    }
+
+    const newReceiver = {
+      id: `RCV-${Date.now()}`,
+      fullName: body.fullName || '',
+      phone: body.phone || '',
+      address: body.address || null,
+      createdAt: new Date().toISOString(),
+    };
+    receivers.unshift(newReceiver);
+    await writeReceivers(receivers);
+    res.status(201).json(newReceiver);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.patch('/api/receivers/:id', async (req, res) => {
+  try {
+    const receivers = await readReceivers();
+    const idx = receivers.findIndex((r) => r.id === req.params.id);
+    if (idx === -1) return res.status(404).json({ error: 'Receiver not found' });
+    receivers[idx] = { ...receivers[idx], ...req.body };
+    await writeReceivers(receivers);
+    res.json(receivers[idx]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/receivers/:id', async (req, res) => {
+  try {
+    const receivers = await readReceivers();
+    const filtered = receivers.filter((r) => r.id !== req.params.id);
+    if (filtered.length === receivers.length) return res.status(404).json({ error: 'Receiver not found' });
+    await writeReceivers(filtered);
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: err.message });

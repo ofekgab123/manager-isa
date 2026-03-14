@@ -221,13 +221,22 @@ export default function CreateOrderModal({ isOpen, onClose, onCreated }) {
 
   const filterSuggestions = (fieldName, value) => {
     if (!value.trim()) { setUserSuggestions([]); return; }
-    const q = value.toLowerCase();
-    const matches = allUsers.filter((u) => {
-      if (fieldName === 'fullName')     return (u.fullName || '').toLowerCase().includes(q);
-      if (fieldName === 'israeliPhone') return (u.phone || '').replace(/\D/g, '').includes(q.replace(/\D/g, ''));
-      return false;
-    });
-    setUserSuggestions(matches.slice(0, 6));
+    const digits = (value || '').replace(/\D/g, '');
+    const isPhoneLookup = fieldName === 'israeliPhone' && digits.length >= 7;
+    if (isPhoneLookup) {
+      fetch(`${API_BASE}/customers/by-phone?phone=${encodeURIComponent(value)}`)
+        .then((r) => r.ok ? r.json() : null)
+        .then((user) => setUserSuggestions(user ? [user] : []))
+        .catch(() => setUserSuggestions([]));
+    } else {
+      const q = value.toLowerCase();
+      const matches = allUsers.filter((u) => {
+        if (fieldName === 'fullName')     return (u.fullName || '').toLowerCase().includes(q);
+        if (fieldName === 'israeliPhone') return (u.phone || '').replace(/\D/g, '').includes(q.replace(/\D/g, ''));
+        return false;
+      });
+      setUserSuggestions(matches.slice(0, 6));
+    }
   };
 
   const applySuggestion = (u) => {
@@ -246,10 +255,35 @@ export default function CreateOrderModal({ isOpen, onClose, onCreated }) {
     setActiveField(null);
   };
 
+  const receiverLookupRef = useRef(null);
   const handlePickupChange = (e) => {
     const { name, value } = e.target;
     setPickupForm((p) => ({ ...p, [name]: value }));
     if (name === 'fullName') { setActiveField('fullName'); filterSuggestions('fullName', value); }
+    if (name === 'receiverPhone') {
+      const digits = (value || '').replace(/\D/g, '');
+      if (digits.length >= 7) {
+        clearTimeout(receiverLookupRef.current);
+        receiverLookupRef.current = setTimeout(() => {
+          fetch(`${API_BASE}/receivers/by-phone?phone=${encodeURIComponent(value)}`)
+            .then((r) => r.ok ? r.json() : null)
+            .then((rcv) => {
+              if (rcv) {
+                setPickupForm((p) => ({
+                  ...p,
+                  receiverPhone: rcv.phone || p.receiverPhone,
+                  receiverName: rcv.fullName || p.receiverName,
+                  receiverCity: rcv.address?.city ?? p.receiverCity,
+                  receiverStreet: rcv.address?.street ?? p.receiverStreet,
+                  receiverHouseNumber: rcv.address?.houseNumber ?? p.receiverHouseNumber,
+                }));
+                if (rcv.address?.lat != null) setReceiverMapAddress(rcv.address);
+              }
+            })
+            .catch(() => {});
+        }, 400);
+      }
+    }
   };
 
   const steps = orderType ? PICKUP_STEPS : [];
@@ -319,6 +353,17 @@ export default function CreateOrderModal({ isOpen, onClose, onCreated }) {
       });
       if (!res.ok) throw new Error('Save error');
       const order = await res.json();
+      if ((pickupForm.receiverPhone || '').replace(/\D/g, '').length >= 7) {
+        fetch(`${API_BASE}/receivers`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            fullName: pickupForm.receiverName || '',
+            phone: pickupForm.receiverPhone || '',
+            address: receiverAddr,
+          }),
+        }).catch(() => {});
+      }
       if (createMission) {
         const missionAddr = { label: 'Pickup address', ...senderAddr };
         await createMissionForOrder(order.id, {

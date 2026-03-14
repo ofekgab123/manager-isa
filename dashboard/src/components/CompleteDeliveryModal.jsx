@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
-import { X, Plus, Trash2, MapPin, CheckCircle, Truck, Package, AlertTriangle, Copy, Link2, Box } from 'lucide-react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { X, Plus, Trash2, MapPin, CheckCircle, Truck, Package, AlertTriangle, Copy, Link2, Box, Pencil } from 'lucide-react';
 import AddressPicker from './AddressPicker';
 import PhoneInput from './PhoneInput';
 import EmptyBoxMissionPickerModal from './EmptyBoxMissionPickerModal';
@@ -8,7 +8,35 @@ import { API_BASE } from '../config';
 /* ─── Single delivery row ────────────────────────────────────── */
 function DeliveryRow({ row, idx, totalPickup, otherAssigned, onChange, onDelete, canDelete, parcelContentTypes }) {
   const [pickerOpen, setPickerOpen] = useState(false);
+  const lookupTimeoutRef = useRef(null);
   const maxForRow = totalPickup - otherAssigned;
+
+  const handleReceiverPhoneChange = (v) => {
+    onChange({ ...row, receiverPhone: v });
+    const digits = (v || '').replace(/\D/g, '');
+    if (digits.length >= 7) {
+      clearTimeout(lookupTimeoutRef.current);
+      lookupTimeoutRef.current = setTimeout(() => {
+        fetch(`${API_BASE}/receivers/by-phone?phone=${encodeURIComponent(v)}`)
+          .then((r) => r.ok ? r.json() : null)
+          .then((rcv) => {
+            if (rcv) {
+              const r = rowRef.current;
+              onChange({
+                ...r,
+                receiverPhone: rcv.phone || r.receiverPhone,
+                receiverName: rcv.fullName || r.receiverName,
+                address: rcv.address || r.address,
+              });
+            }
+          })
+          .catch(() => {});
+      }, 400);
+    }
+  };
+
+  const rowRef = useRef(row);
+  rowRef.current = row;
 
   const ensureBoxContents = (count) => {
     const prev = row.boxContents ?? [];
@@ -48,7 +76,7 @@ function DeliveryRow({ row, idx, totalPickup, otherAssigned, onChange, onDelete,
           <label className="block text-xs font-medium text-slate-500 mb-1">Receiver phone</label>
           <PhoneInput
             value={row.receiverPhone}
-            onChange={(v) => onChange({ ...row, receiverPhone: v })}
+            onChange={handleReceiverPhoneChange}
             placeholder="501234567"
           />
         </div>
@@ -66,7 +94,8 @@ function DeliveryRow({ row, idx, totalPickup, otherAssigned, onChange, onDelete,
           }`}
         >
           <MapPin className="w-4 h-4 shrink-0" />
-          <span className="truncate">{row.address?.displayAddress || 'Pick location on map…'}</span>
+          <span className="truncate flex-1 text-left">{row.address?.displayAddress || 'Pick location on map…'}</span>
+          {row.address?.lat && <Pencil className="w-4 h-4 shrink-0 text-green-600" title="Edit address" />}
         </button>
         <AddressPicker
           isOpen={pickerOpen}
@@ -276,7 +305,7 @@ export default function CompleteDeliveryModal({ isOpen, mission, onClose, onSave
     const initialTrackingIds = Array.from({ length: initialBoxCount }, () => '');
     const initialBoxContents = Array.from({ length: initialBoxCount }, () => []);
     return [{
-      id: `d-${Date.now()}`,
+      id: mission?.id ? `PKG-${(mission.id || '').replace(/^MSN-/, '')}-0` : `PKG-${Date.now()}`,
       receiverName:  mission.receiverName  || '',
       receiverPhone: mission.receiverPhone || '',
       address:       mission.receiverAddress || null,
@@ -367,7 +396,7 @@ export default function CompleteDeliveryModal({ isOpen, mission, onClose, onSave
     setDeliveries((prev) => [
       ...prev,
       {
-        id: `d-${Date.now()}`,
+        id: mission?.id ? `PKG-${(mission.id || '').replace(/^MSN-/, '')}-${prev.length}` : `PKG-${Date.now()}`,
         receiverName: '',
         receiverPhone: '',
         address: null,
@@ -385,6 +414,26 @@ export default function CompleteDeliveryModal({ isOpen, mission, onClose, onSave
   const handleSave = async () => {
     setSaving(true); setError('');
     try {
+      const normalizedDeliveries = deliveries.map((d, i) => ({
+        ...d,
+        id: mission?.id ? `PKG-${(mission.id || '').replace(/^MSN-/, '')}-${i}` : `PKG-${Date.now()}`,
+      }));
+      // Save receivers for future auto-fill
+      await Promise.all(
+        normalizedDeliveries
+          .filter((d) => (d.receiverPhone || '').replace(/\D/g, '').length >= 7)
+          .map((d) =>
+            fetch(`${API_BASE}/receivers`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                fullName: d.receiverName || '',
+                phone: d.receiverPhone || '',
+                address: d.address || null,
+              }),
+            }).catch(() => {})
+          )
+      );
       const res = await fetch(`${API_BASE}/missions/${mission.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -393,13 +442,13 @@ export default function CompleteDeliveryModal({ isOpen, mission, onClose, onSave
           pickupBoxWeights: pickupBoxCount > 0 ? deliveries.flatMap((d) => (d.boxWeights ?? []).map((w) => parseFloat(w) || 0)) : null,
           bringBoxes,
           boxSelection: bringBoxes ? boxSelection : { large: 0, small: 0 },
-          deliveries,
+          deliveries: normalizedDeliveries,
           linkedEmptyBoxMissionId,
           containerId: containerId || null,
           // keep first delivery as the primary receiver for backwards compat
-          receiverName:    deliveries[0]?.receiverName  || '',
-          receiverPhone:   deliveries[0]?.receiverPhone || '',
-          receiverAddress: deliveries[0]?.address       || null,
+          receiverName:    normalizedDeliveries[0]?.receiverName  || '',
+          receiverPhone:   normalizedDeliveries[0]?.receiverPhone || '',
+          receiverAddress: normalizedDeliveries[0]?.address       || null,
         }),
       });
       if (!res.ok) throw new Error('Save error');

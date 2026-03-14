@@ -30,6 +30,10 @@ export async function initDb() {
       id TEXT PRIMARY KEY,
       data JSONB NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS receivers (
+      id TEXT PRIMARY KEY,
+      data JSONB NOT NULL
+    );
     CREATE TABLE IF NOT EXISTS parcel_content_types (
       id TEXT PRIMARY KEY,
       data JSONB NOT NULL
