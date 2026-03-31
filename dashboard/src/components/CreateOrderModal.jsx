@@ -22,13 +22,14 @@ const PICKUP_STEPS = [
 ];
 
 /* ─── Sub-components ─────────────────────────────────────────── */
-function StepBar({ steps, current }) {
+function StepBar({ steps, current, orderType }) {
   return (
     <div className="flex items-center gap-0 mb-6">
       {steps.map((s, i) => {
         const done = current > s.id;
         const active = current === s.id;
         const Icon = s.icon;
+        const optionalLabel = s.optional || (s.id === 3 && orderType === 'pickup');
         return (
           <div key={s.id} className="flex items-center flex-1 min-w-0">
               <div className="flex flex-col items-center gap-1 flex-shrink-0">
@@ -42,7 +43,7 @@ function StepBar({ steps, current }) {
               <span className={`text-[10px] font-medium whitespace-nowrap ${
                 active ? 'text-indigo-700' : done ? 'text-indigo-400' : 'text-slate-400'
               }`}>{s.label}</span>
-              {s.optional && (
+              {optionalLabel && (
                 <span className="text-[9px] text-slate-400 whitespace-nowrap">optional</span>
               )}
             </div>
@@ -305,7 +306,10 @@ export default function CreateOrderModal({ isOpen, onClose, onCreated }) {
     if (!orderType) return false;
     if (step === 1) return pickupForm.fullName.trim() && pickupForm.israeliPhone.trim();
     if (step === 2) return !!senderMapAddress;
-    if (step === 3) return boxCounts.large + boxCounts.small > 0;
+    if (step === 3) {
+      if (orderType === 'pickup') return true;
+      return boxCounts.large + boxCounts.small > 0;
+    }
     return true;
   };
 
@@ -457,7 +461,7 @@ export default function CreateOrderModal({ isOpen, onClose, onCreated }) {
 
           {/* ── Steps ── */}
           {orderType && <div>
-              <StepBar steps={steps} current={step} />
+              <StepBar steps={steps} current={step} orderType={orderType} />
 
               {/* ── Steps (shared for both pickup and empty_box) ── */}
               {orderType && (
@@ -515,8 +519,17 @@ export default function CreateOrderModal({ isOpen, onClose, onCreated }) {
 
                   {step === 3 && (
                     <div className="space-y-4">
-                      <h3 className="font-semibold text-slate-800 text-base mb-1">Box Selection</h3>
-                      <p className="text-sm text-slate-500 -mt-2">Select at least one box to continue.</p>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h3 className="font-semibold text-slate-800 text-base mb-1">Box Selection</h3>
+                        {orderType === 'pickup' && (
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 font-medium">optional</span>
+                        )}
+                      </div>
+                      <p className="text-sm text-slate-500 -mt-2">
+                        {orderType === 'pickup'
+                          ? 'How many boxes (optional — use 0 if not yet known).'
+                          : 'Select at least one box to continue.'}
+                      </p>
                       <div className="space-y-3">
                         {BOX_TYPES.map((bt) => {
                           const count = boxCounts[bt.id];

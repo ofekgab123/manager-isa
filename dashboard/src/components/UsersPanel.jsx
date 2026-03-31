@@ -1,8 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Users, Plus, Pencil, Trash2, X, Save, ShieldCheck, Shield, Search, Eye, EyeOff } from 'lucide-react';
+import { Users, Plus, Pencil, Trash2, X, Save, ShieldCheck, Shield, Search, Eye, EyeOff, Globe } from 'lucide-react';
 import { API_BASE } from '../config';
-
-const inputCls = 'w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200';
 
 /* ─── Auth user form modal ────────────────────────────────────── */
 function AuthUserFormModal({ user, onSave, onClose }) {
@@ -11,6 +9,7 @@ function AuthUserFormModal({ user, onSave, onClose }) {
     username: user?.username || '',
     password: '',
     isAdmin: user?.isAdmin ?? false,
+    country: user?.country || '',
   });
   const [showPassword, setShowPassword] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -29,6 +28,7 @@ function AuthUserFormModal({ user, onSave, onClose }) {
     try {
       const body = { username: form.username.trim(), isAdmin: form.isAdmin };
       if (form.password) body.password = form.password;
+      if (!form.isAdmin) body.country = form.country || null;
       const url    = isEdit ? `${API_BASE}/auth/users/${user.id}` : `${API_BASE}/auth/users`;
       const method = isEdit ? 'PATCH' : 'POST';
       const res = await fetch(url, {
@@ -47,17 +47,17 @@ function AuthUserFormModal({ user, onSave, onClose }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm">
-        <div className="flex items-center justify-between px-5 py-4 border-b">
-          <h3 className="font-bold text-slate-800">{isEdit ? 'Edit User' : 'Add User'}</h3>
-          <button onClick={onClose} className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-500">
+    <div className="modal-overlay z-50">
+      <div className="modal-content max-w-sm animate-slide-up" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <h3 className="font-bold text-slate-800 text-lg">{isEdit ? 'Edit User' : 'Add User'}</h3>
+          <button onClick={onClose} className="action-btn hover:bg-slate-100 text-slate-400">
             <X className="w-5 h-5" />
           </button>
         </div>
-        <div className="px-5 py-4 space-y-4">
+        <div className="modal-body space-y-4">
           <div>
-            <label className="block text-xs font-medium text-slate-500 mb-1">
+            <label className="label">
               Username <span className="text-red-500">*</span>
             </label>
             <input
@@ -65,14 +65,14 @@ function AuthUserFormModal({ user, onSave, onClose }) {
               value={form.username}
               onChange={handleChange}
               placeholder="Username"
-              className={inputCls}
+              className="input-field"
               autoComplete="off"
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-slate-500 mb-1">
+            <label className="label">
               Password {!isEdit && <span className="text-red-500">*</span>}
-              {isEdit && <span className="text-slate-400 font-normal">(leave blank to keep current)</span>}
+              {isEdit && <span className="text-slate-400 font-normal normal-case tracking-normal">(leave blank to keep current)</span>}
             </label>
             <div className="relative">
               <input
@@ -81,7 +81,7 @@ function AuthUserFormModal({ user, onSave, onClose }) {
                 value={form.password}
                 onChange={handleChange}
                 placeholder={isEdit ? 'New password…' : 'Password'}
-                className={`${inputCls} pr-10`}
+                className="input-field pr-10"
                 autoComplete="new-password"
               />
               <button
@@ -94,7 +94,7 @@ function AuthUserFormModal({ user, onSave, onClose }) {
               </button>
             </div>
           </div>
-          <label className="flex items-center gap-3 cursor-pointer select-none p-3 rounded-xl border border-slate-200 hover:bg-slate-50 transition-colors">
+          <label className="flex items-center gap-3 cursor-pointer select-none p-3.5 rounded-xl border border-slate-200 hover:bg-slate-50 transition-colors">
             <input
               type="checkbox"
               name="isAdmin"
@@ -110,16 +110,33 @@ function AuthUserFormModal({ user, onSave, onClose }) {
               </div>
             </div>
           </label>
-          {error && <p className="text-red-500 text-sm bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>}
+          {!form.isAdmin && (
+            <div>
+              <label className="label">
+                Country <span className="text-slate-400 font-normal">(user will only see this country's data)</span>
+              </label>
+              <select
+                name="country"
+                value={form.country}
+                onChange={handleChange}
+                className="input-field"
+              >
+                <option value="">— All countries (no restriction) —</option>
+                <option value="India">India</option>
+                <option value="Thailand">Thailand</option>
+              </select>
+            </div>
+          )}
+          {error && <p className="text-red-500 text-sm bg-red-50 border border-red-200 rounded-xl px-4 py-2.5">{error}</p>}
         </div>
-        <div className="flex gap-2 px-5 py-4 border-t">
-          <button onClick={onClose} className="px-4 py-2 border border-slate-200 rounded-lg text-sm text-slate-600 hover:bg-slate-50">
+        <div className="modal-footer">
+          <button onClick={onClose} className="btn-secondary">
             Cancel
           </button>
           <button
             onClick={handleSave}
             disabled={saving}
-            className="flex-1 flex items-center justify-center gap-2 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-lg text-sm font-semibold"
+            className="btn-primary flex-1"
           >
             <Save className="w-4 h-4" />
             {saving ? 'Saving…' : isEdit ? 'Save changes' : 'Add user'}
@@ -174,30 +191,30 @@ export default function UsersPanel() {
   const handleSaved = () => { fetchUsers(); setEditingUser(null); setShowAdd(false); };
 
   return (
-    <section className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
-      <div className="flex items-center justify-between px-5 py-4 border-b">
-        <h2 className="text-lg font-semibold text-slate-800 flex items-center gap-2">
-          <Users className="w-5 h-5" />
+    <section className="card animate-fade-in">
+      <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+        <h2 className="section-title">
+          <Users className="w-5 h-5 text-indigo-500" />
           System Users ({search ? `${filtered.length} / ${users.length}` : users.length})
         </h2>
         <button
           onClick={() => setShowAdd(true)}
-          className="flex items-center gap-2 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium"
+          className="btn-primary"
         >
           <Plus className="w-4 h-4" />
           Add user
         </button>
       </div>
 
-      <div className="px-5 py-3 border-b">
+      <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/30">
         <div className="relative">
-          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search by username…"
-            className="w-full pl-9 pr-4 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200"
+            className="input-field pl-10"
           />
           {search && (
             <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
@@ -208,45 +225,61 @@ export default function UsersPanel() {
       </div>
 
       {loading ? (
-        <p className="p-8 text-center text-slate-500">Loading…</p>
+        <p className="p-12 text-center text-slate-500">Loading…</p>
       ) : filtered.length === 0 ? (
-        <p className="p-8 text-center text-slate-400">{search ? 'No users match your search' : 'No users yet'}</p>
+        <div className="flex flex-col items-center justify-center py-16 animate-fade-in">
+          <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mb-4">
+            <Users className="w-8 h-8 text-slate-300" />
+          </div>
+          <p className="text-base font-medium text-slate-500">{search ? 'No users match your search' : 'No users yet'}</p>
+        </div>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-center">
             <thead>
-              <tr className="bg-slate-50 border-b border-slate-100">
-                <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Username</th>
-                <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Role</th>
-                <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Created</th>
-                <th className="px-4 py-3"></th>
+              <tr className="table-header">
+                <th>Username</th>
+                <th>Role</th>
+                <th>Country</th>
+                <th>Created</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
               {filtered.map((u) => (
-                <tr key={u.id} className="border-b border-slate-100 hover:bg-slate-50/60 transition-colors">
-                  <td className="px-4 py-3 font-medium text-slate-800 text-sm">{u.username}</td>
-                  <td className="px-4 py-3">
+                <tr key={u.id} className="table-row">
+                  <td className="font-medium text-slate-800 text-sm">{u.username}</td>
+                  <td>
                     {u.isAdmin ? (
-                      <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2.5 py-1 rounded-full">
+                      <span className="badge-pill text-indigo-700 bg-indigo-50 border border-indigo-200">
                         <ShieldCheck className="w-3.5 h-3.5" />
                         Admin
                       </span>
                     ) : (
-                      <span className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-500 bg-slate-100 px-2.5 py-1 rounded-full">
+                      <span className="badge-pill text-slate-500 bg-slate-100">
                         <Shield className="w-3.5 h-3.5" />
                         User
                       </span>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-xs text-slate-400 whitespace-nowrap">
+                  <td>
+                    {u.country ? (
+                      <span className="badge-pill text-emerald-700 bg-emerald-50 border border-emerald-200">
+                        <Globe className="w-3.5 h-3.5" />
+                        {u.country}
+                      </span>
+                    ) : (
+                      <span className="text-slate-300 text-sm">—</span>
+                    )}
+                  </td>
+                  <td className="text-xs text-slate-400 whitespace-nowrap">
                     {u.createdAt ? new Date(u.createdAt).toLocaleDateString('en-GB') : '—'}
                   </td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-1 justify-center">
+                  <td>
+                    <div className="table-actions">
                       <button
                         onClick={() => setEditingUser(u)}
-                        className="p-1.5 rounded-lg hover:bg-slate-200 text-slate-500 hover:text-slate-700 transition-colors"
+                        className="action-btn hover:bg-slate-100 text-slate-400 hover:text-slate-700"
                         title="Edit"
                       >
                         <Pencil className="w-4 h-4" />
@@ -254,7 +287,7 @@ export default function UsersPanel() {
                       <button
                         onClick={() => handleDelete(u.id)}
                         disabled={deletingId === u.id}
-                        className="p-1.5 rounded-lg hover:bg-red-100 text-slate-400 hover:text-red-600 transition-colors disabled:opacity-50"
+                        className="action-btn hover:bg-red-50 text-slate-400 hover:text-red-600 disabled:opacity-50"
                         title="Delete"
                       >
                         <Trash2 className="w-4 h-4" />

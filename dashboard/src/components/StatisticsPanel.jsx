@@ -33,28 +33,23 @@ const TYPE_COLORS = { pickup: '#6366f1', empty_box: '#3b82f6' };
 const CREATOR_LABELS = { customer: 'Customer', customer_service: 'CS' };
 const CREATOR_COLORS = { customer: '#f59e0b', customer_service: '#22c55e' };
 
-const INPUT_CLS =
-  'w-full px-2.5 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300';
-const SELECT_CLS =
-  'w-full px-2.5 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white';
-
 function KpiCard({ value, label, color = 'text-slate-800', icon, accent }) {
   return (
-    <div className={`bg-white rounded-xl p-4 shadow-sm border ${accent || 'border-slate-100'}`}>
-      <div className={`text-2xl font-bold ${color} flex items-center gap-1.5`}>
+    <div className={`stat-card border-l-4 ${accent || 'border-slate-200'}`}>
+      <div className={`text-3xl font-extrabold ${color} flex items-center gap-1.5`}>
         {icon}
         {value}
       </div>
-      <div className="text-sm text-slate-500 mt-0.5">{label}</div>
+      <div className="text-sm text-slate-500 mt-1">{label}</div>
     </div>
   );
 }
 
 function ChartCard({ title, icon, children, className = '', subtitle }) {
   return (
-    <div className={`bg-white rounded-xl shadow-sm border border-slate-100 p-5 ${className}`}>
+    <div className={`card-elevated p-6 ${className}`}>
       <div className="mb-4">
-        <h3 className="text-sm font-semibold text-slate-700 flex items-center gap-2">
+        <h3 className="text-sm font-bold text-slate-700 flex items-center gap-2">
           {icon}
           {title}
         </h3>
@@ -70,7 +65,7 @@ const PieTooltip = ({ active, payload }) => {
   const { name, value, payload: p } = payload[0];
   const pct = p.total > 0 ? Math.round((value / p.total) * 100) : 0;
   return (
-    <div className="bg-white border border-slate-200 rounded-lg shadow-lg px-3 py-2 text-sm">
+    <div className="bg-white border border-slate-200 rounded-xl shadow-lg px-3 py-2 text-sm">
       <div className="font-semibold text-slate-700">{name}</div>
       <div className="text-slate-800">
         <span className="font-bold">{value}</span>
@@ -83,7 +78,7 @@ const PieTooltip = ({ active, payload }) => {
 const BarTooltip = ({ active, payload, label }) => {
   if (!active || !payload?.length) return null;
   return (
-    <div className="bg-white border border-slate-200 rounded-lg shadow-lg px-3 py-2 text-sm">
+    <div className="bg-white border border-slate-200 rounded-xl shadow-lg px-3 py-2 text-sm">
       {label && <div className="font-medium text-slate-600 mb-1">{label}</div>}
       {payload.map((p, i) => (
         <div key={i} className="flex items-center gap-2">
@@ -291,14 +286,14 @@ export default function StatisticsPanel({ missions = [], affiliates = [], onRefr
   const hasTimeData = overTime.some((d) => d.count > 0);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 animate-fade-in">
       {/* Filters */}
-      <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-4">
-        <div className="flex items-center gap-2 mb-3">
-          <Filter className="w-4 h-4 text-slate-500" />
-          <span className="text-sm font-semibold text-slate-700">Filters</span>
+      <div className="card p-5">
+        <div className="flex items-center gap-2 mb-4">
+          <Filter className="w-4 h-4 text-indigo-500" />
+          <span className="text-sm font-bold text-slate-700">Filters</span>
           {activeFiltersCount > 0 && (
-            <span className="text-xs bg-indigo-600 text-white rounded-full px-1.5 py-0.5 font-bold">
+            <span className="text-xs bg-indigo-600 text-white rounded-full px-2 py-0.5 font-bold">
               {activeFiltersCount}
             </span>
           )}
@@ -306,7 +301,7 @@ export default function StatisticsPanel({ missions = [], affiliates = [], onRefr
             {activeFiltersCount > 0 && (
               <button
                 onClick={clearFilters}
-                className="flex items-center gap-1 text-xs text-slate-500 hover:text-red-600 px-2 py-1 hover:bg-red-50 rounded-lg border border-slate-200 transition-colors"
+                className="btn-secondary !py-1.5 !px-3 !text-xs"
               >
                 <X className="w-3 h-3" /> Clear
               </button>
@@ -314,7 +309,7 @@ export default function StatisticsPanel({ missions = [], affiliates = [], onRefr
             <button
               onClick={onRefresh}
               disabled={loading}
-              className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-700 px-2 py-1 hover:bg-slate-50 rounded-lg border border-slate-200 transition-colors disabled:opacity-50"
+              className="btn-secondary !py-1.5 !px-3 !text-xs disabled:opacity-50"
             >
               <RefreshCw className={`w-3 h-3 ${loading ? 'animate-spin' : ''}`} /> Refresh
             </button>
@@ -322,29 +317,29 @@ export default function StatisticsPanel({ missions = [], affiliates = [], onRefr
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
           <div>
-            <label className="text-xs font-medium text-slate-500 mb-1 block">From date</label>
+            <label className="label">From date</label>
             <input
               type="date"
               value={filterDateFrom}
               onChange={(e) => setFilterDateFrom(e.target.value)}
-              className={INPUT_CLS}
+              className="input-field"
             />
           </div>
           <div>
-            <label className="text-xs font-medium text-slate-500 mb-1 block">To date</label>
+            <label className="label">To date</label>
             <input
               type="date"
               value={filterDateTo}
               onChange={(e) => setFilterDateTo(e.target.value)}
-              className={INPUT_CLS}
+              className="input-field"
             />
           </div>
           <div>
-            <label className="text-xs font-medium text-slate-500 mb-1 block">Type</label>
+            <label className="label">Type</label>
             <select
               value={filterType}
               onChange={(e) => setFilterType(e.target.value)}
-              className={SELECT_CLS}
+              className="select-field"
             >
               <option value="">All types</option>
               {Object.entries(TYPE_LABELS).map(([k, v]) => (
@@ -353,11 +348,11 @@ export default function StatisticsPanel({ missions = [], affiliates = [], onRefr
             </select>
           </div>
           <div>
-            <label className="text-xs font-medium text-slate-500 mb-1 block">Status</label>
+            <label className="label">Status</label>
             <select
               value={filterStatus}
               onChange={(e) => setFilterStatus(e.target.value)}
-              className={SELECT_CLS}
+              className="select-field"
             >
               <option value="">All statuses</option>
               {Object.entries(STATUS_LABELS).map(([k, v]) => (
@@ -366,11 +361,11 @@ export default function StatisticsPanel({ missions = [], affiliates = [], onRefr
             </select>
           </div>
           <div>
-            <label className="text-xs font-medium text-slate-500 mb-1 block">Source</label>
+            <label className="label">Source</label>
             <select
               value={filterCreatedBy}
               onChange={(e) => setFilterCreatedBy(e.target.value)}
-              className={SELECT_CLS}
+              className="select-field"
             >
               <option value="">All sources</option>
               {Object.entries(CREATOR_LABELS).map(([k, v]) => (
@@ -379,11 +374,11 @@ export default function StatisticsPanel({ missions = [], affiliates = [], onRefr
             </select>
           </div>
           <div>
-            <label className="text-xs font-medium text-slate-500 mb-1 block">Affiliate</label>
+            <label className="label">Affiliate</label>
             <select
               value={filterAffiliate}
               onChange={(e) => setFilterAffiliate(e.target.value)}
-              className={SELECT_CLS}
+              className="select-field"
             >
               <option value="">All affiliates</option>
               {affiliates.map((a) => (
@@ -393,7 +388,7 @@ export default function StatisticsPanel({ missions = [], affiliates = [], onRefr
           </div>
         </div>
         {activeFiltersCount > 0 && (
-          <p className="text-xs text-indigo-600 mt-2.5 font-medium">
+          <p className="text-xs text-indigo-600 mt-3 font-semibold">
             Showing {filtered.length} of {missions.length} missions
           </p>
         )}
@@ -405,53 +400,59 @@ export default function StatisticsPanel({ missions = [], affiliates = [], onRefr
           value={filtered.length}
           label="Total missions"
           color="text-slate-800"
+          accent="border-slate-300"
         />
         <KpiCard
           value={byType.find((t) => t.key === 'pickup')?.value || 0}
           label="Pickups"
           color="text-indigo-600"
           icon={<Truck className="w-5 h-5" />}
+          accent="border-indigo-500"
         />
         <KpiCard
           value={byType.find((t) => t.key === 'empty_box')?.value || 0}
           label="Empty Boxes"
           color="text-blue-600"
           icon={<Package className="w-5 h-5" />}
+          accent="border-blue-500"
         />
         <KpiCard
           value={totalBoxes}
           label="Total boxes"
           color="text-cyan-600"
+          accent="border-cyan-500"
         />
         <KpiCard
           value={`${completionRate}%`}
           label="Completion rate"
           color="text-green-600"
-          accent="border-green-100"
+          accent="border-green-500"
         />
         <KpiCard
           value={affiliateOrderCount}
           label="Affiliate orders"
           color="text-purple-600"
           icon={<Tag className="w-5 h-5" />}
+          accent="border-purple-500"
         />
         <KpiCard
           value={missingAddressCount}
           label="Missing address"
           color={missingAddressCount > 0 ? 'text-amber-600' : 'text-slate-400'}
           icon={missingAddressCount > 0 ? <AlertTriangle className="w-5 h-5" /> : null}
-          accent={missingAddressCount > 0 ? 'border-amber-200' : 'border-slate-100'}
+          accent={missingAddressCount > 0 ? 'border-amber-500' : 'border-slate-200'}
         />
         <KpiCard
           value={userCount}
           label="Registered users"
           color="text-teal-600"
           icon={<Users className="w-5 h-5" />}
+          accent="border-teal-500"
         />
       </div>
 
       {/* Row 1: 3 Pie charts */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
         {/* Status pie */}
         <ChartCard
           title="By Status"
@@ -670,7 +671,7 @@ export default function StatisticsPanel({ missions = [], affiliates = [], onRefr
       </ChartCard>
 
       {/* Row: Affiliates bar + Box types donut */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Top Affiliates */}
         <ChartCard
           title="Top Affiliates by Missions"

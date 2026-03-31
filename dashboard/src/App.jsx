@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import CreateMissionModal from './components/CreateMissionModal';
 import EmptyBoxMissionPickerModal from './components/EmptyBoxMissionPickerModal';
+import PickupMissionPickerModal from './components/PickupMissionPickerModal';
 import MissionDetails from './components/MissionDetails';
 import CompleteDeliveryModal from './components/CompleteDeliveryModal';
 import MissionPreviewModal from './components/MissionPreviewModal';
@@ -69,12 +70,12 @@ const CREATED_BY_LABELS = {
 
 function ColLabel({ label, colKey, vis, toggle }) {
   return (
-    <label className="flex items-center gap-1.5 text-xs font-medium mb-1 cursor-pointer select-none group">
+    <label className="label flex items-center gap-1.5 cursor-pointer select-none group mb-1.5">
       <input
         type="checkbox"
         checked={vis[colKey]}
         onChange={() => toggle(colKey)}
-        className="w-3 h-3 accent-indigo-600 cursor-pointer"
+        className="w-3.5 h-3.5 accent-indigo-600 cursor-pointer rounded"
       />
       <span className={vis[colKey] ? 'text-slate-600' : 'text-slate-400 line-through'}>{label}</span>
     </label>
@@ -159,16 +160,16 @@ export default function App() {
     if (!token) { setAuthChecked(true); return; }
     fetch(`${API_BASE}/auth/me`)
       .then((r) => (r.ok ? r.json() : Promise.reject()))
-      .then((u) => setAuthUser(u))
+      .then((u) => setAuthUser({ username: u.username, isAdmin: u.isAdmin, country: u.country || null }))
       .catch(() => {
         localStorage.removeItem('isa_auth_token');
       })
       .finally(() => setAuthChecked(true));
   }, []);
 
-  const handleLogin = ({ token, username, isAdmin }) => {
+  const handleLogin = ({ token, username, isAdmin, country }) => {
     localStorage.setItem('isa_auth_token', token);
-    setAuthUser({ username, isAdmin });
+    setAuthUser({ username, isAdmin, country: country || null });
   };
 
   const handleLogout = () => {
@@ -178,8 +179,11 @@ export default function App() {
 
   if (!authChecked) {
     return (
-      <div className="min-h-screen bg-slate-800 flex items-center justify-center">
-        <div className="text-white text-lg font-medium opacity-70">Loading…</div>
+      <div className="min-h-screen gradient-header flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4 animate-fade-in">
+          <div className="w-12 h-12 border-3 border-indigo-400/30 border-t-indigo-400 rounded-full animate-spin" />
+          <p className="text-white/70 text-base font-medium tracking-wide">Loading...</p>
+        </div>
       </div>
     );
   }
@@ -255,7 +259,7 @@ function Dashboard({ authUser, onLogout }) {
   const [visibleColumns, setVisibleColumns] = useState({
     type: true, status: true, sender: true, pickupAddr: true,
     receiver: true, deliveryAddr: true, boxes: true, source: true, date: true, affiliate: true,
-    senderPhone: true, receiverPhone: true, missingInfo: true,
+    senderPhone: true, receiverPhone: true, missingInfo: true, tracking: true,
   });
   const [sectionVisible, setSectionVisible] = useState({ sender: true, receiver: true });
   const toggleSection = (key) => {
@@ -276,6 +280,9 @@ function Dashboard({ authUser, onLogout }) {
   const [previewMission, setPreviewMission] = useState(null);
   const [previewMissionSecondary, setPreviewMissionSecondary] = useState(null);
   const [linkingMission, setLinkingMission] = useState(null);
+  const [linkingPickupToEmptyBoxMission, setLinkingPickupToEmptyBoxMission] = useState(null);
+  const [pickupLinkRefreshKey, setPickupLinkRefreshKey] = useState(0);
+  const [pickupPickerDataKey, setPickupPickerDataKey] = useState(0);
   const [completingMission, setCompletingMission] = useState(null);
   const [showCreateMission, setShowCreateMission] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
@@ -327,59 +334,66 @@ function Dashboard({ authUser, onLogout }) {
   }, []);
 
   return (
-    <div className={`min-h-screen bg-slate-50 ${showCapacityFloating ? 'pt-12' : ''}`}>
+    <div className={`min-h-screen bg-slate-50 ${showCapacityFloating ? 'pt-14' : ''}`}>
       {showCapacityFloating && (
-        <div className="fixed top-0 left-0 right-0 z-[100] shadow-lg border-b border-red-200 bg-red-50 px-4 py-2 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3 flex-wrap justify-center flex-1">
-            <p className="text-sm font-bold text-red-700 flex items-center gap-1.5">
-              <AlertTriangle className="w-4 h-4" />
-              Capacity alert:
-            </p>
-            {containersOver70.map((c) => (
-              <span key={c.id} className="text-sm text-red-800 font-medium">
-                {c.name || c.id} <span className="font-bold">{c.capacityPercent}%</span>
-              </span>
-            ))}
+        <div className="fixed top-0 left-0 right-0 z-[100] shadow-lg animate-slide-up"
+             style={{ background: 'linear-gradient(135deg, #991b1b 0%, #dc2626 50%, #ef4444 100%)' }}>
+          <div className="px-5 py-3 flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3 flex-wrap justify-center flex-1">
+              <p className="text-sm font-bold text-white flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4" />
+                Capacity alert:
+              </p>
+              {containersOver70.map((c) => (
+                <span key={c.id} className="text-sm text-red-100 font-medium bg-white/15 px-2.5 py-0.5 rounded-full">
+                  {c.name || c.id} <span className="font-bold text-white">{c.capacityPercent}%</span>
+                </span>
+              ))}
+            </div>
+            <button
+              onClick={() => setCapacityAlertDismissed(true)}
+              className="flex items-center justify-center gap-1.5 px-4 py-1.5 bg-white/20 hover:bg-white/30 text-white rounded-xl text-sm font-semibold shrink-0 transition-all duration-200 backdrop-blur-sm"
+            >
+              <Check className="w-4 h-4" />
+              Dismiss
+            </button>
           </div>
-          <button
-            onClick={() => setCapacityAlertDismissed(true)}
-            className="flex items-center justify-center gap-1 px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium shrink-0"
-          >
-            <Check className="w-4 h-4" />
-            OK
-          </button>
         </div>
       )}
 
       {newMissionAlert && (
-        <div className="sticky top-0 z-50 bg-amber-500 text-white px-4 py-3 flex items-center justify-between gap-4 shadow-lg">
-          <span className="font-semibold">
-            🔔 {newMissionAlert.count} new mission{newMissionAlert.count > 1 ? 's' : ''} from customers!
-          </span>
-          <button
-            onClick={() => setNewMissionAlert(null)}
-            className="px-4 py-2 bg-white/20 hover:bg-white/30 rounded-lg font-medium"
-          >
-            Close
-          </button>
+        <div className="sticky top-0 z-50 shadow-lg animate-slide-up"
+             style={{ background: 'linear-gradient(135deg, #b45309 0%, #d97706 50%, #f59e0b 100%)' }}>
+          <div className="px-5 py-3.5 flex items-center justify-between gap-4">
+            <span className="text-white font-semibold text-sm flex items-center gap-2">
+              <span className="bg-white/20 rounded-full p-1"><Package className="w-4 h-4" /></span>
+              {newMissionAlert.count} new mission{newMissionAlert.count > 1 ? 's' : ''} from customers!
+            </span>
+            <button
+              onClick={() => setNewMissionAlert(null)}
+              className="px-4 py-1.5 bg-white/20 hover:bg-white/30 rounded-xl font-semibold text-white text-sm transition-all duration-200"
+            >
+              Close
+            </button>
+          </div>
         </div>
       )}
 
-      <header className="bg-slate-800 text-white px-4 py-4 shadow-lg">
+      <header className="gradient-header text-white px-5 py-5 shadow-xl">
         <div className="mx-auto flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div className="flex items-center gap-4">
-            <img src="/isa-logo.png" alt="ISA Express" className="h-10 sm:h-12 w-auto object-contain brightness-0 invert" />
+          <div className="flex items-center gap-5">
+            <img src="/isa-logo.png" alt="ISA Express" className="h-12 sm:h-14 w-auto object-contain brightness-0 invert drop-shadow-lg" />
             <div>
-              <h1 className="text-xl sm:text-2xl font-bold">Manager ISA</h1>
-              <p className="text-slate-300 text-sm">Mission management — ISA Express</p>
+              <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">Manager ISA</h1>
+              <p className="text-indigo-200/80 text-sm font-medium mt-0.5">Mission management — ISA Express</p>
             </div>
           </div>
-          <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-3 flex-wrap">
             {activeTab === 'missions' && (
               <>
                 <button
                   onClick={() => setShowCreateMission(true)}
-                  className="flex items-center gap-2 px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg font-medium"
+                  className="btn-amber"
                 >
                   <Plus className="w-5 h-5" />
                   Create new mission
@@ -387,21 +401,26 @@ function Dashboard({ authUser, onLogout }) {
                 <button
                   onClick={() => { refetch(); refetchStats(); }}
                   disabled={loading}
-                  className="flex items-center gap-2 px-4 py-2 bg-slate-600 hover:bg-slate-500 rounded-lg font-medium disabled:opacity-50"
+                  className="btn-secondary !bg-white/10 !border-white/20 !text-white hover:!bg-white/20 disabled:opacity-50"
                 >
-                  <RefreshCw className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
+                  <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
                   Refresh
                 </button>
               </>
             )}
-            <div className="flex items-center gap-2 pl-2 border-l border-slate-600 ml-1">
-              <span className="flex items-center gap-1.5 text-sm text-slate-300">
+            <div className="flex items-center gap-2.5 pl-3 border-l border-white/20 ml-1">
+              <span className="flex items-center gap-1.5 text-sm text-indigo-200">
                 {authUser.isAdmin && <ShieldCheck className="w-4 h-4 text-amber-400" />}
-                {authUser.username}
+                <span className="font-medium">{authUser.username}</span>
+                {authUser.country && (
+                  <span className="ml-1 px-2 py-0.5 bg-white/15 rounded-full text-xs font-semibold text-white">
+                    {authUser.country}
+                  </span>
+                )}
               </span>
               <button
                 onClick={onLogout}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-700 hover:bg-slate-600 rounded-lg text-sm font-medium transition-colors"
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-white/10 hover:bg-white/20 rounded-xl text-sm font-medium transition-all duration-200"
                 title="Sign out"
               >
                 <LogOut className="w-4 h-4" />
@@ -413,12 +432,12 @@ function Dashboard({ authUser, onLogout }) {
       </header>
 
       {/* Tabs */}
-      <div className="bg-white border-b border-slate-200 px-4">
-        <div className="flex gap-1">
+      <div className="bg-white border-b border-slate-200/80 px-5 py-2.5 shadow-sm">
+        <div className="flex gap-1.5 overflow-x-auto bg-slate-100 rounded-xl p-1">
           <button
             onClick={() => setActiveTab('missions')}
-            className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
-              activeTab === 'missions' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-600 hover:text-slate-800'
+            className={`flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-xl transition-all duration-200 whitespace-nowrap ${
+              activeTab === 'missions' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-600 hover:text-slate-800 hover:bg-white/60'
             }`}
           >
             <Package className="w-4 h-4" />
@@ -426,8 +445,8 @@ function Dashboard({ authUser, onLogout }) {
           </button>
           <button
             onClick={() => setActiveTab('packages')}
-            className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
-              activeTab === 'packages' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-600 hover:text-slate-800'
+            className={`flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-xl transition-all duration-200 whitespace-nowrap ${
+              activeTab === 'packages' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-600 hover:text-slate-800 hover:bg-white/60'
             }`}
           >
             <Package className="w-4 h-4" />
@@ -435,8 +454,8 @@ function Dashboard({ authUser, onLogout }) {
           </button>
           <button
             onClick={() => setActiveTab('containers')}
-            className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
-              activeTab === 'containers' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-600 hover:text-slate-800'
+            className={`flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-xl transition-all duration-200 whitespace-nowrap ${
+              activeTab === 'containers' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-600 hover:text-slate-800 hover:bg-white/60'
             }`}
           >
             <Box className="w-4 h-4" />
@@ -444,8 +463,8 @@ function Dashboard({ authUser, onLogout }) {
           </button>
           <button
             onClick={() => setActiveTab('affiliates')}
-            className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
-              activeTab === 'affiliates' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-600 hover:text-slate-800'
+            className={`flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-xl transition-all duration-200 whitespace-nowrap ${
+              activeTab === 'affiliates' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-600 hover:text-slate-800 hover:bg-white/60'
             }`}
           >
             <Users className="w-4 h-4" />
@@ -453,8 +472,8 @@ function Dashboard({ authUser, onLogout }) {
           </button>
           <button
             onClick={() => setActiveTab('customers')}
-            className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
-              activeTab === 'customers' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-600 hover:text-slate-800'
+            className={`flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-xl transition-all duration-200 whitespace-nowrap ${
+              activeTab === 'customers' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-600 hover:text-slate-800 hover:bg-white/60'
             }`}
           >
             <UserCircle2 className="w-4 h-4" />
@@ -463,8 +482,8 @@ function Dashboard({ authUser, onLogout }) {
           {authUser.isAdmin && (
             <button
               onClick={() => setActiveTab('users')}
-              className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
-                activeTab === 'users' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-600 hover:text-slate-800'
+              className={`flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-xl transition-all duration-200 whitespace-nowrap ${
+                activeTab === 'users' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-600 hover:text-slate-800 hover:bg-white/60'
               }`}
             >
               <Users className="w-4 h-4" />
@@ -473,8 +492,8 @@ function Dashboard({ authUser, onLogout }) {
           )}
           <button
             onClick={() => setActiveTab('statistics')}
-            className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
-              activeTab === 'statistics' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-600 hover:text-slate-800'
+            className={`flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-xl transition-all duration-200 whitespace-nowrap ${
+              activeTab === 'statistics' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-600 hover:text-slate-800 hover:bg-white/60'
             }`}
           >
             <BarChart2 className="w-4 h-4" />
@@ -482,8 +501,8 @@ function Dashboard({ authUser, onLogout }) {
           </button>
           <button
             onClick={() => setActiveTab('settings')}
-            className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
-              activeTab === 'settings' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-600 hover:text-slate-800'
+            className={`flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-xl transition-all duration-200 whitespace-nowrap ${
+              activeTab === 'settings' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-600 hover:text-slate-800 hover:bg-white/60'
             }`}
           >
             <List className="w-4 h-4" />
@@ -492,7 +511,7 @@ function Dashboard({ authUser, onLogout }) {
         </div>
       </div>
 
-      <main className="p-4 sm:p-6">
+      <main className="p-5 sm:p-7">
         {activeTab === 'packages' && <PackagesPanel />}
         {activeTab === 'containers' && <ContainersPanel />}
         {activeTab === 'affiliates' && <AffiliatesPanel missions={missions} />}
@@ -511,126 +530,126 @@ function Dashboard({ authUser, onLogout }) {
         {activeTab === 'missions' && (
           <>
             {/* Statistics */}
-            <section className="mb-8">
-              <h2 className="text-lg font-semibold text-slate-800 mb-4 flex items-center gap-2">
-                <TrendingUp className="w-5 h-5" />
+            <section className="mb-8 animate-fade-in">
+              <h2 className="section-title mb-5">
+                <TrendingUp className="w-5 h-5 text-indigo-500" />
                 Statistics
               </h2>
               {statsLoading ? (
-                <div className="text-slate-500">Loading...</div>
+                <div className="text-slate-400 text-sm">Loading...</div>
               ) : stats ? (
                 <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-4">
-                  <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-100">
-                    <div className="text-2xl font-bold text-slate-800">{stats.total}</div>
-                    <div className="text-sm text-slate-500">Total missions</div>
+                  <div className="stat-card border-l-4 border-l-slate-400">
+                    <div className="text-3xl font-extrabold text-slate-800">{stats.total}</div>
+                    <div className="text-sm text-slate-500 mt-1 font-medium">Total missions</div>
                   </div>
-                  <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-100">
-                    <div className="text-2xl font-bold text-indigo-600">{stats.byType?.pickup || 0}</div>
-                    <div className="text-sm text-slate-500 flex items-center gap-1"><Truck className="w-3.5 h-3.5" /> Pickup</div>
+                  <div className="stat-card border-l-4 border-l-indigo-500">
+                    <div className="text-3xl font-extrabold text-indigo-600">{stats.byType?.pickup || 0}</div>
+                    <div className="text-sm text-slate-500 mt-1 font-medium flex items-center gap-1.5"><Truck className="w-3.5 h-3.5 text-indigo-400" /> Pickup</div>
                   </div>
-                  <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-100">
-                    <div className="text-2xl font-bold text-blue-600">{stats.byType?.empty_box || 0}</div>
-                    <div className="text-sm text-slate-500 flex items-center gap-1"><Package className="w-3.5 h-3.5" /> Empty Box</div>
+                  <div className="stat-card border-l-4 border-l-blue-500">
+                    <div className="text-3xl font-extrabold text-blue-600">{stats.byType?.empty_box || 0}</div>
+                    <div className="text-sm text-slate-500 mt-1 font-medium flex items-center gap-1.5"><Package className="w-3.5 h-3.5 text-blue-400" /> Empty Box</div>
                   </div>
-                  <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-100">
-                    <div className="text-2xl font-bold text-blue-600">{stats.totalBoxes || 0}</div>
-                    <div className="text-sm text-slate-500">Total boxes</div>
+                  <div className="stat-card border-l-4 border-l-cyan-500">
+                    <div className="text-3xl font-extrabold text-cyan-600">{stats.totalBoxes || 0}</div>
+                    <div className="text-sm text-slate-500 mt-1 font-medium">Total boxes</div>
                   </div>
-                  <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-100">
-                    <div className="text-2xl font-bold text-amber-600 flex items-center gap-1">
+                  <div className="stat-card border-l-4 border-l-amber-500">
+                    <div className="text-3xl font-extrabold text-amber-600 flex items-center gap-2">
                       <AlertTriangle className="w-5 h-5" />
                       {stats.missingAddress || 0}
                     </div>
-                    <div className="text-sm text-slate-500">Missing address</div>
+                    <div className="text-sm text-slate-500 mt-1 font-medium">Missing address</div>
                   </div>
                 </div>
               ) : null}
             </section>
 
             {/* Filters */}
-            <div className="mb-4">
-              <div className="flex items-center gap-2 mb-2">
+            <div className="mb-5">
+              <div className="flex items-center gap-2.5 mb-3">
                 <button
                   onClick={() => setShowFilters(!showFilters)}
-                  className={`flex items-center gap-2 px-3 py-2 border rounded-lg text-sm font-medium transition-colors ${showFilters ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-700'}`}
+                  className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 shadow-sm ${showFilters ? 'bg-indigo-600 text-white shadow-indigo-200' : 'bg-white border border-slate-200 hover:border-slate-300 text-slate-700 hover:shadow-md'}`}
                 >
                   <Filter className="w-4 h-4" />
                   Filters
                   {activeFilterCount > 0 && (
-                    <span className={`text-xs font-bold px-1.5 py-0.5 rounded-full ${showFilters ? 'bg-white text-indigo-600' : 'bg-indigo-600 text-white'}`}>
+                    <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${showFilters ? 'bg-white text-indigo-600' : 'bg-indigo-600 text-white'}`}>
                       {activeFilterCount}
                     </span>
                   )}
                   {showFilters ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                 </button>
                 {activeFilterCount > 0 && (
-                  <button onClick={clearFilters} className="flex items-center gap-1 px-2 py-1.5 text-xs text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-lg border border-slate-200 transition-colors">
+                  <button onClick={clearFilters} className="btn-secondary !px-3 !py-2 text-xs text-slate-500 hover:!text-red-600 hover:!border-red-200 hover:!bg-red-50">
                     <X className="w-3.5 h-3.5" /> Clear filters
                   </button>
                 )}
               </div>
               {showFilters && (
-                <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm space-y-4">
+                <div className="card p-5 space-y-5 animate-slide-up">
                   {/* Row 1: Sender */}
                   <div>
-                    <label className="flex items-center gap-2 cursor-pointer select-none mb-2 w-fit">
+                    <label className="flex items-center gap-2 cursor-pointer select-none mb-3 w-fit">
                       <input
                         type="checkbox"
                         checked={sectionVisible.sender}
                         onChange={() => toggleSection('sender')}
                         className="w-3.5 h-3.5 accent-indigo-600 cursor-pointer"
                       />
-                      <span className={`text-[11px] font-semibold uppercase tracking-wider ${sectionVisible.sender ? 'text-slate-400' : 'text-slate-300 line-through'}`}>
+                      <span className={`text-[11px] font-semibold uppercase tracking-wider ${sectionVisible.sender ? 'text-slate-500' : 'text-slate-300 line-through'}`}>
                         Sender
                       </span>
                     </label>
                     {sectionVisible.sender && (
-                      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
                         <div>
                           <ColLabel label="Sender name" colKey="sender" vis={visibleColumns} toggle={toggleColumn} />
-                          <input type="text" value={filterName} onChange={(e) => setFilterName(e.target.value)} placeholder="Name..." className="w-full px-2.5 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+                          <input type="text" value={filterName} onChange={(e) => setFilterName(e.target.value)} placeholder="Name..." className="input-field" />
                         </div>
                         <div>
                           <ColLabel label="Sender phone" colKey="senderPhone" vis={visibleColumns} toggle={toggleColumn} />
-                          <input type="text" value={filterPhone} onChange={(e) => setFilterPhone(e.target.value)} placeholder="050..." className="w-full px-2.5 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+                          <input type="text" value={filterPhone} onChange={(e) => setFilterPhone(e.target.value)} placeholder="050..." className="input-field" />
                         </div>
                         <div>
                           <ColLabel label="Pickup address" colKey="pickupAddr" vis={visibleColumns} toggle={toggleColumn} />
-                          <input type="text" value={filterPickupAddr} onChange={(e) => setFilterPickupAddr(e.target.value)} placeholder="Street / city..." className="w-full px-2.5 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+                          <input type="text" value={filterPickupAddr} onChange={(e) => setFilterPickupAddr(e.target.value)} placeholder="Street / city..." className="input-field" />
                         </div>
                       </div>
                     )}
                   </div>
                   {/* Row 2: Receiver */}
                   <div>
-                    <label className="flex items-center gap-2 cursor-pointer select-none mb-2 w-fit">
+                    <label className="flex items-center gap-2 cursor-pointer select-none mb-3 w-fit">
                       <input
                         type="checkbox"
                         checked={sectionVisible.receiver}
                         onChange={() => toggleSection('receiver')}
                         className="w-3.5 h-3.5 accent-indigo-600 cursor-pointer"
                       />
-                      <span className={`text-[11px] font-semibold uppercase tracking-wider ${sectionVisible.receiver ? 'text-slate-400' : 'text-slate-300 line-through'}`}>
+                      <span className={`text-[11px] font-semibold uppercase tracking-wider ${sectionVisible.receiver ? 'text-slate-500' : 'text-slate-300 line-through'}`}>
                         Receiver (pickup only)
                       </span>
                     </label>
                     {sectionVisible.receiver && (
-                      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
                         <div>
                           <ColLabel label="Receiver name" colKey="receiver" vis={visibleColumns} toggle={toggleColumn} />
-                          <input type="text" value={filterReceiverName} onChange={(e) => setFilterReceiverName(e.target.value)} placeholder="Name..." className="w-full px-2.5 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+                          <input type="text" value={filterReceiverName} onChange={(e) => setFilterReceiverName(e.target.value)} placeholder="Name..." className="input-field" />
                         </div>
                         <div>
                           <ColLabel label="Receiver phone" colKey="receiverPhone" vis={visibleColumns} toggle={toggleColumn} />
-                          <input type="text" value={filterReceiverPhone} onChange={(e) => setFilterReceiverPhone(e.target.value)} placeholder="050..." className="w-full px-2.5 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+                          <input type="text" value={filterReceiverPhone} onChange={(e) => setFilterReceiverPhone(e.target.value)} placeholder="050..." className="input-field" />
                         </div>
                         <div>
                           <ColLabel label="Delivery address" colKey="deliveryAddr" vis={visibleColumns} toggle={toggleColumn} />
-                          <input type="text" value={filterDeliveryAddr} onChange={(e) => setFilterDeliveryAddr(e.target.value)} placeholder="Street / city..." className="w-full px-2.5 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+                          <input type="text" value={filterDeliveryAddr} onChange={(e) => setFilterDeliveryAddr(e.target.value)} placeholder="Street / city..." className="input-field" />
                         </div>
                         <div>
                           <ColLabel label="Missing info" colKey="missingInfo" vis={visibleColumns} toggle={toggleColumn} />
-                          <select value={filterMissingAddress} onChange={(e) => setFilterMissingAddress(e.target.value)} className="w-full px-2.5 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300">
+                          <select value={filterMissingAddress} onChange={(e) => setFilterMissingAddress(e.target.value)} className="select-field">
                             <option value="">All</option>
                             <option value="yes">Missing address</option>
                             <option value="no">Has address</option>
@@ -641,32 +660,32 @@ function Dashboard({ authUser, onLogout }) {
                   </div>
                   {/* Row 3: Mission */}
                   <div>
-                    <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2">Mission</p>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                    <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-3">Mission</p>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
                       <div>
                         <ColLabel label="Type" colKey="type" vis={visibleColumns} toggle={toggleColumn} />
-                        <select value={filterType} onChange={(e) => setFilterType(e.target.value)} className="w-full px-2.5 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300">
+                        <select value={filterType} onChange={(e) => setFilterType(e.target.value)} className="select-field">
                           <option value="">All types</option>
                           {Object.entries(TYPE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                         </select>
                       </div>
                       <div>
                         <ColLabel label="Status" colKey="status" vis={visibleColumns} toggle={toggleColumn} />
-                        <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="w-full px-2.5 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300">
+                        <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="select-field">
                           <option value="">All statuses</option>
                           {Object.entries(STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                         </select>
                       </div>
                       <div>
                         <ColLabel label="Source" colKey="source" vis={visibleColumns} toggle={toggleColumn} />
-                        <select value={filterCreatedBy} onChange={(e) => setFilterCreatedBy(e.target.value)} className="w-full px-2.5 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300">
+                        <select value={filterCreatedBy} onChange={(e) => setFilterCreatedBy(e.target.value)} className="select-field">
                           <option value="">All sources</option>
                           {Object.entries(CREATED_BY_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                         </select>
                       </div>
                       <div>
                         <ColLabel label="Box type" colKey="boxes" vis={visibleColumns} toggle={toggleColumn} />
-                        <select value={filterBoxType} onChange={(e) => setFilterBoxType(e.target.value)} className="w-full px-2.5 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300">
+                        <select value={filterBoxType} onChange={(e) => setFilterBoxType(e.target.value)} className="select-field">
                           <option value="">All boxes</option>
                           <option value="large">ISA-BOX-70 (Large)</option>
                           <option value="small">ISA-BOX-35 (Small)</option>
@@ -674,7 +693,7 @@ function Dashboard({ authUser, onLogout }) {
                       </div>
                       <div>
                         <ColLabel label="Affiliate" colKey="affiliate" vis={visibleColumns} toggle={toggleColumn} />
-                        <select value={filterAffiliate} onChange={(e) => setFilterAffiliate(e.target.value)} className="w-full px-2.5 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300">
+                        <select value={filterAffiliate} onChange={(e) => setFilterAffiliate(e.target.value)} className="select-field">
                           <option value="">All affiliates</option>
                           {affiliates.map((a) => (
                             <option key={a.id} value={a.name}>{a.name}</option>
@@ -683,7 +702,10 @@ function Dashboard({ authUser, onLogout }) {
                       </div>
                       <div>
                         <ColLabel label="From date" colKey="date" vis={visibleColumns} toggle={toggleColumn} />
-                        <input type="date" value={filterDateFrom} onChange={(e) => setFilterDateFrom(e.target.value)} className="w-full px-2.5 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+                        <input type="date" value={filterDateFrom} onChange={(e) => setFilterDateFrom(e.target.value)} className="input-field" />
+                      </div>
+                      <div className="flex items-start pt-5">
+                        <ColLabel label="Tracking" colKey="tracking" vis={visibleColumns} toggle={toggleColumn} />
                       </div>
                     </div>
                   </div>
@@ -692,39 +714,44 @@ function Dashboard({ authUser, onLogout }) {
             </div>
 
             {/* Table */}
-            <section className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
-              <h2 className="text-lg font-semibold text-slate-800 p-4 border-b flex items-center gap-2">
-                <Package className="w-5 h-5" />
-                All missions ({filtered.length})
+            <section className="card animate-fade-in">
+              <h2 className="section-title p-5 border-b border-slate-100">
+                <Package className="w-5 h-5 text-indigo-500" />
+                All missions
+                <span className="text-sm font-medium text-slate-400 ml-1">({filtered.length})</span>
               </h2>
 
               {error || loading ? (
-                <div className="p-8 text-center">
+                <div className="p-10 text-center">
                   {error ? (
-                    <p className="text-red-600">Error: {error}. Ensure the server is running.</p>
+                    <p className="text-red-600 font-medium">Error: {error}. Ensure the server is running.</p>
                   ) : (
-                    <p className="text-slate-500">Loading...</p>
+                    <div className="flex flex-col items-center gap-3">
+                      <div className="w-8 h-8 border-2 border-indigo-200 border-t-indigo-500 rounded-full animate-spin" />
+                      <p className="text-slate-400 text-sm">Loading missions...</p>
+                    </div>
                   )}
                 </div>
               ) : filtered.length === 0 ? (
-                <div className="p-8 text-center text-slate-500">No missions to display</div>
+                <div className="p-10 text-center text-slate-400 text-sm">No missions to display</div>
               ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full text-center">
                     <thead>
-                      <tr className="bg-slate-50 border-b border-slate-100">
-                        <th className="px-4 py-3 text-sm font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap w-40">ID</th>
-                        {visibleColumns.type        && <th className="px-4 py-3 text-sm font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap w-28">Type</th>}
-                        {visibleColumns.status      && <th className="px-4 py-3 text-sm font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap w-32">Status</th>}
-                        {visibleColumns.sender      && <th className="px-4 py-3 text-sm font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap w-48">Sender</th>}
-                        {visibleColumns.pickupAddr  && <th className="px-4 py-3 text-sm font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap w-64">Pickup Addr</th>}
-                        {visibleColumns.receiver    && <th className="px-4 py-3 text-sm font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap w-48">Receiver</th>}
-                        {visibleColumns.deliveryAddr && <th className="px-4 py-3 text-sm font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap w-64">Delivery Addr</th>}
-                        {visibleColumns.boxes       && <th className="px-4 py-3 text-sm font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap w-28">Boxes</th>}
-                        {visibleColumns.source      && <th className="px-4 py-3 text-sm font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap w-20">Source</th>}
-                        {visibleColumns.affiliate   && <th className="px-4 py-3 text-sm font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap w-32">Affiliate</th>}
-                        {visibleColumns.date        && <th className="px-4 py-3 text-sm font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap w-40">Date</th>}
-                        <th className="px-4 py-3 text-sm font-semibold text-slate-500 uppercase tracking-wide w-20"></th>
+                      <tr className="table-header">
+                        <th className="w-40">ID</th>
+                        {visibleColumns.type        && <th className="w-28">Type</th>}
+                        {visibleColumns.status      && <th className="w-32">Status</th>}
+                        {visibleColumns.tracking    && <th className="w-36">Tracking</th>}
+                        {visibleColumns.sender      && <th className="w-48">Sender</th>}
+                        {visibleColumns.pickupAddr  && <th className="w-64">Pickup Addr</th>}
+                        {visibleColumns.receiver    && <th className="w-48">Receiver</th>}
+                        {visibleColumns.deliveryAddr && <th className="w-64">Delivery Addr</th>}
+                        {visibleColumns.boxes       && <th className="w-28">Boxes</th>}
+                        {visibleColumns.source      && <th className="w-20">Source</th>}
+                        {visibleColumns.affiliate   && <th className="w-32">Affiliate</th>}
+                        {visibleColumns.date        && <th className="w-40">Date</th>}
+                        <th className="w-20"></th>
                       </tr>
                     </thead>
                     <tbody>
@@ -733,39 +760,60 @@ function Dashboard({ authUser, onLogout }) {
                         return (
                           <tr
                             key={mission.id}
-                            className={`border-b border-slate-100 hover:bg-slate-50/60 transition-colors ${missingAddr ? 'bg-amber-50/40' : ''}`}
+                            className={`table-row ${missingAddr ? 'row-warning' : ''}`}
                           >
-                            <td className="px-4 py-3 font-mono font-bold text-blue-600 text-sm whitespace-nowrap">{mission.id}</td>
+                            <td className="whitespace-nowrap"><span className="table-id">{mission.id}</span></td>
                             {visibleColumns.type && (
-                              <td className="px-4 py-3">
-                                <span className={`inline-flex items-center gap-1 text-sm font-medium px-2.5 py-1 rounded-full whitespace-nowrap ${mission.type === 'pickup' ? 'bg-orange-100 text-orange-700' : 'bg-yellow-100 text-yellow-700'}`}>
+                              <td>
+                                <span className={`badge-pill ${mission.type === 'pickup' ? 'bg-orange-100 text-orange-700' : 'bg-yellow-100 text-yellow-700'}`}>
                                   {mission.type === 'pickup' ? <Truck className="w-3.5 h-3.5 shrink-0" /> : <Package className="w-3.5 h-3.5 shrink-0" />}
                                   {TYPE_LABELS[mission.type] || mission.type}
                                 </span>
                               </td>
                             )}
                             {visibleColumns.status && (
-                              <td className="px-4 py-3">
-                                <span className={`text-sm font-medium px-2.5 py-1 rounded-full whitespace-nowrap ${STATUS_COLORS[mission.status] || 'bg-slate-100 text-slate-600'}`}>
+                              <td>
+                                <span className={`badge-pill ${STATUS_COLORS[mission.status] || 'bg-slate-100 text-slate-600'}`}>
                                   {STATUS_LABELS[mission.status] || mission.status}
                                 </span>
                               </td>
                             )}
+                            {visibleColumns.tracking && (
+                              <td className="max-w-[9rem]">
+                                {mission.type === 'pickup' ? (() => {
+                                  const ids = (mission.deliveries?.length > 0 ? mission.deliveries : [mission])
+                                    .flatMap((d) => (d.boxTrackingIds ?? []).filter(Boolean));
+                                  return ids.length > 0 ? (
+                                    <div className="flex flex-col gap-0.5">
+                                      {ids.map((tid, i) => (
+                                        <span key={i} className="font-mono text-xs text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded truncate block" title={tid}>
+                                          {tid}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  ) : (
+                                    <span className="text-slate-300 text-sm">—</span>
+                                  );
+                                })() : (
+                                  <span className="text-slate-300 text-sm">—</span>
+                                )}
+                              </td>
+                            )}
                             {visibleColumns.sender && (
-                              <td className="px-4 py-3 w-48 max-w-[12rem]">
-                                <p className="text-base font-medium text-slate-700 truncate">{mission.fullName || '—'}</p>
-                                <p className="text-sm text-slate-400 truncate">{mission.customerPhone || ''}</p>
+                              <td className="w-48 max-w-[12rem]">
+                                <p className="text-sm font-semibold text-slate-700 truncate">{mission.fullName || '—'}</p>
+                                <p className="text-xs text-slate-400 truncate mt-0.5">{mission.customerPhone || ''}</p>
                               </td>
                             )}
                             {visibleColumns.pickupAddr && (
-                              <td className="px-4 py-3 w-64 max-w-[16rem]">
+                              <td className="w-64 max-w-[16rem]">
                                 {mission.address?.lat ? (
-                                  <span className="inline-flex items-center gap-1 text-sm text-slate-600 w-full overflow-hidden">
+                                  <span className="inline-flex items-center gap-1.5 text-sm text-slate-600 w-full overflow-hidden">
                                     <MapPin className="w-3.5 h-3.5 text-green-500 shrink-0" />
                                     <span className="truncate">{mission.address.displayAddress || '—'}</span>
                                   </span>
                                 ) : (
-                                  <span className="inline-flex items-center gap-1 text-sm font-semibold text-amber-700 bg-amber-100 px-2.5 py-1 rounded-full whitespace-nowrap">
+                                  <span className="badge-pill bg-amber-100 text-amber-700">
                                     <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
                                     Missing
                                   </span>
@@ -773,15 +821,15 @@ function Dashboard({ authUser, onLogout }) {
                               </td>
                             )}
                             {visibleColumns.receiver && (
-                              <td className="px-4 py-3 w-48 max-w-[12rem]">
+                              <td className="w-48 max-w-[12rem]">
                                 {mission.type === 'pickup' ? (
                                   mission.receiverName || mission.receiverPhone ? (
                                     <>
-                                      <p className="text-base font-medium text-slate-700 truncate">{mission.receiverName || '—'}</p>
-                                      <p className="text-sm text-slate-400 truncate">{mission.receiverPhone || ''}</p>
+                                      <p className="text-sm font-semibold text-slate-700 truncate">{mission.receiverName || '—'}</p>
+                                      <p className="text-xs text-slate-400 truncate mt-0.5">{mission.receiverPhone || ''}</p>
                                     </>
                                   ) : (
-                                    <span className="inline-flex items-center gap-1 text-sm font-semibold text-amber-700 bg-amber-100 px-2.5 py-1 rounded-full whitespace-nowrap">
+                                    <span className="badge-pill bg-amber-100 text-amber-700">
                                       <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
                                       Missing
                                     </span>
@@ -792,15 +840,15 @@ function Dashboard({ authUser, onLogout }) {
                               </td>
                             )}
                             {visibleColumns.deliveryAddr && (
-                              <td className="px-4 py-3 w-64 max-w-[16rem]">
+                              <td className="w-64 max-w-[16rem]">
                                 {mission.type === 'pickup' ? (
                                   mission.receiverAddress?.lat ? (
-                                    <span className="inline-flex items-center gap-1 text-sm text-slate-600 w-full overflow-hidden">
+                                    <span className="inline-flex items-center gap-1.5 text-sm text-slate-600 w-full overflow-hidden">
                                       <MapPin className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
                                       <span className="truncate">{mission.receiverAddress.displayAddress || '—'}</span>
                                     </span>
                                   ) : (
-                                    <span className="inline-flex items-center gap-1 text-sm font-semibold text-amber-700 bg-amber-100 px-2.5 py-1 rounded-full whitespace-nowrap">
+                                    <span className="badge-pill bg-amber-100 text-amber-700">
                                       <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
                                       Missing
                                     </span>
@@ -811,18 +859,18 @@ function Dashboard({ authUser, onLogout }) {
                               </td>
                             )}
                             {visibleColumns.boxes && (
-                              <td className="px-4 py-3">
+                              <td>
                                 {mission.boxSelection ? (
                                   <div className="text-sm space-y-0.5">
                                     {mission.boxSelection.large > 0 && (
-                                      <div className="flex items-center gap-1 text-blue-700 whitespace-nowrap">
-                                        <span className="font-mono bg-blue-100 px-1.5 rounded">70</span>
+                                      <div className="flex items-center justify-center gap-1 text-blue-700 whitespace-nowrap">
+                                        <span className="font-mono bg-blue-100 px-1.5 rounded text-xs">70</span>
                                         <span className="font-bold">×{mission.boxSelection.large}</span>
                                       </div>
                                     )}
                                     {mission.boxSelection.small > 0 && (
-                                      <div className="flex items-center gap-1 text-indigo-700 whitespace-nowrap">
-                                        <span className="font-mono bg-indigo-100 px-1.5 rounded">35</span>
+                                      <div className="flex items-center justify-center gap-1 text-indigo-700 whitespace-nowrap">
+                                        <span className="font-mono bg-indigo-100 px-1.5 rounded text-xs">35</span>
                                         <span className="font-bold">×{mission.boxSelection.small}</span>
                                       </div>
                                     )}
@@ -834,12 +882,12 @@ function Dashboard({ authUser, onLogout }) {
                               </td>
                             )}
                             {visibleColumns.source && (
-                              <td className="px-4 py-3 text-sm text-slate-500 whitespace-nowrap">{CREATED_BY_LABELS[mission.createdBy] || mission.createdBy}</td>
+                              <td className="text-sm text-slate-500 whitespace-nowrap font-medium">{CREATED_BY_LABELS[mission.createdBy] || mission.createdBy}</td>
                             )}
                             {visibleColumns.affiliate && (
-                              <td className="px-4 py-3">
+                              <td>
                                 {mission.affiliateName ? (
-                                  <span className="inline-flex items-center gap-1 text-sm font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2.5 py-0.5 rounded-full whitespace-nowrap">
+                                  <span className="badge-pill text-indigo-700 bg-indigo-50 border border-indigo-200">
                                     <Tag className="w-3.5 h-3.5 shrink-0" />
                                     {mission.affiliateName}
                                   </span>
@@ -849,25 +897,35 @@ function Dashboard({ authUser, onLogout }) {
                               </td>
                             )}
                             {visibleColumns.date && (
-                              <td className="px-4 py-3 text-sm text-slate-500 whitespace-nowrap">
+                              <td className="text-sm text-slate-500 whitespace-nowrap">
                                 {mission.createdAt
                                   ? new Date(mission.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
                                   : '—'}
                               </td>
                             )}
-                            <td className="px-4 py-3">
-                              <div className="flex items-center gap-1">
+                            <td>
+                              <div className="table-actions">
                                 <button
                                   onClick={() => setPreviewMission(mission)}
-                                  className="p-1.5 rounded-lg hover:bg-indigo-50 text-slate-400 hover:text-indigo-600 transition-colors"
+                                  className="action-btn text-slate-400 hover:bg-indigo-50 hover:text-indigo-600"
                                   title="Mission preview"
                                 >
                                   <Info className="w-4 h-4" />
                                 </button>
+                                {mission.type === 'empty_box' && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setLinkingPickupToEmptyBoxMission(mission)}
+                                    className="action-btn text-slate-400 hover:bg-indigo-50 hover:text-indigo-600"
+                                    title="Link pickup mission"
+                                  >
+                                    <Plus className="w-4 h-4" />
+                                  </button>
+                                )}
                                 {mission.type === 'pickup' && (
                                   <button
                                     onClick={() => setCompletingMission(mission)}
-                                    className={`p-1.5 rounded-lg transition-colors ${
+                                    className={`action-btn ${
                                       mission.receiverAddress?.lat
                                         ? 'text-emerald-500 hover:text-emerald-700 hover:bg-emerald-50'
                                         : 'text-red-400 hover:text-red-600 hover:bg-red-50'
@@ -879,7 +937,7 @@ function Dashboard({ authUser, onLogout }) {
                                 )}
                                 <button
                                   onClick={() => setEditingMission(mission)}
-                                  className="p-1.5 rounded-lg hover:bg-slate-200 text-slate-500 hover:text-slate-700 transition-colors"
+                                  className="action-btn text-slate-400 hover:bg-slate-100 hover:text-slate-700"
                                   title="Edit mission"
                                 >
                                   <Pencil className="w-4 h-4" />
@@ -887,7 +945,7 @@ function Dashboard({ authUser, onLogout }) {
                                 <button
                                   onClick={() => handleDelete(mission.id)}
                                   disabled={deletingId === mission.id}
-                                  className="p-1.5 rounded-lg hover:bg-red-100 text-slate-400 hover:text-red-600 transition-colors disabled:opacity-50"
+                                  className="action-btn text-slate-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
                                   title="Delete mission"
                                 >
                                   <Trash2 className="w-4 h-4" />
@@ -909,20 +967,20 @@ function Dashboard({ authUser, onLogout }) {
       {/* Mission edit modal */}
       {editingMission && (
         <div
-          className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 p-4 overflow-y-auto"
+          className="modal-overlay z-50 !items-start overflow-y-auto"
           onClick={() => setEditingMission(null)}
         >
           <div
-            className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl my-6"
+            className="modal-content max-w-2xl my-6"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between px-6 py-4 border-b">
+            <div className="modal-header">
               <h2 className="font-bold text-slate-800 text-lg">Edit Mission — {editingMission.id}</h2>
-              <button onClick={() => setEditingMission(null)} className="p-1.5 hover:bg-slate-100 rounded-lg">
+              <button onClick={() => setEditingMission(null)} className="action-btn hover:bg-slate-100">
                 <X className="w-5 h-5 text-slate-500" />
               </button>
             </div>
-            <div className="px-6 py-4">
+            <div className="modal-body">
               <MissionDetails
                 mission={editingMission}
                 onSave={() => { refetch(); refetchStats(); setEditingMission(null); }}
@@ -943,7 +1001,7 @@ function Dashboard({ authUser, onLogout }) {
 
       {(previewMission || previewMissionSecondary) && (
         <div
-          className="fixed inset-0 z-50 flex items-start justify-center gap-4 p-4 bg-black/50 overflow-y-auto"
+          className="modal-overlay z-50 !items-start overflow-y-auto"
           onClick={() => { setPreviewMission(null); setPreviewMissionSecondary(null); }}
         >
           <div className="flex items-start justify-center gap-4 flex-wrap my-6" onClick={(e) => e.stopPropagation()}>
@@ -953,6 +1011,8 @@ function Dashboard({ authUser, onLogout }) {
                 onClose={() => setPreviewMission(null)}
                 onOpenLinkedPreview={setPreviewMissionSecondary}
                 onRequestLinkEmptyBox={setLinkingMission}
+                onRequestLinkPickup={setLinkingPickupToEmptyBoxMission}
+                pickupLinkRefreshKey={pickupLinkRefreshKey}
                 embedded
                 compact={!!previewMissionSecondary}
               />
@@ -963,6 +1023,8 @@ function Dashboard({ authUser, onLogout }) {
                 onClose={() => setPreviewMissionSecondary(null)}
                 onOpenLinkedPreview={setPreviewMissionSecondary}
                 onRequestLinkEmptyBox={setLinkingMission}
+                onRequestLinkPickup={setLinkingPickupToEmptyBoxMission}
+                pickupLinkRefreshKey={pickupLinkRefreshKey}
                 embedded
                 compact
               />
@@ -992,6 +1054,46 @@ function Dashboard({ authUser, onLogout }) {
             }
           } catch {}
           setLinkingMission(null);
+        }}
+      />
+
+      <PickupMissionPickerModal
+        isOpen={!!linkingPickupToEmptyBoxMission}
+        onClose={() => setLinkingPickupToEmptyBoxMission(null)}
+        emptyBoxMissionId={linkingPickupToEmptyBoxMission?.id}
+        dataRefreshKey={pickupPickerDataKey}
+        onPreviewPickup={(m) => {
+          setPreviewMission(m);
+          setLinkingPickupToEmptyBoxMission(null);
+        }}
+        onLinksChanged={() => {
+          setPickupPickerDataKey((k) => k + 1);
+          setPickupLinkRefreshKey((k) => k + 1);
+          refetch();
+          refetchStats();
+        }}
+        onSelect={async (pickup) => {
+          if (!linkingPickupToEmptyBoxMission || !pickup?.id) return;
+          try {
+            const res = await fetch(`${API_BASE}/missions/${pickup.id}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ linkedEmptyBoxMissionId: linkingPickupToEmptyBoxMission.id }),
+            });
+            if (res.ok) {
+              setPickupPickerDataKey((k) => k + 1);
+              setPickupLinkRefreshKey((k) => k + 1);
+              refetch();
+              refetchStats();
+            } else {
+              let msg = 'Could not link pickup';
+              try {
+                const j = await res.json();
+                if (j.error) msg = j.error;
+              } catch {}
+              window.alert(msg);
+            }
+          } catch {}
         }}
       />
 

@@ -17,11 +17,58 @@ import {
   FileCheck,
   ImagePlus,
   Video,
+  Star,
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import { API_BASE } from '../config';
 
 const CAPACITY_ALERT_THRESHOLD = 70;
+
+const CONTAINER_STATUS_LABELS = {
+  open: 'Open',
+  closed: 'Closed',
+  in_transit: 'In transit',
+  completed: 'Completed',
+};
+
+function containerStatusBadgeClass(status) {
+  const s = status || 'open';
+  if (s === 'open') return 'bg-emerald-100 text-emerald-800';
+  if (s === 'closed') return 'bg-amber-100 text-amber-800';
+  if (s === 'in_transit') return 'bg-indigo-100 text-indigo-800';
+  if (s === 'completed') return 'bg-slate-200 text-slate-800';
+  return 'bg-slate-100 text-slate-700';
+}
+
+function isoToDatetimeLocal(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function datetimeLocalToIso(local) {
+  if (!local || !String(local).trim()) return null;
+  const d = new Date(local);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toISOString();
+}
+
+function formatEstimatedArrival(iso) {
+  if (!iso) return '—';
+  try {
+    return new Date(iso).toLocaleString('he-IL', { dateStyle: 'short', timeStyle: 'short' });
+  } catch {
+    return '—';
+  }
+}
+
+function formatContainerLabel(c) {
+  if (!c) return '';
+  const name = (c.name || '').trim();
+  return name ? `${name} (${c.id})` : c.id;
+}
 
 const TYPE_LABELS = { pickup: 'Pickup', empty_box: 'Empty Box' };
 const STATUS_LABELS = {
@@ -36,7 +83,6 @@ const STATUS_LABELS = {
 function ContainerPackagesModal({ container, packages, onClose }) {
   if (!container) return null;
 
-  // Aggregate parcel content by type and total weight across all packages
   const summary = packages.reduce(
     (acc, m) => {
       const deliveries = m.deliveries ?? [];
@@ -77,30 +123,34 @@ function ContainerPackagesModal({ container, packages, onClose }) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      className="modal-overlay z-50"
       onClick={onClose}
     >
       <div
-        className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col"
+        className="modal-content max-w-2xl max-h-[85vh] animate-slide-up"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-6 py-4 border-b flex-shrink-0">
+        <div className="modal-header">
           <h2 className="font-bold text-slate-800 text-lg flex items-center gap-2">
-            <Package className="w-5 h-5" />
+            <Package className="w-5 h-5 text-indigo-500" />
             Packages in {container.name || container.id} ({packages.length})
           </h2>
-          <button onClick={onClose} className="p-1.5 hover:bg-slate-100 rounded-lg">
-            <X className="w-5 h-5 text-slate-500" />
+          <button onClick={onClose} className="action-btn hover:bg-slate-100 text-slate-400">
+            <X className="w-5 h-5" />
           </button>
         </div>
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        <div className="modal-body space-y-4">
           {packages.length === 0 ? (
-            <p className="text-slate-500 text-center py-8">No packages in this container</p>
+            <div className="flex flex-col items-center justify-center py-12">
+              <div className="w-14 h-14 rounded-full bg-slate-100 flex items-center justify-center mb-3">
+                <Package className="w-7 h-7 text-slate-300" />
+              </div>
+              <p className="text-slate-500">No packages in this container</p>
+            </div>
           ) : (
             <>
-              {/* Summary card - different color */}
               {hasSummary && (
-                <div className="p-4 rounded-xl bg-indigo-600 text-white shadow-lg">
+                <div className="p-5 rounded-2xl bg-indigo-600 text-white shadow-lg">
                   <h3 className="font-bold text-sm uppercase tracking-wide mb-3 flex items-center gap-2">
                     <Package className="w-4 h-4" />
                     Container Summary
@@ -139,7 +189,6 @@ function ContainerPackagesModal({ container, packages, onClose }) {
                 </div>
               )}
 
-              {/* Individual packages */}
               <div className="space-y-3">
                 <h3 className="text-sm font-semibold text-slate-600">Packages</h3>
                 {packages.map((m) => {
@@ -155,7 +204,7 @@ function ContainerPackagesModal({ container, packages, onClose }) {
                     >
                       <div className="flex items-center justify-between gap-4">
                         <div className="min-w-0 flex-1">
-                          <p className="font-mono font-bold text-blue-600 text-sm">{m.id}</p>
+                          <span className="table-id">{m.id}</span>
                           <p className="text-sm text-slate-700 truncate">{m.fullName || '—'}</p>
                           <p className="text-xs text-slate-500">{m.customerPhone || ''}</p>
                           {m.address?.displayAddress && (
@@ -166,16 +215,15 @@ function ContainerPackagesModal({ container, packages, onClose }) {
                           )}
                         </div>
                         <div className="flex items-center gap-2 shrink-0">
-                          <span className="text-xs px-2 py-0.5 rounded bg-slate-200 text-slate-700">
+                          <span className="badge-pill bg-slate-200 text-slate-700">
                             {TYPE_LABELS[m.type] || m.type}
                           </span>
-                          <span className="text-xs px-2 py-0.5 rounded bg-indigo-100 text-indigo-700">
+                          <span className="badge-pill bg-indigo-100 text-indigo-700">
                             {STATUS_LABELS[m.status] || m.status}
                           </span>
                         </div>
                       </div>
 
-                      {/* Parcel content per delivery */}
                       {items.map((d, di) => {
                         const boxContents = d.boxContents ?? [];
                         const boxWeights = d.boxWeights ?? [];
@@ -241,8 +289,8 @@ function ContainerPackagesModal({ container, packages, onClose }) {
 }
 
 function ExportOptionsModal({ container, onExport, onClose }) {
-  const [exportType, setExportType] = useState('courier'); // 'courier' | 'customs'
-  const [fileType, setFileType] = useState('excel'); // 'excel' | 'pdf'
+  const [exportType, setExportType] = useState('courier');
+  const [fileType, setFileType] = useState('excel');
 
   const handleConfirm = () => {
     onExport(exportType, fileType);
@@ -251,25 +299,25 @@ function ExportOptionsModal({ container, onExport, onClose }) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      className="modal-overlay z-50"
       onClick={onClose}
     >
       <div
-        className="bg-white rounded-2xl shadow-2xl w-full max-w-md"
+        className="modal-content max-w-md animate-slide-up"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-6 py-4 border-b">
+        <div className="modal-header">
           <h2 className="font-bold text-slate-800 text-lg flex items-center gap-2">
-            <Download className="w-5 h-5" />
+            <Download className="w-5 h-5 text-indigo-500" />
             Export Options
           </h2>
-          <button onClick={onClose} className="p-1.5 hover:bg-slate-100 rounded-lg">
-            <X className="w-5 h-5 text-slate-500" />
+          <button onClick={onClose} className="action-btn hover:bg-slate-100 text-slate-400">
+            <X className="w-5 h-5" />
           </button>
         </div>
-        <div className="px-6 py-5 space-y-6">
+        <div className="modal-body space-y-6">
           <div>
-            <p className="text-sm font-medium text-slate-700 mb-3">Export type</p>
+            <p className="label mb-3">Export type</p>
             <div className="flex gap-3">
               <button
                 type="button"
@@ -296,7 +344,7 @@ function ExportOptionsModal({ container, onExport, onClose }) {
             </div>
           </div>
           <div>
-            <p className="text-sm font-medium text-slate-700 mb-3">File format</p>
+            <p className="label mb-3">File format</p>
             <div className="flex gap-3">
               <button
                 type="button"
@@ -324,22 +372,22 @@ function ExportOptionsModal({ container, onExport, onClose }) {
               </button>
             </div>
           </div>
-          <div className="flex gap-3 pt-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="flex-1 py-2.5 rounded-lg border border-slate-200 text-sm font-medium hover:bg-slate-50"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={handleConfirm}
-              className="flex-1 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold"
-            >
-              Export
-            </button>
-          </div>
+        </div>
+        <div className="modal-footer">
+          <button
+            type="button"
+            onClick={onClose}
+            className="btn-secondary flex-1"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={handleConfirm}
+            className="btn-primary flex-1"
+          >
+            Export
+          </button>
         </div>
       </div>
     </div>
@@ -411,7 +459,6 @@ function ContainerSummaryModal({ container, packages, onClose }) {
         try {
           localStorage.setItem(storageKey, JSON.stringify({ form, mediaItems: [] }));
         } catch {
-          // ignore
         }
       }
     }
@@ -427,7 +474,6 @@ function ContainerSummaryModal({ container, packages, onClose }) {
 
   const isFormValid = form.shipperName.trim() && form.shipperId.trim() && form.address.trim() && form.phone.trim();
 
-  // Aggregate content by description (like GOODS DECLARATION table)
   const getContentRows = () => {
     const byDesc = {};
     let totalWeight = 0;
@@ -491,14 +537,12 @@ function ContainerSummaryModal({ container, packages, onClose }) {
 
     let y = 10;
 
-    // Date at top left
     const downloadDate = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
     doc.setFontSize(9);
     doc.setTextColor(100, 100, 100);
     doc.text(`Date: ${downloadDate}`, 14, y + 4);
     y += 10;
 
-    // Logo at top
     try {
       const base = (import.meta.env.BASE_URL || '/').replace(/\/$/, '') || '';
       const logoUrl = `${window.location.origin}${base ? base + '/' : '/'}isa-logo-pdf.png`;
@@ -516,14 +560,12 @@ function ContainerSummaryModal({ container, packages, onClose }) {
         y += logoW * 0.4 + 8;
       }
     } catch {
-      // fallback if logo fails
       doc.setFontSize(16);
       doc.setTextColor(...blue);
       doc.text('ISA WORLD EXPRESS', 14, y + 6);
       y += 14;
     }
 
-    // GOODS DECLARATION
     doc.setFontSize(16);
     doc.setTextColor(...blue);
     doc.text('GOODS DECLARATION', pageW / 2, y + 4, { align: 'center' });
@@ -533,7 +575,6 @@ function ContainerSummaryModal({ container, packages, onClose }) {
     doc.text('Invoice:', 14, y + 4);
     y += 10;
 
-    // Small table: issue date, shipper name, id, address, phone
     doc.setDrawColor(200, 200, 200);
     doc.setLineWidth(0.3);
     const lineH = 5;
@@ -549,7 +590,6 @@ function ContainerSummaryModal({ container, packages, onClose }) {
     doc.text(`Phone: ${form.phone}`, 18, y + 25);
     y += tableH + 6;
 
-    // Summary: total number of packages, total gross weight
     doc.setFillColor(230, 235, 240);
     const summaryH = 10;
     doc.rect(14, y, pageW - 28, summaryH, 'F');
@@ -561,7 +601,6 @@ function ContainerSummaryModal({ container, packages, onClose }) {
     doc.setFont('helvetica', 'normal');
     y += summaryH + 6;
 
-    // Large table: DESCRIPTION, QTY, PRICE, TOTAL
     const colW = [(pageW - 28) * 0.5, (pageW - 28) * 0.15, (pageW - 28) * 0.17, (pageW - 28) * 0.18];
     const headers = ['DESCRIPTION', 'QTY', 'PRICE', 'TOTAL'];
     const headerH = 7;
@@ -613,67 +652,67 @@ function ContainerSummaryModal({ container, packages, onClose }) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      className="modal-overlay z-50"
       onClick={onClose}
     >
       <div
-        className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto"
+        className="modal-content max-w-2xl max-h-[90vh] animate-slide-up"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-6 py-4 border-b sticky top-0 bg-white">
+        <div className="modal-header sticky top-0 bg-white z-10">
           <h2 className="font-bold text-slate-800 text-lg flex items-center gap-2">
-            <FileCheck className="w-5 h-5" />
+            <FileCheck className="w-5 h-5 text-indigo-500" />
             Container Summary – {container?.name || container?.id}
           </h2>
-          <button onClick={onClose} className="p-1.5 hover:bg-slate-100 rounded-lg">
-            <X className="w-5 h-5 text-slate-500" />
+          <button onClick={onClose} className="action-btn hover:bg-slate-100 text-slate-400">
+            <X className="w-5 h-5" />
           </button>
         </div>
-        <div className="px-6 py-5 space-y-4">
+        <div className="modal-body space-y-4 overflow-y-auto">
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Shipper Name *</label>
+            <label className="label">Shipper Name *</label>
             <input
               name="shipperName"
               value={form.shipperName}
               onChange={handleChange}
               placeholder="SHERON FONSEKA"
-              className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+              className="input-field"
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">ID *</label>
+            <label className="label">ID *</label>
             <input
               name="shipperId"
               value={form.shipperId}
               onChange={handleChange}
               placeholder="Y9572252"
-              className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+              className="input-field"
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Address *</label>
+            <label className="label">Address *</label>
             <input
               name="address"
               value={form.address}
               onChange={handleChange}
               placeholder="NELLIAMPATHY, KERALA. COCHIN"
-              className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+              className="input-field"
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Phone *</label>
+            <label className="label">Phone *</label>
             <input
               name="phone"
               type="tel"
               value={form.phone}
               onChange={handleChange}
               placeholder="+972..."
-              className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+              className="input-field"
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Images & Videos (optional)</label>
-            <label className="flex items-center justify-center gap-2 px-4 py-3 border-2 border-dashed border-slate-200 rounded-lg cursor-pointer hover:border-indigo-300 hover:bg-indigo-50/50 text-slate-600 text-sm mb-2">
+            <label className="label">Images & Videos (optional)</label>
+            <label className="flex items-center justify-center gap-2 px-4 py-3 border-2 border-dashed border-slate-200 rounded-xl cursor-pointer hover:border-indigo-300 hover:bg-indigo-50/50 text-slate-600 text-sm mb-2 transition-colors">
               <ImagePlus className="w-4 h-4" />
               Add images or videos
               <input
@@ -692,16 +731,16 @@ function ContainerSummaryModal({ container, packages, onClose }) {
                       <img
                         src={item.preview}
                         alt=""
-                        className="w-20 h-20 object-cover rounded-lg border border-slate-200 cursor-pointer hover:ring-2 hover:ring-indigo-400 transition-shadow"
+                        className="w-20 h-20 object-cover rounded-xl border border-slate-200 cursor-pointer hover:ring-2 hover:ring-indigo-400 transition-shadow"
                         onClick={() => setExpandedMediaIndex(i)}
                       />
                     ) : (
                       <div
-                        className="w-20 h-20 rounded-lg border border-slate-200 bg-slate-100 flex items-center justify-center relative cursor-pointer hover:ring-2 hover:ring-indigo-400 transition-shadow"
+                        className="w-20 h-20 rounded-xl border border-slate-200 bg-slate-100 flex items-center justify-center relative cursor-pointer hover:ring-2 hover:ring-indigo-400 transition-shadow"
                         onClick={() => setExpandedMediaIndex(i)}
                       >
                         <Video className="w-8 h-8 text-slate-500" />
-                        <span className="absolute bottom-0 left-0 right-0 text-[10px] truncate px-1 bg-black/60 text-white rounded-b-lg">
+                        <span className="absolute bottom-0 left-0 right-0 text-[10px] truncate px-1 bg-black/60 text-white rounded-b-xl">
                           {item.fileName || item.file?.name || 'video'}
                         </span>
                       </div>
@@ -730,7 +769,7 @@ function ContainerSummaryModal({ container, packages, onClose }) {
                     <img
                       src={mediaItems[expandedMediaIndex].preview}
                       alt=""
-                      className="max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl"
+                      className="max-w-full max-h-[90vh] object-contain rounded-2xl shadow-2xl"
                       onClick={(e) => e.stopPropagation()}
                     />
                   ) : (
@@ -738,7 +777,7 @@ function ContainerSummaryModal({ container, packages, onClose }) {
                       src={mediaItems[expandedMediaIndex].preview}
                       controls
                       autoPlay
-                      className="max-w-full max-h-[90vh] rounded-lg shadow-2xl"
+                      className="max-w-full max-h-[90vh] rounded-2xl shadow-2xl"
                       onClick={(e) => e.stopPropagation()}
                     />
                   )}
@@ -753,31 +792,34 @@ function ContainerSummaryModal({ container, packages, onClose }) {
               </div>
             )}
           </div>
-          <div className="pt-4 flex gap-3">
-            <button
-              type="button"
-              onClick={onClose}
-              className="flex-1 py-2.5 rounded-lg border border-slate-200 text-sm font-medium hover:bg-slate-50"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={downloadSummary}
-              disabled={!isFormValid}
-              className="flex-1 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Download container summary
-            </button>
-          </div>
+        </div>
+        <div className="modal-footer">
+          <button
+            type="button"
+            onClick={onClose}
+            className="btn-secondary flex-1"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={downloadSummary}
+            disabled={!isFormValid}
+            className="btn-primary flex-1 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Download container summary
+          </button>
         </div>
       </div>
     </div>
   );
 }
 
-function ContainerFormModal({ container, onSave, onClose }) {
+function ContainerFormModal({ container, onSave, onClose, containers = [] }) {
   const isEdit = !!container;
+  const defaultContainer = containers.find((c) => c.isDefault) ?? null;
+  const thisIsDefault = Boolean(container?.id && defaultContainer?.id === container.id);
+  const hasOtherDefault = Boolean(defaultContainer && (!container || defaultContainer.id !== container.id));
   const formStorageKey = container?.id ? SUMMARY_STORAGE_KEY(container.id) : 'container-summary-draft';
 
   const loadShipperSaved = () => {
@@ -796,6 +838,9 @@ function ContainerFormModal({ container, onSave, onClose }) {
   const [form, setForm] = useState({
     name: container?.name || '',
     country: container?.country || '',
+    status: container?.status || 'open',
+    estimatedArrivalLocal: isoToDatetimeLocal(container?.estimatedArrivalAt),
+    isDefault: Boolean(container?.isDefault),
     maxWeight: container?.maxWeight ?? '',
     maxPackages: container?.maxPackages ?? '',
     shipperName: shipperSaved?.form?.shipperName ?? '',
@@ -848,7 +893,6 @@ function ContainerFormModal({ container, onSave, onClose }) {
         try {
           localStorage.setItem(formStorageKey, JSON.stringify({ form: { shipperName: form.shipperName, shipperId: form.shipperId, address: form.address, phone: form.phone }, mediaItems: [] }));
         } catch {
-          // ignore
         }
       }
     }
@@ -872,6 +916,9 @@ function ContainerFormModal({ container, onSave, onClose }) {
       const payload = {
         name: form.name.trim() || null,
         country: form.country.trim() || null,
+        status: form.status || 'open',
+        estimatedArrivalAt: datetimeLocalToIso(form.estimatedArrivalLocal),
+        isDefault: form.isDefault,
         maxWeight,
         maxPackages,
       };
@@ -900,24 +947,24 @@ function ContainerFormModal({ container, onSave, onClose }) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      className="modal-overlay z-50"
       onClick={onClose}
     >
       <div
-        className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto"
+        className="modal-content max-w-2xl max-h-[90vh] animate-slide-up"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-6 py-4 border-b sticky top-0 bg-white">
+        <div className="modal-header sticky top-0 bg-white z-10">
           <h2 className="font-bold text-slate-800 text-lg">
             {isEdit ? 'Edit container' : 'New container'}
           </h2>
-          <button onClick={onClose} className="p-1.5 hover:bg-slate-100 rounded-lg">
-            <X className="w-5 h-5 text-slate-500" />
+          <button onClick={onClose} className="action-btn hover:bg-slate-100 text-slate-400">
+            <X className="w-5 h-5" />
           </button>
         </div>
-        <form onSubmit={handleSubmit} className="px-6 py-5 space-y-4">
+        <form onSubmit={handleSubmit} className="modal-body space-y-4 overflow-y-auto">
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">
+            <label className="label">
               Name (optional)
             </label>
             <input
@@ -925,23 +972,94 @@ function ContainerFormModal({ container, onSave, onClose }) {
               value={form.name}
               onChange={handleChange}
               placeholder="Container 1"
-              className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+              className="input-field"
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">
+            <label className="label">
               Country (optional)
             </label>
-            <input
+            <select
               name="country"
               value={form.country}
               onChange={handleChange}
-              placeholder="Israel"
-              className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
-            />
+              className="input-field"
+            >
+              <option value="">— None —</option>
+              <option value="India">India</option>
+              <option value="Thailand">Thailand</option>
+            </select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">
+            <label className="label">
+              Status
+            </label>
+            <select
+              name="status"
+              value={form.status || 'open'}
+              onChange={handleChange}
+              className="input-field"
+            >
+              {Object.entries(CONTAINER_STATUS_LABELS).map(([k, v]) => (
+                <option key={k} value={k}>
+                  {v}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="label">
+              Estimated arrival (optional)
+            </label>
+            <input
+              name="estimatedArrivalLocal"
+              type="datetime-local"
+              value={form.estimatedArrivalLocal}
+              onChange={handleChange}
+              className="input-field"
+            />
+          </div>
+          <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-3 space-y-3">
+            <div className="text-sm text-slate-800 text-left">
+              <span className="font-medium text-slate-700">Current system default: </span>
+              {defaultContainer ? (
+                <span className="text-indigo-700 font-medium">{formatContainerLabel(defaultContainer)}</span>
+              ) : (
+                <span className="text-slate-500">None — no default container is set</span>
+              )}
+            </div>
+            {thisIsDefault && (
+              <p className="text-xs text-slate-600 leading-relaxed text-left border-t border-slate-200/80 pt-2">
+                To set a different default: uncheck &quot;Default container&quot; on this container, save, then open the
+                container you want and mark it as default.
+              </p>
+            )}
+            {hasOtherDefault && !thisIsDefault && defaultContainer && (
+              <p className="text-xs text-slate-600 leading-relaxed text-left border-t border-slate-200/80 pt-2">
+                To set this as default, first remove the default from{' '}
+                <span className="font-medium text-slate-800">{formatContainerLabel(defaultContainer)}</span>.
+              </p>
+            )}
+            {!hasOtherDefault && (
+              <label className="flex items-start gap-3 cursor-pointer pt-1 border-t border-slate-200/80">
+                <input
+                  type="checkbox"
+                  name="isDefault"
+                  checked={form.isDefault}
+                  onChange={(e) => setForm((p) => ({ ...p, isDefault: e.target.checked }))}
+                  className="mt-0.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                />
+                <span className="text-sm text-slate-700 text-left">
+                  <span className="font-medium text-slate-800">Default container</span>
+                  <span className="block text-slate-500 mt-0.5">
+                    Only one container can be default. New pickup missions without a <code className="text-xs bg-slate-100 px-1 rounded">containerId</code> in the API are assigned here automatically.
+                  </span>
+                </span>
+              </label>
+            )}
+          </div>
+          <div>
+            <label className="label">
               Max weight (kg) *
             </label>
             <input
@@ -951,12 +1069,12 @@ function ContainerFormModal({ container, onSave, onClose }) {
               value={form.maxWeight}
               onChange={handleChange}
               placeholder="100"
-              className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+              className="input-field"
               required
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">
+            <label className="label">
               Max packages *
             </label>
             <input
@@ -966,34 +1084,34 @@ function ContainerFormModal({ container, onSave, onClose }) {
               value={form.maxPackages}
               onChange={handleChange}
               placeholder="50"
-              className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+              className="input-field"
               required
             />
           </div>
 
           <div className="pt-4 border-t border-slate-200">
-            <p className="text-sm font-medium text-slate-600 mb-3">Shipper details (optional)</p>
+            <p className="label mb-3">Shipper details (optional)</p>
             <div className="space-y-3">
               <input
                 name="shipperName"
                 value={form.shipperName}
                 onChange={handleChange}
                 placeholder="Shipper name"
-                className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                className="input-field"
               />
               <input
                 name="shipperId"
                 value={form.shipperId}
                 onChange={handleChange}
                 placeholder="ID"
-                className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                className="input-field"
               />
               <input
                 name="address"
                 value={form.address}
                 onChange={handleChange}
                 placeholder="Address"
-                className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                className="input-field"
               />
               <input
                 name="phone"
@@ -1001,14 +1119,14 @@ function ContainerFormModal({ container, onSave, onClose }) {
                 value={form.phone}
                 onChange={handleChange}
                 placeholder="Phone"
-                className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                className="input-field"
               />
             </div>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Images & Videos (optional)</label>
-            <label className="flex items-center justify-center gap-2 px-4 py-3 border-2 border-dashed border-slate-200 rounded-lg cursor-pointer hover:border-indigo-300 hover:bg-indigo-50/50 text-slate-600 text-sm mb-2">
+            <label className="label">Images & Videos (optional)</label>
+            <label className="flex items-center justify-center gap-2 px-4 py-3 border-2 border-dashed border-slate-200 rounded-xl cursor-pointer hover:border-indigo-300 hover:bg-indigo-50/50 text-slate-600 text-sm mb-2 transition-colors">
               <ImagePlus className="w-4 h-4" />
               Add images or videos
               <input
@@ -1027,16 +1145,16 @@ function ContainerFormModal({ container, onSave, onClose }) {
                       <img
                         src={item.preview}
                         alt=""
-                        className="w-20 h-20 object-cover rounded-lg border border-slate-200 cursor-pointer hover:ring-2 hover:ring-indigo-400 transition-shadow"
+                        className="w-20 h-20 object-cover rounded-xl border border-slate-200 cursor-pointer hover:ring-2 hover:ring-indigo-400 transition-shadow"
                         onClick={() => setExpandedMediaIndex(i)}
                       />
                     ) : (
                       <div
-                        className="w-20 h-20 rounded-lg border border-slate-200 bg-slate-100 flex items-center justify-center relative cursor-pointer hover:ring-2 hover:ring-indigo-400 transition-shadow"
+                        className="w-20 h-20 rounded-xl border border-slate-200 bg-slate-100 flex items-center justify-center relative cursor-pointer hover:ring-2 hover:ring-indigo-400 transition-shadow"
                         onClick={() => setExpandedMediaIndex(i)}
                       >
                         <Video className="w-8 h-8 text-slate-500" />
-                        <span className="absolute bottom-0 left-0 right-0 text-[10px] truncate px-1 bg-black/60 text-white rounded-b-lg">
+                        <span className="absolute bottom-0 left-0 right-0 text-[10px] truncate px-1 bg-black/60 text-white rounded-b-xl">
                           {item.fileName || item.file?.name || 'video'}
                         </span>
                       </div>
@@ -1062,7 +1180,7 @@ function ContainerFormModal({ container, onSave, onClose }) {
                     <img
                       src={mediaItems[expandedMediaIndex].preview}
                       alt=""
-                      className="max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl"
+                      className="max-w-full max-h-[90vh] object-contain rounded-2xl shadow-2xl"
                       onClick={(e) => e.stopPropagation()}
                     />
                   ) : (
@@ -1070,7 +1188,7 @@ function ContainerFormModal({ container, onSave, onClose }) {
                       src={mediaItems[expandedMediaIndex].preview}
                       controls
                       autoPlay
-                      className="max-w-full max-h-[90vh] rounded-lg shadow-2xl"
+                      className="max-w-full max-h-[90vh] rounded-2xl shadow-2xl"
                       onClick={(e) => e.stopPropagation()}
                     />
                   )}
@@ -1087,29 +1205,29 @@ function ContainerFormModal({ container, onSave, onClose }) {
           </div>
 
           {error && (
-            <div className="flex items-center gap-2 text-red-600 bg-red-50 rounded-lg px-3 py-2 text-sm">
+            <div className="flex items-center gap-2 text-red-600 bg-red-50 rounded-xl px-4 py-2.5 text-sm border border-red-100">
               <AlertCircle className="w-4 h-4 shrink-0" />
               {error}
             </div>
           )}
-
-          <div className="flex gap-3 pt-1">
-            <button
-              type="button"
-              onClick={onClose}
-              className="flex-1 py-2.5 rounded-lg border border-slate-200 text-sm font-medium hover:bg-slate-50"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={saving}
-              className="flex-1 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold disabled:opacity-50"
-            >
-              {saving ? 'Saving...' : isEdit ? 'Save changes' : 'Create container'}
-            </button>
-          </div>
         </form>
+        <div className="modal-footer">
+          <button
+            type="button"
+            onClick={onClose}
+            className="btn-secondary flex-1"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={saving}
+            onClick={handleSubmit}
+            className="btn-primary flex-1"
+          >
+            {saving ? 'Saving...' : isEdit ? 'Save changes' : 'Create container'}
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -1201,7 +1319,6 @@ export default function ContainersPanel() {
       if (!res.ok) throw new Error('Failed to delete');
       await fetchData();
     } catch {
-      // silent
     } finally {
       setDeletingId(null);
     }
@@ -1222,6 +1339,7 @@ export default function ContainersPanel() {
   };
 
   const containersOver70 = containersWithStats.filter((c) => c.isAtCapacityAlert);
+  const defaultContainerInList = containers.find((c) => c.isDefault) ?? null;
 
   const exportAllContainers = () => {
     const escapeCsv = (val) => {
@@ -1232,13 +1350,20 @@ export default function ContainersPanel() {
       return s;
     };
     const exportDateStr = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
-    const headers = ['ID', 'Name', 'Country', 'Created At'];
+    const headers = ['ID', 'Name', 'Country', 'Status', 'Default', 'Estimated arrival', 'Created At'];
     const csvLines = [`Date: ${exportDateStr}`, headers.map(escapeCsv).join(',')];
     containers.forEach((c) => {
       const createdAt = c.createdAt
         ? new Date(c.createdAt).toLocaleString('he-IL', { dateStyle: 'short', timeStyle: 'short' })
         : '';
-      csvLines.push([c.id, c.name || '', c.country || '', createdAt].map(escapeCsv).join(','));
+      const st = c.status || 'open';
+      const statusLabel = CONTAINER_STATUS_LABELS[st] || st;
+      const arrival =
+        c.estimatedArrivalAt && !Number.isNaN(new Date(c.estimatedArrivalAt).getTime())
+          ? new Date(c.estimatedArrivalAt).toLocaleString('he-IL', { dateStyle: 'short', timeStyle: 'short' })
+          : '';
+      const defLabel = c.isDefault ? 'Yes' : '';
+      csvLines.push([c.id, c.name || '', c.country || '', statusLabel, defLabel, arrival, createdAt].map(escapeCsv).join(','));
     });
     const csv = '\uFEFF' + csvLines.join('\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
@@ -1392,34 +1517,45 @@ export default function ContainersPanel() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 animate-fade-in">
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-        <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-100">
-          <div className="text-2xl font-bold text-slate-800">{containers.length}</div>
-          <div className="text-sm text-slate-500">Total containers</div>
+        <div className="stat-card border-l-4 border-indigo-500">
+          <div className="text-3xl font-extrabold text-slate-800">{containers.length}</div>
+          <div className="text-sm text-slate-500 mt-1">Total containers</div>
         </div>
-        <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-100">
-          <div className="text-2xl font-bold text-indigo-600">{missions.length}</div>
-          <div className="text-sm text-slate-500">Packages</div>
+        <div className="stat-card border-l-4 border-violet-500">
+          <div className="text-3xl font-extrabold text-violet-600">{missions.length}</div>
+          <div className="text-sm text-slate-500 mt-1">Packages</div>
         </div>
-        <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-100">
-          <div className="text-2xl font-bold text-amber-600">
+        <div className="stat-card border-l-4 border-amber-500">
+          <div className="text-3xl font-extrabold text-amber-600">
             {containersOver70.length}
           </div>
-          <div className="text-sm text-slate-500">Over 70% capacity</div>
+          <div className="text-sm text-slate-500 mt-1">Over 70% capacity</div>
         </div>
       </div>
 
-      <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
-        <div className="flex items-center justify-between p-4 border-b flex-wrap gap-2">
-          <h2 className="text-lg font-semibold text-slate-800 flex items-center gap-2">
-            <Box className="w-5 h-5" />
+      <div className="flex flex-wrap items-center gap-2 sm:gap-3 rounded-xl border border-amber-200/90 bg-amber-50/90 px-4 py-3 text-sm text-slate-800 shadow-sm">
+        <Star className="w-5 h-5 text-amber-600 shrink-0 fill-amber-400/30" />
+        <span className="font-semibold text-slate-700">Default container</span>
+        <span className="text-slate-400 hidden sm:inline">—</span>
+        {defaultContainerInList ? (
+          <span className="font-medium text-indigo-800">{formatContainerLabel(defaultContainerInList)}</span>
+        ) : (
+          <span className="text-slate-500">None set — choose one when creating or editing a container</span>
+        )}
+      </div>
+
+      <div className="card">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 flex-wrap gap-2">
+          <h2 className="section-title">
+            <Box className="w-5 h-5 text-indigo-500" />
             Containers ({containers.length})
           </h2>
           <div className="flex items-center gap-2">
             <button
               onClick={exportAllContainers}
-              className="flex items-center gap-2 px-4 py-2 border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-lg text-sm font-medium"
+              className="btn-secondary"
             >
               <Download className="w-4 h-4" />
               Export containers
@@ -1429,7 +1565,7 @@ export default function ContainersPanel() {
                 setEditingContainer(null);
                 setShowForm(true);
               }}
-              className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium"
+              className="btn-primary"
             >
               <Plus className="w-4 h-4" />
               New container
@@ -1438,75 +1574,89 @@ export default function ContainersPanel() {
         </div>
 
         {loading ? (
-          <div className="p-8 text-center text-slate-500">Loading...</div>
+          <div className="p-12 text-center text-slate-500">Loading...</div>
         ) : error ? (
-          <div className="p-8 text-center text-red-600">{error}</div>
+          <div className="p-12 text-center text-red-600">{error}</div>
         ) : containers.length === 0 ? (
-          <div className="p-8 text-center text-slate-400">
-            <Box className="w-10 h-10 mx-auto mb-2 opacity-30" />
-            <p>No containers</p>
-            <p className="text-sm mt-1">Click &quot;New container&quot; to add one</p>
+          <div className="flex flex-col items-center justify-center py-16 animate-fade-in">
+            <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mb-4">
+              <Box className="w-8 h-8 text-slate-300" />
+            </div>
+            <p className="text-base font-medium text-slate-500">No containers</p>
+            <p className="text-sm text-slate-400 mt-1">Click &quot;New container&quot; to add one</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-center table-fixed">
               <thead>
-                <tr className="bg-slate-50 border-b border-slate-100 text-xs font-semibold text-slate-500 uppercase">
-                  <th className="px-4 py-3">ID / Name</th>
-                  <th className="px-4 py-3">Country</th>
-                  <th className="px-4 py-3">Max weight</th>
-                  <th className="px-4 py-3">Max packages</th>
-                  <th className="px-4 py-3">Current packages</th>
-                  <th className="px-4 py-3">Current weight</th>
-                  <th className="px-4 py-3">Capacity %</th>
-                  <th className="px-4 py-3">Actions</th>
+                <tr className="table-header">
+                  <th>ID / Name</th>
+                  <th>Country</th>
+                  <th>Status</th>
+                  <th>Est. arrival</th>
+                  <th>Max weight</th>
+                  <th>Max packages</th>
+                  <th>Current packages</th>
+                  <th>Current weight</th>
+                  <th>Capacity %</th>
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {containersWithStats.map((c) => (
                   <tr
                     key={c.id}
-                    className={`border-b border-slate-100 hover:bg-slate-50/50 ${
-                      c.isAtCapacityAlert ? 'bg-amber-50/50' : ''
+                    className={`table-row ${
+                      c.isAtCapacityAlert ? 'row-warning' : ''
                     }`}
                   >
-                    <td className="px-4 py-3">
-                      <div className="font-mono font-bold text-blue-600 text-sm flex flex-col items-center justify-center">
-                        {c.id}
+                    <td>
+                      <div className="flex flex-col items-center justify-center gap-0.5">
+                        <span className="table-id">{c.id}</span>
                         {c.name && (
-                          <span className="text-sm text-slate-600 font-normal">{c.name}</span>
+                          <span className="text-xs text-slate-500 font-medium">{c.name}</span>
                         )}
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-sm text-slate-700">
+                    <td className="text-sm text-slate-700">
                       {c.country || '—'}
                     </td>
-                    <td className="px-4 py-3">
+                    <td>
+                      <span
+                        className={`badge-pill font-medium ${containerStatusBadgeClass(c.status)}`}
+                      >
+                        {CONTAINER_STATUS_LABELS[c.status || 'open'] || c.status || '—'}
+                      </span>
+                    </td>
+                    <td className="text-sm text-slate-700 whitespace-nowrap">
+                      {formatEstimatedArrival(c.estimatedArrivalAt)}
+                    </td>
+                    <td>
                       <span className="inline-flex items-center justify-center gap-1 text-sm font-medium text-slate-700">
                         <Weight className="w-4 h-4 text-slate-400" />
                         {c.maxWeight} kg
                       </span>
                     </td>
-                    <td className="px-4 py-3">
+                    <td>
                       <span className="inline-flex items-center justify-center gap-1 text-sm font-medium text-slate-700">
                         <Package className="w-4 h-4 text-slate-400" />
                         {c.maxPackages}
                       </span>
                     </td>
-                    <td className="px-4 py-3">
+                    <td>
                       <span className="text-sm font-bold text-indigo-600">
                         {c.packagesCount}
                       </span>
                     </td>
-                    <td className="px-4 py-3">
+                    <td>
                       <span className="inline-flex items-center justify-center gap-1 text-sm font-medium text-slate-700">
                         <Weight className="w-4 h-4 text-slate-400" />
                         {c.currentWeight.toFixed(1)} kg
                       </span>
                     </td>
-                    <td className="px-4 py-3">
+                    <td>
                       <span
-                        className={`inline-flex items-center justify-center gap-1 text-sm font-bold px-2.5 py-1 rounded-full ${
+                        className={`badge-pill font-bold ${
                           c.isAtCapacityAlert
                             ? 'bg-amber-100 text-amber-800'
                             : 'bg-slate-100 text-slate-700'
@@ -1518,25 +1668,25 @@ export default function ContainersPanel() {
                         {c.capacityPercent}%
                       </span>
                     </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center justify-center gap-1">
+                    <td>
+                      <div className="table-actions">
                         <button
                           onClick={() => setSummaryModalContainer(c)}
-                          className="p-1.5 hover:bg-amber-50 rounded text-slate-400 hover:text-amber-600"
+                          className="action-btn hover:bg-amber-50 text-slate-400 hover:text-amber-600"
                           title="Container summary"
                         >
                           <FileCheck className="w-4 h-4" />
                         </button>
                         <button
                           onClick={() => setExportModalContainer(c)}
-                          className="p-1.5 hover:bg-green-50 rounded text-slate-400 hover:text-green-600"
+                          className="action-btn hover:bg-green-50 text-slate-400 hover:text-green-600"
                           title="Download"
                         >
                           <Download className="w-4 h-4" />
                         </button>
                         <button
                           onClick={() => setViewingContainer(c)}
-                          className="p-1.5 hover:bg-indigo-50 rounded text-slate-400 hover:text-indigo-600"
+                          className="action-btn hover:bg-indigo-50 text-slate-400 hover:text-indigo-600"
                           title="View packages"
                         >
                           <Eye className="w-4 h-4" />
@@ -1546,7 +1696,7 @@ export default function ContainersPanel() {
                             setEditingContainer(c);
                             setShowForm(true);
                           }}
-                          className="p-1.5 hover:bg-slate-100 rounded text-slate-400 hover:text-slate-700"
+                          className="action-btn hover:bg-slate-100 text-slate-400 hover:text-slate-700"
                           title="Edit"
                         >
                           <Pencil className="w-4 h-4" />
@@ -1554,7 +1704,7 @@ export default function ContainersPanel() {
                         <button
                           onClick={() => handleDelete(c.id)}
                           disabled={deletingId === c.id}
-                          className="p-1.5 hover:bg-red-50 rounded text-slate-400 hover:text-red-600 disabled:opacity-50"
+                          className="action-btn hover:bg-red-50 text-slate-400 hover:text-red-600 disabled:opacity-50"
                           title="Delete"
                         >
                           <Trash2 className="w-4 h-4" />
@@ -1572,6 +1722,7 @@ export default function ContainersPanel() {
       {showForm && (
         <ContainerFormModal
           container={editingContainer}
+          containers={containers}
           onSave={handleSave}
           onClose={() => {
             setShowForm(false);

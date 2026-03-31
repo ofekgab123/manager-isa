@@ -63,59 +63,59 @@ function ParcelContentTypeFormModal({ type, onSave, onClose }) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      className="modal-overlay z-50"
       onClick={onClose}
     >
       <div
-        className="bg-white rounded-2xl shadow-2xl w-full max-w-md"
+        className="modal-content max-w-md animate-slide-up"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-6 py-4 border-b">
+        <div className="modal-header">
           <h2 className="font-bold text-slate-800 text-lg">
             {isEdit ? 'Edit parcel type' : 'New parcel type'}
           </h2>
-          <button onClick={onClose} className="p-1.5 hover:bg-slate-100 rounded-lg">
-            <X className="w-5 h-5 text-slate-500" />
+          <button onClick={onClose} className="action-btn hover:bg-slate-100 text-slate-400">
+            <X className="w-5 h-5" />
           </button>
         </div>
-        <form onSubmit={handleSubmit} className="px-6 py-5 space-y-4">
+        <form onSubmit={handleSubmit} className="modal-body space-y-4">
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">
+            <label className="label">
               Description label *
             </label>
             <input
               value={label}
               onChange={(e) => setLabel(e.target.value)}
               placeholder="e.g. Food Products"
-              className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+              className="input-field"
               required
             />
           </div>
 
           {error && (
-            <div className="flex items-center gap-2 text-red-600 bg-red-50 rounded-lg px-3 py-2 text-sm">
+            <div className="flex items-center gap-2 text-red-600 bg-red-50 rounded-xl px-4 py-2.5 text-sm border border-red-100">
               <AlertCircle className="w-4 h-4 shrink-0" />
               {error}
             </div>
           )}
-
-          <div className="flex gap-3 pt-1">
-            <button
-              type="button"
-              onClick={onClose}
-              className="flex-1 py-2.5 rounded-lg border border-slate-200 text-sm font-medium hover:bg-slate-50"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={saving}
-              className="flex-1 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold disabled:opacity-50"
-            >
-              {saving ? 'Saving...' : isEdit ? 'Save changes' : 'Add type'}
-            </button>
-          </div>
         </form>
+        <div className="modal-footer">
+          <button
+            type="button"
+            onClick={onClose}
+            className="btn-secondary flex-1"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={saving}
+            onClick={handleSubmit}
+            className="btn-primary flex-1"
+          >
+            {saving ? 'Saving...' : isEdit ? 'Save changes' : 'Add type'}
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -199,16 +199,16 @@ export default function ParcelContentTypesPanel() {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-100">
-        <div className="text-2xl font-bold text-slate-800">{types.length}</div>
-        <div className="text-sm text-slate-500">Parcel content types</div>
+    <div className="space-y-6 animate-fade-in">
+      <div className="stat-card border-l-4 border-indigo-500">
+        <div className="text-3xl font-extrabold text-slate-800">{types.length}</div>
+        <div className="text-sm text-slate-500 mt-1">Parcel content types</div>
       </div>
 
-      <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
-        <div className="flex items-center justify-between p-4 border-b">
-          <h2 className="text-lg font-semibold text-slate-800 flex items-center gap-2">
-            <List className="w-5 h-5" />
+      <div className="card">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+          <h2 className="section-title">
+            <List className="w-5 h-5 text-indigo-500" />
             Parcel Content Types ({types.length})
           </h2>
           <div className="flex items-center gap-2">
@@ -216,7 +216,7 @@ export default function ParcelContentTypesPanel() {
               <button
                 onClick={handleSeedDefaults}
                 disabled={seeding}
-                className="flex items-center gap-2 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-sm font-medium disabled:opacity-50"
+                className="btn-amber"
               >
                 <Package className="w-4 h-4" />
                 {seeding ? 'Seeding...' : 'Initialize with defaults'}
@@ -227,7 +227,7 @@ export default function ParcelContentTypesPanel() {
                 setEditingType(null);
                 setShowForm(true);
               }}
-              className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium"
+              className="btn-primary"
             >
               <Plus className="w-4 h-4" />
               New type
@@ -236,14 +236,16 @@ export default function ParcelContentTypesPanel() {
         </div>
 
         {loading ? (
-          <div className="p-8 text-center text-slate-500">Loading...</div>
+          <div className="p-12 text-center text-slate-500">Loading...</div>
         ) : error ? (
-          <div className="p-8 text-center text-red-600">{error}</div>
+          <div className="p-12 text-center text-red-600">{error}</div>
         ) : types.length === 0 ? (
-          <div className="p-8 text-center text-slate-400">
-            <List className="w-10 h-10 mx-auto mb-2 opacity-30" />
-            <p>No parcel content types</p>
-            <p className="text-sm mt-1">
+          <div className="flex flex-col items-center justify-center py-16 animate-fade-in">
+            <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mb-4">
+              <List className="w-8 h-8 text-slate-300" />
+            </div>
+            <p className="text-base font-medium text-slate-500">No parcel content types</p>
+            <p className="text-sm text-slate-400 mt-1">
               Click &quot;Initialize with defaults&quot; or &quot;New type&quot; to add
             </p>
           </div>
@@ -251,32 +253,30 @@ export default function ParcelContentTypesPanel() {
           <div className="overflow-x-auto">
             <table className="w-full text-center">
               <thead>
-                <tr className="bg-slate-50 border-b border-slate-100 text-xs font-semibold text-slate-500 uppercase">
-                  <th className="px-4 py-3">ID</th>
-                  <th className="px-4 py-3">Label</th>
-                  <th className="px-4 py-3">Actions</th>
+                <tr className="table-header">
+                  <th>ID</th>
+                  <th>Label</th>
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {types.map((t) => (
                   <tr
                     key={t.id}
-                    className="border-b border-slate-100 hover:bg-slate-50/50"
+                    className="table-row"
                   >
-                    <td className="px-4 py-3 font-mono text-sm text-slate-500">
-                      {t.id}
-                    </td>
-                    <td className="px-4 py-3 font-medium text-slate-800">
+                    <td><span className="table-id">{t.id}</span></td>
+                    <td className="font-medium text-slate-800">
                       {t.label}
                     </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center justify-center gap-1">
+                    <td>
+                      <div className="table-actions">
                         <button
                           onClick={() => {
                             setEditingType(t);
                             setShowForm(true);
                           }}
-                          className="p-1.5 hover:bg-slate-100 rounded text-slate-400 hover:text-slate-700"
+                          className="action-btn hover:bg-slate-100 text-slate-400 hover:text-slate-700"
                           title="Edit"
                         >
                           <Pencil className="w-4 h-4" />
@@ -284,7 +284,7 @@ export default function ParcelContentTypesPanel() {
                         <button
                           onClick={() => handleDelete(t.id)}
                           disabled={deletingId === t.id}
-                          className="p-1.5 hover:bg-red-50 rounded text-slate-400 hover:text-red-600 disabled:opacity-50"
+                          className="action-btn hover:bg-red-50 text-slate-400 hover:text-red-600 disabled:opacity-50"
                           title="Delete"
                         >
                           <Trash2 className="w-4 h-4" />

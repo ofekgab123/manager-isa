@@ -67,12 +67,35 @@ export async function writeReceivers(receivers) {
   return writeTable('receivers', receivers);
 }
 
+/** At most one container may have isDefault true; first in array order keeps it. */
+export function normalizeContainersDefault(containers) {
+  if (!Array.isArray(containers) || containers.length === 0) return containers;
+  let seenDefault = false;
+  return containers.map((c) => {
+    if (c.isDefault) {
+      if (seenDefault) return { ...c, isDefault: false };
+      seenDefault = true;
+      return { ...c, isDefault: true };
+    }
+    return { ...c, isDefault: false };
+  });
+}
+
+function containersDefaultNeedsNormalize(containers) {
+  if (!Array.isArray(containers)) return false;
+  return containers.filter((c) => c.isDefault).length > 1;
+}
+
 export async function readContainers() {
-  return readTable('containers');
+  const raw = await readTable('containers');
+  if (!containersDefaultNeedsNormalize(raw)) return raw;
+  const normalized = normalizeContainersDefault(raw);
+  await writeTable('containers', normalized);
+  return normalized;
 }
 
 export async function writeContainers(containers) {
-  return writeTable('containers', containers);
+  return writeTable('containers', normalizeContainersDefault(containers));
 }
 
 export async function readParcelContentTypes() {

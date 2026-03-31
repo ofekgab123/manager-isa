@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Users,
   Plus,
@@ -18,7 +18,10 @@ import {
   PhoneOff,
   Package,
   Search,
+  Download,
+  FileUp,
 } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import { API_BASE } from '../config';
 
 const SITE_URL = import.meta.env.VITE_SITE_URL || 'https://isa-psi-six.vercel.app';
@@ -87,66 +90,66 @@ function AffiliateFormModal({ affiliate, onSave, onClose }) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      className="modal-overlay z-50"
       onClick={onClose}
     >
       <div
-        className="bg-white rounded-2xl shadow-2xl w-full max-w-md"
+        className="modal-content max-w-md animate-slide-up"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-6 py-4 border-b">
+        <div className="modal-header">
           <h2 className="font-bold text-slate-800 text-lg">
             {isEdit ? 'Edit affiliate' : 'New affiliate'}
           </h2>
-          <button onClick={onClose} className="p-1.5 hover:bg-slate-100 rounded-lg">
-            <X className="w-5 h-5 text-slate-500" />
+          <button onClick={onClose} className="action-btn hover:bg-slate-100 text-slate-400">
+            <X className="w-5 h-5" />
           </button>
         </div>
-        <form onSubmit={handleSubmit} className="px-6 py-5 space-y-4">
+        <form onSubmit={handleSubmit} className="modal-body space-y-4">
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Affiliate name *</label>
+            <label className="label">Affiliate name *</label>
             <input
               name="name"
               value={form.name}
               onChange={handleChange}
               onBlur={handleNameBlur}
               placeholder="John Smith"
-              className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+              className="input-field"
               required
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">
+            <label className="label">
               Slug (for URL) *
             </label>
             <div className="flex items-center gap-2">
-              <span className="text-xs text-slate-400 shrink-0">?ref=</span>
+              <span className="text-xs text-slate-400 shrink-0 font-mono">?ref=</span>
               <input
                 name="slug"
                 value={form.slug}
                 onChange={handleChange}
                 placeholder="yosi-cohen"
-                className="flex-1 px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                className="input-field flex-1"
                 required
               />
             </div>
-            <p className="text-xs text-slate-400 mt-1">
+            <p className="text-xs text-slate-400 mt-1.5">
               Link: {SITE_URL}/?ref={form.slug || 'slug'}
             </p>
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Promo code *</label>
+            <label className="label">Promo code *</label>
             <input
               name="promoCode"
               value={form.promoCode}
               onChange={(e) => setForm((p) => ({ ...p, promoCode: e.target.value.toUpperCase() }))}
               placeholder="YOSI35"
-              className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm font-mono uppercase focus:outline-none focus:ring-2 focus:ring-indigo-300"
+              className="input-field font-mono uppercase"
               required
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">
+            <label className="label">
               Discount amount (₪) *
             </label>
             <input
@@ -156,12 +159,12 @@ function AffiliateFormModal({ affiliate, onSave, onClose }) {
               value={form.discountAmount}
               onChange={handleChange}
               placeholder="35"
-              className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+              className="input-field"
               required
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Commission per order (₪) *</label>
+            <label className="label">Commission per order (₪) *</label>
             <input
               name="commissionPerOrder"
               type="number"
@@ -169,35 +172,35 @@ function AffiliateFormModal({ affiliate, onSave, onClose }) {
               value={form.commissionPerOrder}
               onChange={handleChange}
               placeholder="20"
-              className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+              className="input-field"
               required
             />
           </div>
 
           {error && (
-            <div className="flex items-center gap-2 text-red-600 bg-red-50 rounded-lg px-3 py-2 text-sm">
+            <div className="flex items-center gap-2 text-red-600 bg-red-50 rounded-xl px-4 py-2.5 text-sm border border-red-100">
               <AlertCircle className="w-4 h-4 shrink-0" />
               {error}
             </div>
           )}
-
-          <div className="flex gap-3 pt-1">
-            <button
-              type="button"
-              onClick={onClose}
-              className="flex-1 py-2.5 rounded-lg border border-slate-200 text-sm font-medium hover:bg-slate-50"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={saving}
-              className="flex-1 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold disabled:opacity-50"
-            >
-              {saving ? 'Saving...' : isEdit ? 'Save changes' : 'Create affiliate'}
-            </button>
-          </div>
         </form>
+        <div className="modal-footer">
+          <button
+            type="button"
+            onClick={onClose}
+            className="btn-secondary flex-1"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={saving}
+            onClick={handleSubmit}
+            className="btn-primary flex-1"
+          >
+            {saving ? 'Saving...' : isEdit ? 'Save changes' : 'Create affiliate'}
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -206,42 +209,37 @@ function AffiliateFormModal({ affiliate, onSave, onClose }) {
 const TYPE_LABELS = { pickup: 'Pick up', empty_box: 'Box' };
 const getTypeLabel = (type) => TYPE_LABELS[type] || (type === 'send' ? 'Pick up' : type);
 
-function AffiliateOrdersTable({ orders }) {
-  if (orders.length === 0) {
-    return (
-      <div className="px-6 py-4 text-sm text-slate-400 text-center">
-        No orders for this affiliate yet
-      </div>
-    );
-  }
+function getCustomerKey(order) {
+  return order.customerPhone || order.fullName || [order.firstName, order.lastName].filter(Boolean).join(' ') || 'unknown';
+}
+
+function getCustomerName(order) {
+  return order.fullName || [order.firstName, order.lastName].filter(Boolean).join(' ') || '—';
+}
+
+function CustomerOrdersTable({ orders }) {
   return (
-    <div className="overflow-x-auto border-t border-slate-100">
+    <div className="overflow-x-auto">
       <table className="w-full text-center text-sm table-fixed">
         <thead>
-          <tr className="bg-slate-100 text-xs font-semibold text-slate-500 uppercase">
-            <th className="px-4 py-2">ID</th>
-            <th className="px-4 py-2">Name</th>
-            <th className="px-4 py-2">Phone</th>
-            <th className="px-4 py-2">Type</th>
-            <th className="px-4 py-2">Discount</th>
-            <th className="px-4 py-2">Contacted</th>
-            <th className="px-4 py-2">Date</th>
+          <tr className="table-header bg-slate-100/80">
+            <th>ID</th>
+            <th>Type</th>
+            <th>Discount</th>
+            <th>Contacted</th>
+            <th>Date</th>
           </tr>
         </thead>
         <tbody>
           {orders.map((order) => (
-            <tr key={order.id} className="border-t border-slate-100 hover:bg-slate-50/60">
-              <td className="px-4 py-2 font-mono font-bold text-blue-600">{order.id}</td>
-              <td className="px-4 py-2 text-slate-700">
-                {order.fullName || [order.firstName, order.lastName].filter(Boolean).join(' ') || '—'}
-              </td>
-              <td className="px-4 py-2 text-slate-600">{order.customerPhone || '—'}</td>
-              <td className="px-4 py-2">
-                <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100">
+            <tr key={order.id} className="table-row">
+              <td><span className="table-id">{order.id}</span></td>
+              <td>
+                <span className="badge-pill bg-slate-100 text-slate-600">
                   {getTypeLabel(order.type)}
                 </span>
               </td>
-              <td className="px-4 py-2">
+              <td>
                 {order.discountAmount ? (
                   <span className="inline-flex items-center justify-center gap-1 text-emerald-600 font-semibold text-xs">
                     <Tag className="w-3 h-3" />₪{order.discountAmount}
@@ -250,7 +248,7 @@ function AffiliateOrdersTable({ orders }) {
                   <span className="text-slate-300">—</span>
                 )}
               </td>
-              <td className="px-4 py-2">
+              <td>
                 {order.contacted ? (
                   <span className="inline-flex items-center justify-center gap-1 text-green-600 text-xs">
                     <PhoneCall className="w-3 h-3" /> Yes
@@ -261,7 +259,7 @@ function AffiliateOrdersTable({ orders }) {
                   </span>
                 )}
               </td>
-              <td className="px-4 py-2 text-slate-500 text-xs">
+              <td className="text-slate-500 text-xs">
                 {order.createdAt
                   ? new Date(order.createdAt).toLocaleDateString('en-US', {
                       day: '2-digit', month: '2-digit', year: 'numeric',
@@ -271,6 +269,169 @@ function AffiliateOrdersTable({ orders }) {
               </td>
             </tr>
           ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function exportCustomersToExcel(affiliateName, orders, importedCustomers = []) {
+  const customerMap = {};
+  orders.forEach((order) => {
+    const key = getCustomerKey(order);
+    if (!customerMap[key]) {
+      const fullName = getCustomerName(order);
+      const parts = fullName.split(' ');
+      customerMap[key] = {
+        'שם פרטי': order.firstName || parts[0] || '',
+        'שם משפחה': order.lastName || parts.slice(1).join(' ') || '',
+        'מספר טלפון': order.customerPhone || '',
+      };
+    }
+  });
+
+  importedCustomers.forEach((c) => {
+    const phone = (String(c.phone || '')).replace(/\D/g, '');
+    const key = phone || `${c.firstName}-${c.lastName}`;
+    if (!customerMap[key]) {
+      customerMap[key] = {
+        'שם פרטי': c.firstName || '',
+        'שם משפחה': c.lastName || '',
+        'מספר טלפון': c.phone || '',
+      };
+    }
+  });
+
+  const rows = Object.values(customerMap);
+  const ws = XLSX.utils.json_to_sheet(rows);
+  ws['!cols'] = [{ wch: 18 }, { wch: 18 }, { wch: 18 }];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Customers');
+  XLSX.writeFile(wb, `customers-${affiliateName}.xlsx`);
+}
+
+function AffiliateCustomersTable({ orders, importedCustomers = [] }) {
+  const [expandedCustomer, setExpandedCustomer] = useState(null);
+
+  const customerMap = {};
+  orders.forEach((order) => {
+    const key = getCustomerKey(order);
+    if (!customerMap[key]) {
+      customerMap[key] = {
+        key,
+        name: getCustomerName(order),
+        phone: order.customerPhone || '—',
+        orders: [],
+        isImported: false,
+      };
+    }
+    customerMap[key].orders.push(order);
+  });
+
+  importedCustomers.forEach((c) => {
+    const phone = (String(c.phone || '')).replace(/\D/g, '');
+    const key = phone || `${c.firstName}-${c.lastName}`;
+    if (!customerMap[key]) {
+      customerMap[key] = {
+        key,
+        name: [c.firstName, c.lastName].filter(Boolean).join(' ') || '—',
+        phone: c.phone || '—',
+        orders: [],
+        isImported: true,
+      };
+    }
+  });
+
+  const customers = Object.values(customerMap);
+
+  if (customers.length === 0) {
+    return (
+      <div className="px-6 py-8 text-sm text-slate-400 text-center">
+        No customers for this affiliate yet
+      </div>
+    );
+  }
+
+  return (
+    <div className="overflow-x-auto border-t border-slate-100">
+      <table className="w-full text-center text-sm table-fixed">
+        <thead>
+          <tr className="table-header">
+            <th>Name</th>
+            <th>Phone</th>
+            <th>Orders</th>
+            <th>Total Discount</th>
+            <th>Last Order</th>
+          </tr>
+        </thead>
+        <tbody>
+          {customers.map((customer) => {
+            const isExpanded = expandedCustomer === customer.key;
+            const totalDiscount = customer.orders.reduce((sum, o) => sum + (o.discountAmount || 0), 0);
+            const lastOrder = [...customer.orders].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))[0];
+            const hasOrders = customer.orders.length > 0;
+            return (
+              <>
+                <tr
+                  key={customer.key}
+                  className={`table-row ${hasOrders ? 'cursor-pointer' : ''}`}
+                  onClick={() => hasOrders && setExpandedCustomer(isExpanded ? null : customer.key)}
+                >
+                  <td className="font-semibold text-slate-700">
+                    <span className="flex items-center justify-center gap-2">
+                      {customer.name}
+                      {customer.isImported && (
+                        <span className="text-[10px] font-semibold bg-violet-100 text-violet-600 px-1.5 py-0.5 rounded-md border border-violet-200">
+                          Imported
+                        </span>
+                      )}
+                    </span>
+                  </td>
+                  <td className="text-slate-600">{customer.phone}</td>
+                  <td>
+                    {hasOrders ? (
+                      <button className="inline-flex items-center justify-center gap-1 text-indigo-600 font-semibold text-sm">
+                        <Package className="w-3.5 h-3.5" />
+                        {customer.orders.length}
+                        {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                      </button>
+                    ) : (
+                      <span className="text-slate-300 text-sm">0</span>
+                    )}
+                  </td>
+                  <td>
+                    {totalDiscount > 0 ? (
+                      <span className="inline-flex items-center justify-center gap-1 text-emerald-600 font-semibold text-xs">
+                        <Tag className="w-3 h-3" />₪{totalDiscount}
+                      </span>
+                    ) : (
+                      <span className="text-slate-300">—</span>
+                    )}
+                  </td>
+                  <td className="text-slate-500 text-xs">
+                    {lastOrder?.createdAt
+                      ? new Date(lastOrder.createdAt).toLocaleDateString('en-US', {
+                          day: '2-digit', month: '2-digit', year: 'numeric',
+                        })
+                      : '—'}
+                  </td>
+                </tr>
+                {isExpanded && hasOrders && (
+                  <tr key={`${customer.key}-orders`} className="bg-slate-50/60">
+                    <td colSpan={5} className="px-0 py-0">
+                      <div className="border-t border-slate-200">
+                        <div className="px-6 py-2 text-xs font-semibold text-slate-500 flex items-center gap-2 bg-slate-100/60">
+                          <Package className="w-3.5 h-3.5" />
+                          Orders by {customer.name} ({customer.orders.length})
+                        </div>
+                        <CustomerOrdersTable orders={customer.orders} />
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </>
+            );
+          })}
         </tbody>
       </table>
     </div>
@@ -287,6 +448,9 @@ export default function AffiliatesPanel({ missions = [] }) {
   const [deletingId, setDeletingId] = useState(null);
   const [expandedId, setExpandedId] = useState(null);
   const [search, setSearch] = useState('');
+  const [importingId, setImportingId] = useState(null);
+  const [importError, setImportError] = useState(null);
+  const fileInputRef = useRef(null);
 
   const fetchAffiliates = useCallback(async () => {
     setLoading(true);
@@ -347,6 +511,50 @@ export default function AffiliatesPanel({ missions = [] }) {
     setEditingAffiliate(null);
   };
 
+  const handleImportClick = (affiliateId) => {
+    setImportError(null);
+    setImportingId(affiliateId);
+    fileInputRef.current.value = '';
+    fileInputRef.current.click();
+  };
+
+  const handleFileChange = async (e) => {
+    const file = e.target.files[0];
+    if (!file || !importingId) { setImportingId(null); return; }
+    try {
+      const data = await file.arrayBuffer();
+      const wb = XLSX.read(data);
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
+      const customers = rows
+        .map((row) => ({
+          firstName: String(row['שם פרטי'] || row['firstName'] || row['first_name'] || '').trim(),
+          lastName:  String(row['שם משפחה'] || row['lastName']  || row['last_name']  || '').trim(),
+          phone:     String(row['מספר טלפון'] || row['phone'] || row['טלפון'] || '').trim(),
+        }))
+        .filter((c) => c.phone);
+
+      if (customers.length === 0) {
+        setImportError('No valid rows found. Make sure the file has columns: שם פרטי, שם משפחה, מספר טלפון');
+        setImportingId(null);
+        return;
+      }
+
+      const res = await fetch(`${API_BASE}/affiliates/${importingId}/customers/import`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ customers }),
+      });
+      const updated = await res.json();
+      if (!res.ok) throw new Error(updated.error || 'Import failed');
+      setAffiliates((prev) => prev.map((a) => (a.id === updated.id ? updated : a)));
+    } catch (err) {
+      setImportError(err.message);
+    } finally {
+      setImportingId(null);
+    }
+  };
+
   const totalOrders = missions.filter((m) => m.affiliateName).length;
 
   const filteredAffiliates = affiliates.filter((a) => {
@@ -360,49 +568,49 @@ export default function AffiliatesPanel({ missions = [] }) {
   });
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 animate-fade-in">
       {/* Header stats */}
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-        <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-100">
-          <div className="text-2xl font-bold text-slate-800">{affiliates.length}</div>
-          <div className="text-sm text-slate-500">Total affiliates</div>
+        <div className="stat-card border-l-4 border-indigo-500">
+          <div className="text-3xl font-extrabold text-slate-800">{affiliates.length}</div>
+          <div className="text-sm text-slate-500 mt-1">Total affiliates</div>
         </div>
-        <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-100">
-          <div className="text-2xl font-bold text-green-600">
+        <div className="stat-card border-l-4 border-emerald-500">
+          <div className="text-3xl font-extrabold text-emerald-600">
             {affiliates.filter((a) => a.active !== false).length}
           </div>
-          <div className="text-sm text-slate-500">Active</div>
+          <div className="text-sm text-slate-500 mt-1">Active</div>
         </div>
-        <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-100">
-          <div className="text-2xl font-bold text-indigo-600">{totalOrders}</div>
-          <div className="text-sm text-slate-500">Affiliate orders</div>
+        <div className="stat-card border-l-4 border-violet-500">
+          <div className="text-3xl font-extrabold text-violet-600">{totalOrders}</div>
+          <div className="text-sm text-slate-500 mt-1">Affiliate orders</div>
         </div>
       </div>
 
       {/* Table */}
-      <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
-        <div className="flex items-center justify-between p-4 border-b">
-          <h2 className="text-lg font-semibold text-slate-800 flex items-center gap-2">
-            <Users className="w-5 h-5" />
+      <div className="card">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+          <h2 className="section-title">
+            <Users className="w-5 h-5 text-indigo-500" />
             Affiliate Management ({search ? `${filteredAffiliates.length} / ${affiliates.length}` : affiliates.length})
           </h2>
           <button
             onClick={() => { setEditingAffiliate(null); setShowForm(true); }}
-            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium"
+            className="btn-primary"
           >
             <Plus className="w-4 h-4" />
             New affiliate
           </button>
         </div>
-        <div className="px-4 py-3 border-b">
+        <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/30">
           <div className="relative">
-            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search by name, slug or promo code…"
-              className="w-full pl-9 pr-4 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200"
+              className="input-field pl-10"
             />
             {search && (
               <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
@@ -413,31 +621,38 @@ export default function AffiliatesPanel({ missions = [] }) {
         </div>
 
         {loading ? (
-          <div className="p-8 text-center text-slate-500">Loading...</div>
+          <div className="p-12 text-center text-slate-500">Loading...</div>
         ) : error ? (
-          <div className="p-8 text-center text-red-600">{error}</div>
+          <div className="p-12 text-center text-red-600">{error}</div>
         ) : affiliates.length === 0 ? (
-          <div className="p-8 text-center text-slate-400">
-            <Users className="w-10 h-10 mx-auto mb-2 opacity-30" />
-            <p>No affiliates yet</p>
-            <p className="text-sm mt-1">Click &quot;New affiliate&quot; to add one</p>
+          <div className="flex flex-col items-center justify-center py-16 animate-fade-in">
+            <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mb-4">
+              <Users className="w-8 h-8 text-slate-300" />
+            </div>
+            <p className="text-base font-medium text-slate-500">No affiliates yet</p>
+            <p className="text-sm text-slate-400 mt-1">Click &quot;New affiliate&quot; to add one</p>
           </div>
         ) : filteredAffiliates.length === 0 ? (
-          <div className="p-8 text-center text-slate-400">No affiliates match your search</div>
+          <div className="flex flex-col items-center justify-center py-16 animate-fade-in">
+            <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mb-4">
+              <Search className="w-8 h-8 text-slate-300" />
+            </div>
+            <p className="text-base font-medium text-slate-500">No affiliates match your search</p>
+          </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-center table-fixed">
               <thead>
-                <tr className="bg-slate-50 border-b border-slate-100 text-xs font-semibold text-slate-500 uppercase">
-                  <th className="px-4 py-3">Name</th>
-                  <th className="px-4 py-3">Link (Slug)</th>
-                  <th className="px-4 py-3">Promo Code</th>
-                  <th className="px-4 py-3">Discount</th>
-                  <th className="px-4 py-3">Commission/Order</th>
-                  <th className="px-4 py-3">Orders</th>
-                  <th className="px-4 py-3">Total Earnings</th>
-                  <th className="px-4 py-3">Status</th>
-                  <th className="px-4 py-3">Actions</th>
+                <tr className="table-header">
+                  <th>Name</th>
+                  <th>Link (Slug)</th>
+                  <th>Promo Code</th>
+                  <th>Discount</th>
+                  <th>Commission/Order</th>
+                  <th>Customers</th>
+                  <th>Total Earnings</th>
+                  <th>Status</th>
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -446,31 +661,39 @@ export default function AffiliatesPanel({ missions = [] }) {
                   const affiliateOrders = missions.filter(
                     (m) => m.affiliateName === affiliate.name,
                   );
+                  const missionKeys = new Set(affiliateOrders.map(getCustomerKey));
+                  const importedKeys = new Set(
+                    (affiliate.importedCustomers || []).map((c) => {
+                      const phone = (String(c.phone || '')).replace(/\D/g, '');
+                      return phone || `${c.firstName}-${c.lastName}`;
+                    })
+                  );
+                  const uniqueCustomers = new Set([...missionKeys, ...importedKeys]).size;
                   const isExpanded = expandedId === affiliate.id;
                   return (
                     <>
                       <tr
                         key={affiliate.id}
-                        className={`border-b border-slate-100 hover:bg-slate-50/50 cursor-pointer ${
-                          affiliate.active === false ? 'opacity-50' : ''
+                        className={`table-row cursor-pointer ${
+                          affiliate.active === false ? 'row-inactive' : ''
                         }`}
                         onClick={() => setExpandedId(isExpanded ? null : affiliate.id)}
                       >
-                        <td className="px-4 py-3 font-semibold text-slate-800">{affiliate.name}</td>
-                        <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                        <td className="font-semibold text-slate-800">{affiliate.name}</td>
+                        <td onClick={(e) => e.stopPropagation()}>
                           <div className="flex items-center justify-center gap-2">
                             <a
                               href={trackingLink}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="text-xs text-blue-600 font-mono bg-blue-50 px-2 py-0.5 rounded truncate max-w-[140px] hover:underline hover:bg-blue-100"
+                              className="text-xs text-blue-600 font-mono bg-blue-50 px-2.5 py-1 rounded-lg truncate max-w-[140px] hover:underline hover:bg-blue-100 transition-colors"
                               title={trackingLink}
                             >
                               ?ref={affiliate.slug}
                             </a>
                             <button
                               onClick={() => handleCopy(trackingLink, `link-${affiliate.id}`)}
-                              className="p-1 hover:bg-slate-100 rounded text-slate-400 hover:text-slate-600"
+                              className="action-btn hover:bg-slate-100 text-slate-400 hover:text-slate-600"
                               title="Copy link"
                             >
                               {copiedId === `link-${affiliate.id}` ? (
@@ -481,14 +704,14 @@ export default function AffiliatesPanel({ missions = [] }) {
                             </button>
                           </div>
                         </td>
-                        <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                        <td onClick={(e) => e.stopPropagation()}>
                           <div className="flex items-center justify-center gap-2">
-                            <span className="text-xs font-mono font-bold bg-amber-50 text-amber-700 px-2 py-0.5 rounded border border-amber-200">
+                            <span className="text-xs font-mono font-bold bg-amber-50 text-amber-700 px-2.5 py-1 rounded-lg border border-amber-200">
                               {affiliate.promoCode}
                             </span>
                             <button
                               onClick={() => handleCopy(affiliate.promoCode, `code-${affiliate.id}`)}
-                              className="p-1 hover:bg-slate-100 rounded text-slate-400 hover:text-slate-600"
+                              className="action-btn hover:bg-slate-100 text-slate-400 hover:text-slate-600"
                               title="Copy code"
                             >
                               {copiedId === `code-${affiliate.id}` ? (
@@ -499,13 +722,13 @@ export default function AffiliatesPanel({ missions = [] }) {
                             </button>
                           </div>
                         </td>
-                        <td className="px-4 py-3">
+                        <td>
                           <span className="inline-flex items-center justify-center gap-1 text-sm font-bold text-emerald-600">
                             <Tag className="w-3.5 h-3.5" />
                             ₪{affiliate.discountAmount}
                           </span>
                         </td>
-                        <td className="px-4 py-3">
+                        <td>
                           {affiliate.commissionPerOrder != null ? (
                             <span className="inline-flex items-center justify-center gap-1 text-sm font-semibold text-violet-600">
                               ₪{affiliate.commissionPerOrder}
@@ -514,13 +737,13 @@ export default function AffiliatesPanel({ missions = [] }) {
                             <span className="text-slate-300">—</span>
                           )}
                         </td>
-                        <td className="px-4 py-3">
+                        <td>
                           <button
                             className="inline-flex items-center justify-center gap-1.5 text-sm font-semibold text-indigo-600 hover:text-indigo-800"
                             onClick={(e) => { e.stopPropagation(); setExpandedId(isExpanded ? null : affiliate.id); }}
                           >
-                            <Package className="w-3.5 h-3.5" />
-                            {affiliateOrders.length}
+                            <Users className="w-3.5 h-3.5" />
+                            {uniqueCustomers}
                             {isExpanded ? (
                               <ChevronUp className="w-3.5 h-3.5" />
                             ) : (
@@ -528,7 +751,7 @@ export default function AffiliatesPanel({ missions = [] }) {
                             )}
                           </button>
                         </td>
-                        <td className="px-4 py-3">
+                        <td>
                           {affiliate.commissionPerOrder != null ? (
                             <span className="inline-flex items-center justify-center gap-1 text-sm font-bold text-violet-700">
                               ₪{(affiliate.commissionPerOrder * affiliateOrders.length).toLocaleString()}
@@ -537,7 +760,7 @@ export default function AffiliatesPanel({ missions = [] }) {
                             <span className="text-slate-300">—</span>
                           )}
                         </td>
-                        <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                        <td onClick={(e) => e.stopPropagation()}>
                           <button
                             onClick={() => handleToggleActive(affiliate)}
                             className="inline-flex items-center justify-center gap-1 text-xs font-medium"
@@ -556,11 +779,11 @@ export default function AffiliatesPanel({ missions = [] }) {
                             )}
                           </button>
                         </td>
-                        <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                          <div className="flex items-center justify-center gap-1">
+                        <td onClick={(e) => e.stopPropagation()}>
+                          <div className="table-actions">
                             <button
                               onClick={() => { setEditingAffiliate(affiliate); setShowForm(true); }}
-                              className="p-1.5 hover:bg-slate-100 rounded text-slate-400 hover:text-slate-700"
+                              className="action-btn hover:bg-slate-100 text-slate-400 hover:text-slate-700"
                               title="Edit"
                             >
                               <Pencil className="w-4 h-4" />
@@ -568,7 +791,7 @@ export default function AffiliatesPanel({ missions = [] }) {
                             <button
                               onClick={() => handleDelete(affiliate.id)}
                               disabled={deletingId === affiliate.id}
-                              className="p-1.5 hover:bg-red-50 rounded text-slate-400 hover:text-red-600"
+                              className="action-btn hover:bg-red-50 text-slate-400 hover:text-red-600"
                               title="Delete"
                             >
                               <Trash2 className="w-4 h-4" />
@@ -577,14 +800,40 @@ export default function AffiliatesPanel({ missions = [] }) {
                         </td>
                       </tr>
                       {isExpanded && (
-                        <tr key={`${affiliate.id}-orders`} className="bg-indigo-50/40">
+                        <tr key={`${affiliate.id}-customers`} className="bg-indigo-50/40">
                           <td colSpan={9} className="px-0 py-0">
                             <div className="border-t border-indigo-100">
-                              <div className="px-4 py-2 text-xs font-semibold text-indigo-700 flex items-center gap-2 bg-indigo-50">
-                                <Package className="w-3.5 h-3.5" />
-                                Orders via {affiliate.name} ({affiliateOrders.length})
+                              <div className="px-6 py-3 text-xs font-semibold text-indigo-700 flex items-center justify-between gap-2 bg-indigo-50/80">
+                                <span className="flex items-center gap-2">
+                                  <Users className="w-3.5 h-3.5" />
+                                  Customers via {affiliate.name} ({uniqueCustomers})
+                                </span>
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    onClick={() => handleImportClick(affiliate.id)}
+                                    disabled={importingId === affiliate.id}
+                                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
+                                    title="Import customers from Excel"
+                                  >
+                                    <FileUp className="w-3.5 h-3.5" />
+                                    {importingId === affiliate.id ? 'Importing…' : 'Import Excel'}
+                                  </button>
+                                  {(affiliateOrders.length > 0 || (affiliate.importedCustomers || []).length > 0) && (
+                                    <button
+                                      onClick={() => exportCustomersToExcel(affiliate.name, affiliateOrders, affiliate.importedCustomers || [])}
+                                      className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-3 py-1.5 rounded-lg transition-colors"
+                                      title="Export customers to Excel"
+                                    >
+                                      <Download className="w-3.5 h-3.5" />
+                                      Export
+                                    </button>
+                                  )}
+                                </div>
                               </div>
-                              <AffiliateOrdersTable orders={affiliateOrders} />
+                              <AffiliateCustomersTable
+                                orders={affiliateOrders}
+                                importedCustomers={affiliate.importedCustomers || []}
+                              />
                             </div>
                           </td>
                         </tr>
@@ -604,6 +853,24 @@ export default function AffiliatesPanel({ missions = [] }) {
           onSave={handleSave}
           onClose={() => { setShowForm(false); setEditingAffiliate(null); }}
         />
+      )}
+
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".xlsx,.xls,.csv"
+        className="hidden"
+        onChange={handleFileChange}
+      />
+
+      {importError && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 bg-red-600 text-white px-5 py-3 rounded-xl shadow-lg text-sm">
+          <AlertCircle className="w-4 h-4 shrink-0" />
+          {importError}
+          <button onClick={() => setImportError(null)} className="ml-2 hover:opacity-70">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
       )}
     </div>
   );

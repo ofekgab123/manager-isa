@@ -46,34 +46,34 @@ function DeliveryRow({ row, idx, totalPickup, otherAssigned, onChange, onDelete,
   };
 
   return (
-    <div className="p-4 rounded-xl border-2 border-slate-200 bg-white space-y-3">
+    <div className="card p-4 border-2 border-slate-200 space-y-3">
       <div className="flex items-center justify-between">
-        <span className="text-xs font-bold text-slate-500 uppercase tracking-wide">
+        <span className="label !mb-0">
           Delivery address {idx + 1}
         </span>
         {canDelete && (
           <button
             type="button"
             onClick={onDelete}
-            className="p-1 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+            className="action-btn text-red-400 hover:text-red-600 hover:bg-red-50"
           >
             <Trash2 className="w-4 h-4" />
           </button>
         )}
       </div>
 
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-2 gap-2.5">
         <div>
-          <label className="block text-xs font-medium text-slate-500 mb-1">Receiver name</label>
+          <label className="label">Receiver name</label>
           <input
             value={row.receiverName}
             onChange={(e) => onChange({ ...row, receiverName: e.target.value })}
             placeholder="Full name"
-            className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200"
+            className="input-field"
           />
         </div>
         <div>
-          <label className="block text-xs font-medium text-slate-500 mb-1">Receiver phone</label>
+          <label className="label">Receiver phone</label>
           <PhoneInput
             value={row.receiverPhone}
             onChange={handleReceiverPhoneChange}
@@ -83,14 +83,14 @@ function DeliveryRow({ row, idx, totalPickup, otherAssigned, onChange, onDelete,
       </div>
 
       <div>
-        <label className="block text-xs font-medium text-slate-500 mb-1">Delivery address</label>
+        <label className="label">Delivery address</label>
         <button
           type="button"
           onClick={() => setPickerOpen(true)}
-          className={`w-full flex items-center gap-2 px-3 py-2.5 border-2 border-dashed rounded-lg text-sm transition-colors ${
+          className={`w-full flex items-center gap-2 px-3.5 py-2.5 border-2 border-dashed rounded-xl text-sm transition-all duration-200 ${
             row.address?.lat
               ? 'border-green-300 bg-green-50 text-green-700 hover:border-green-400'
-              : 'border-slate-300 text-slate-500 hover:border-indigo-400 hover:bg-indigo-50'
+              : 'border-slate-300 text-slate-500 hover:border-indigo-400 hover:bg-indigo-50/50'
           }`}
         >
           <MapPin className="w-4 h-4 shrink-0" />
@@ -106,24 +106,24 @@ function DeliveryRow({ row, idx, totalPickup, otherAssigned, onChange, onDelete,
         {row.address?.lat != null && (
           <div className="flex items-center gap-2 mt-1.5 flex-wrap">
             <span className="text-xs font-medium text-slate-500">Coords:</span>
-            <code className="text-xs font-mono bg-slate-100 px-2 py-1 rounded">
+            <code className="text-xs font-mono bg-slate-100 px-2.5 py-1 rounded-lg">
               {typeof row.address.lat === 'number' ? row.address.lat.toFixed(6) : row.address.lat},{' '}
               {typeof row.address.lng === 'number' ? row.address.lng.toFixed(6) : row.address.lng}
             </code>
             <button
               type="button"
               onClick={() => navigator.clipboard?.writeText(`${row.address.lat}, ${row.address.lng}`)}
-              className="p-1 hover:bg-slate-200 rounded"
+              className="action-btn hover:bg-slate-100 text-slate-500"
               title="Copy coordinates"
             >
-              <Copy className="w-3.5 h-3.5 text-slate-500" />
+              <Copy className="w-3.5 h-3.5" />
             </button>
           </div>
         )}
       </div>
 
       <div>
-        <label className="block text-xs font-medium text-slate-500 mb-1">
+        <label className="label">
           Boxes for this address
           <span className="text-slate-400 font-normal ml-1">(max {maxForRow})</span>
         </label>
@@ -141,17 +141,17 @@ function DeliveryRow({ row, idx, totalPickup, otherAssigned, onChange, onDelete,
             const boxContents = ensureBoxContents(val);
             onChange({ ...row, boxCount: val, boxWeights, boxTrackingIds, boxContents });
           }}
-          className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200"
+          className="input-field"
         />
       </div>
       {(row.boxCount ?? 0) > 0 && (
         <div className="space-y-3">
           <div>
-            <label className="block text-xs font-medium text-slate-500 mb-1.5">Weight & Tracking ID per box</label>
+            <label className="label">Weight & Tracking ID per box</label>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {Array.from({ length: row.boxCount }, (_, i) => (
-                <div key={i} className="p-3 rounded-lg border border-slate-200 bg-slate-50/50 space-y-2">
-                  <label className="block text-[10px] text-slate-500 font-medium">Box {i + 1}</label>
+                <div key={i} className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/50 space-y-2">
+                  <label className="block text-[10px] text-slate-500 font-semibold uppercase tracking-wide">Box {i + 1}</label>
                   <div className="grid grid-cols-2 gap-2">
                     <div>
                       <input
@@ -163,7 +163,7 @@ function DeliveryRow({ row, idx, totalPickup, otherAssigned, onChange, onDelete,
                           onChange({ ...row, boxWeights: next });
                         }}
                         placeholder="kg"
-                        className="w-full px-2 py-1.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                        className="input-field !py-1.5"
                       />
                       <span className="text-[10px] text-slate-400">Weight</span>
                     </div>
@@ -177,14 +177,14 @@ function DeliveryRow({ row, idx, totalPickup, otherAssigned, onChange, onDelete,
                           onChange({ ...row, boxTrackingIds: next });
                         }}
                         placeholder="Tracking ID"
-                        className="w-full px-2 py-1.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                        className="input-field !py-1.5"
                       />
                       <span className="text-[10px] text-slate-400">Tracking ID</span>
                     </div>
                   </div>
                   {/* Parcel content per box */}
                   <div className="mt-2 pt-2 border-t border-slate-200">
-                    <span className="text-[10px] text-slate-500 font-medium block mb-1.5">Parcel content</span>
+                    <span className="block text-[10px] text-slate-500 font-semibold uppercase tracking-wide mb-1.5">Parcel content</span>
                     {((row.boxContents ?? [])[i] ?? []).map((item, j) => (
                       <div key={j} className="flex flex-wrap gap-2 mb-1.5">
                         <select
@@ -197,7 +197,7 @@ function DeliveryRow({ row, idx, totalPickup, otherAssigned, onChange, onDelete,
                             );
                             onChange({ ...row, boxContents: contents });
                           }}
-                          className="flex-1 min-w-[100px] px-2 py-1.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                          className="select-field flex-1 min-w-[100px] !py-1.5"
                         >
                           <option value="">Select type</option>
                           {(parcelContentTypes ?? []).map((t) => (
@@ -217,7 +217,7 @@ function DeliveryRow({ row, idx, totalPickup, otherAssigned, onChange, onDelete,
                             onChange({ ...row, boxContents: contents });
                           }}
                           placeholder="qty"
-                          className="w-14 px-2 py-1.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                          className="input-field w-14 !py-1.5"
                         />
                         <input
                           type="number"
@@ -233,7 +233,7 @@ function DeliveryRow({ row, idx, totalPickup, otherAssigned, onChange, onDelete,
                             onChange({ ...row, boxContents: contents });
                           }}
                           placeholder="₪"
-                          className="w-16 px-2 py-1.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                          className="input-field w-16 !py-1.5"
                         />
                         <button
                           type="button"
@@ -243,7 +243,7 @@ function DeliveryRow({ row, idx, totalPickup, otherAssigned, onChange, onDelete,
                             contents[i] = contents[i].filter((_, k) => k !== j);
                             onChange({ ...row, boxContents: contents });
                           }}
-                          className="p-1 text-red-400 hover:text-red-600 hover:bg-red-50 rounded"
+                          className="action-btn text-red-400 hover:text-red-600 hover:bg-red-50"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
@@ -257,7 +257,7 @@ function DeliveryRow({ row, idx, totalPickup, otherAssigned, onChange, onDelete,
                         contents[i] = [...contents[i], { description: '', qty: 1, price: 0 }];
                         onChange({ ...row, boxContents: contents });
                       }}
-                      className="text-xs text-indigo-600 hover:underline flex items-center gap-1"
+                      className="text-xs text-indigo-600 hover:underline flex items-center gap-1 font-medium"
                     >
                       <Plus className="w-3 h-3" /> Add item
                     </button>
@@ -462,26 +462,26 @@ export default function CompleteDeliveryModal({ isOpen, mission, onClose, onSave
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 p-0 sm:p-4">
-      <div className="bg-white rounded-t-2xl sm:rounded-2xl w-full max-w-4xl shadow-2xl flex flex-col max-h-[92vh]">
+    <div className="modal-overlay z-50 items-end sm:items-center p-0 sm:p-4">
+      <div className="modal-content max-w-4xl max-h-[92vh] rounded-t-2xl sm:rounded-2xl">
 
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b flex-shrink-0">
+        <div className="modal-header flex-shrink-0">
           <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
             <Truck className="w-5 h-5 text-indigo-600" />
             Complete Delivery Details
           </h2>
-          <button onClick={onClose} className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-500">
+          <button onClick={onClose} className="action-btn hover:bg-slate-100 text-slate-400 hover:text-slate-600">
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Body */}
-        <div className="flex-1 overflow-y-auto px-5 py-5 space-y-5">
+        <div className="modal-body space-y-5">
 
           {/* Container assignment */}
-          <div className="p-4 rounded-xl border-2 border-dashed border-slate-200 bg-slate-50/30 space-y-2">
-            <label className="block text-sm font-medium text-slate-700 flex items-center gap-2">
+          <div className="card p-4 border-2 border-dashed border-slate-200 bg-slate-50/20 space-y-2">
+            <label className="label flex items-center gap-2">
               <Box className="w-4 h-4" />
               Assign to container
             </label>
@@ -489,7 +489,7 @@ export default function CompleteDeliveryModal({ isOpen, mission, onClose, onSave
             <select
               value={containerId || ''}
               onChange={(e) => setContainerId(e.target.value || null)}
-              className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200"
+              className="select-field"
             >
               <option value="">No container</option>
               {containers.map((c) => (
@@ -501,13 +501,13 @@ export default function CompleteDeliveryModal({ isOpen, mission, onClose, onSave
           </div>
 
           {/* Link to empty box */}
-          <div className="p-4 rounded-xl border-2 border-dashed border-indigo-200 bg-indigo-50/30 space-y-2">
-            <label className="block text-sm font-medium text-slate-700">Link to Empty Box Mission</label>
+          <div className="card p-4 border-2 border-dashed border-indigo-200 bg-indigo-50/20 space-y-2">
+            <label className="label">Link to Empty Box Mission</label>
             <p className="text-xs text-slate-500">Associate this pickup with the empty box delivery</p>
             <button
               type="button"
               onClick={() => setEmptyBoxMissionPickerOpen(true)}
-              className={`w-full flex items-center gap-3 p-3 rounded-xl border-2 transition-all text-left ${
+              className={`w-full flex items-center gap-3 p-3.5 rounded-xl border-2 transition-all duration-200 text-left ${
                 linkedEmptyBoxMission || linkedEmptyBoxMissionId
                   ? 'border-indigo-400 bg-indigo-100'
                   : 'border-slate-200 bg-white hover:border-indigo-300 hover:bg-indigo-50/50'
@@ -529,7 +529,7 @@ export default function CompleteDeliveryModal({ isOpen, mission, onClose, onSave
                 <button
                   type="button"
                   onClick={(e) => { e.stopPropagation(); setLinkedEmptyBoxMissionId(null); setLinkedEmptyBoxMission(null); }}
-                  className="text-xs text-red-500 hover:underline"
+                  className="text-xs text-red-500 hover:underline font-medium"
                 >
                   Remove
                 </button>
@@ -541,7 +541,7 @@ export default function CompleteDeliveryModal({ isOpen, mission, onClose, onSave
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                <label className="label">
                   Boxes to collect from customer
                 </label>
                 <input
@@ -549,20 +549,20 @@ export default function CompleteDeliveryModal({ isOpen, mission, onClose, onSave
                   min="1"
                   value={pickupBoxCount}
                   onChange={(e) => handlePickupBoxCountChange(parseInt(e.target.value) || 1)}
-                  className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                  className="input-field"
                 />
               </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1.5">
+              <label className="label">
                 Bring empty boxes to customer?
               </label>
               <div className="flex gap-2">
                 <button
                   type="button"
                   onClick={() => setBringBoxes(true)}
-                  className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-semibold border-2 transition-all ${
+                  className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-semibold border-2 transition-all duration-200 ${
                     bringBoxes
-                      ? 'bg-indigo-600 border-indigo-600 text-white'
+                      ? 'bg-indigo-600 border-indigo-600 text-white shadow-md shadow-indigo-200'
                       : 'border-slate-200 text-slate-500 hover:border-indigo-300'
                   }`}
                 >
@@ -571,9 +571,9 @@ export default function CompleteDeliveryModal({ isOpen, mission, onClose, onSave
                 <button
                   type="button"
                   onClick={() => setBringBoxes(false)}
-                  className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-semibold border-2 transition-all ${
+                  className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-semibold border-2 transition-all duration-200 ${
                     !bringBoxes
-                      ? 'bg-slate-600 border-slate-600 text-white'
+                      ? 'bg-slate-600 border-slate-600 text-white shadow-md shadow-slate-200'
                       : 'border-slate-200 text-slate-500 hover:border-slate-400'
                   }`}
                 >
@@ -586,27 +586,27 @@ export default function CompleteDeliveryModal({ isOpen, mission, onClose, onSave
 
           {/* Box types — only when bringing boxes */}
           {bringBoxes && (
-            <div className="p-4 rounded-xl bg-blue-50 border border-blue-200 space-y-3">
+            <div className="card p-4 bg-blue-50/50 border-blue-200 space-y-3">
               <h4 className="font-semibold text-blue-800 text-sm">Box types to bring</h4>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-medium text-slate-500 mb-1">ISA-BOX-70 (Large)</label>
+                  <label className="label">ISA-BOX-70 (Large)</label>
                   <input
                     type="number" min="0"
                     value={boxSelection.large ?? ''}
                     onChange={(e) => setBoxSelection((p) => ({ ...p, large: parseInt(e.target.value) || 0 }))}
                     placeholder="0"
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+                    className="input-field"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-slate-500 mb-1">ISA-BOX-35 (Small)</label>
+                  <label className="label">ISA-BOX-35 (Small)</label>
                   <input
                     type="number" min="0"
                     value={boxSelection.small ?? ''}
                     onChange={(e) => setBoxSelection((p) => ({ ...p, small: parseInt(e.target.value) || 0 }))}
                     placeholder="0"
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+                    className="input-field"
                   />
                 </div>
               </div>
@@ -621,7 +621,7 @@ export default function CompleteDeliveryModal({ isOpen, mission, onClose, onSave
           )}
 
           {/* Box assignment counter */}
-          <div className={`flex items-center justify-between px-4 py-2.5 rounded-xl text-sm font-medium border ${
+          <div className={`flex items-center justify-between px-4 py-3 rounded-xl text-sm font-medium border ${
             overLimit
               ? 'bg-red-50 text-red-700 border-red-200'
               : allSet
@@ -659,7 +659,7 @@ export default function CompleteDeliveryModal({ isOpen, mission, onClose, onSave
             <button
               type="button"
               onClick={addRow}
-              className="w-full flex items-center justify-center gap-2 py-3 border-2 border-dashed border-indigo-300 text-indigo-600 rounded-xl hover:bg-indigo-50 transition-colors text-sm font-medium"
+              className="w-full flex items-center justify-center gap-2 py-3 border-2 border-dashed border-indigo-300 text-indigo-600 rounded-xl hover:bg-indigo-50/50 transition-all duration-200 text-sm font-medium"
             >
               <Plus className="w-4 h-4" />
               Add delivery address
@@ -680,11 +680,11 @@ export default function CompleteDeliveryModal({ isOpen, mission, onClose, onSave
         />
 
         {/* Footer */}
-        <div className="flex gap-3 px-5 py-4 border-t flex-shrink-0 bg-white">
+        <div className="modal-footer flex-shrink-0">
           <button
             type="button"
             onClick={onClose}
-            className="px-5 py-2.5 border border-slate-200 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors"
+            className="btn-secondary"
           >
             Cancel
           </button>
@@ -692,7 +692,7 @@ export default function CompleteDeliveryModal({ isOpen, mission, onClose, onSave
             type="button"
             onClick={handleSave}
             disabled={saving || overLimit}
-            className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-xl text-sm font-semibold transition-colors"
+            className="btn-success flex-1"
           >
             <CheckCircle className="w-4 h-4" />
             {saving ? 'Saving…' : 'Save delivery details'}

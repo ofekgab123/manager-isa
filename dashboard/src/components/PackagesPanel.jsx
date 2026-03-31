@@ -93,7 +93,6 @@ export default function PackagesPanel() {
         prev.map((m) => (m.id === missionId ? updated : m))
       );
     } catch {
-      // silent fail - could add toast
     } finally {
       setUpdatingId(null);
     }
@@ -117,8 +116,6 @@ export default function PackagesPanel() {
     }
   };
 
-  // Flatten missions into one row per delivery - each package is independent with its own ID
-  // PKG-{missionId}-{0/1/2} when from mission, PKG-{Date.now()} when standalone
   const rows = missions.flatMap((m) => {
     const deliveries = m.deliveries?.length > 0
       ? m.deliveries
@@ -184,7 +181,6 @@ export default function PackagesPanel() {
       );
       setSelectedIds(new Set());
     } catch {
-      // silent
     } finally {
       setBulkUpdating(false);
     }
@@ -200,48 +196,48 @@ export default function PackagesPanel() {
   }, [selectedIds.size, filteredPackageIds.size]);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 animate-fade-in">
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-        <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-100">
-          <div className="text-2xl font-bold text-slate-800">{rows.length}</div>
-          <div className="text-sm text-slate-500">Total deliveries (pickup only)</div>
+        <div className="stat-card border-l-4 border-indigo-500">
+          <div className="text-3xl font-extrabold text-slate-800">{rows.length}</div>
+          <div className="text-sm text-slate-500 mt-1">Total deliveries (pickup only)</div>
         </div>
-        <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-100">
-          <div className="text-2xl font-bold text-indigo-600">{containers.length}</div>
-          <div className="text-sm text-slate-500">Containers</div>
+        <div className="stat-card border-l-4 border-violet-500">
+          <div className="text-3xl font-extrabold text-violet-600">{containers.length}</div>
+          <div className="text-sm text-slate-500 mt-1">Containers</div>
         </div>
-        <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-100">
-          <div className="text-2xl font-bold text-amber-600">
+        <div className="stat-card border-l-4 border-amber-500">
+          <div className="text-3xl font-extrabold text-amber-600">
             {missions.filter((m) => !m.containerId).length}
           </div>
-          <div className="text-sm text-slate-500">No container</div>
+          <div className="text-sm text-slate-500 mt-1">No container</div>
         </div>
       </div>
 
-      <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
-        <div className="flex items-center justify-between p-4 border-b">
-          <h2 className="text-lg font-semibold text-slate-800 flex items-center gap-2">
-            <Package className="w-5 h-5" />
+      <div className="card">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+          <h2 className="section-title">
+            <Package className="w-5 h-5 text-indigo-500" />
             Packages ({rows.length})
           </h2>
           <button
             type="button"
             onClick={() => setCreatePackageOpen(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors"
+            className="btn-primary"
           >
             <Plus className="w-4 h-4" />
             Create Package
           </button>
         </div>
-        <div className="px-4 py-3 border-b flex flex-wrap gap-3">
+        <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/30 flex flex-wrap gap-3">
           <div className="relative flex-1 min-w-[200px]">
-            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search by name, phone or ID..."
-              className="w-full pl-9 pr-4 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200"
+              className="input-field pl-10"
             />
             {search && (
               <button
@@ -256,7 +252,7 @@ export default function PackagesPanel() {
             <select
               value={filterContainer}
               onChange={(e) => setFilterContainer(e.target.value)}
-              className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200"
+              className="select-field"
             >
               <option value="">All containers</option>
               <option value="none">No container</option>
@@ -270,8 +266,8 @@ export default function PackagesPanel() {
         </div>
 
         {selectedIds.size > 0 && (
-          <div className="px-4 py-3 bg-indigo-50 border-b border-indigo-100 flex items-center justify-between gap-4 flex-wrap">
-            <span className="font-medium text-indigo-800">
+          <div className="px-6 py-3 bg-indigo-50 border-b border-indigo-100 flex items-center justify-between gap-4 flex-wrap">
+            <span className="font-semibold text-indigo-800">
               {selectedIds.size} package{selectedIds.size !== 1 ? 's' : ''} selected
             </span>
             <div className="flex items-center gap-2">
@@ -284,7 +280,7 @@ export default function PackagesPanel() {
                   handleBulkContainerAssign(val === '__none__' ? null : val);
                 }}
                 disabled={bulkUpdating}
-                className="px-3 py-2 border border-indigo-200 rounded-lg text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-300 min-w-[160px]"
+                className="select-field min-w-[160px]"
               >
                 <option value="">Select container...</option>
                 <option value="__none__">No container</option>
@@ -296,7 +292,7 @@ export default function PackagesPanel() {
               </select>
               <button
                 onClick={() => setSelectedIds(new Set())}
-                className="px-3 py-2 text-sm font-medium text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-lg"
+                className="btn-secondary !py-1.5"
               >
                 Cancel
               </button>
@@ -305,20 +301,22 @@ export default function PackagesPanel() {
         )}
 
         {loading ? (
-          <div className="p-8 text-center text-slate-500">Loading...</div>
+          <div className="p-12 text-center text-slate-500">Loading...</div>
         ) : error ? (
-          <div className="p-8 text-center text-red-600">{error}</div>
+          <div className="p-12 text-center text-red-600">{error}</div>
         ) : filtered.length === 0 ? (
-          <div className="p-8 text-center text-slate-400">
-            <Package className="w-10 h-10 mx-auto mb-2 opacity-30" />
-            <p>No packages to display</p>
+          <div className="flex flex-col items-center justify-center py-16 animate-fade-in">
+            <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mb-4">
+              <Package className="w-8 h-8 text-slate-300" />
+            </div>
+            <p className="text-base font-medium text-slate-500">No packages to display</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-center">
               <thead>
-                <tr className="bg-slate-50 border-b border-slate-100 text-xs font-semibold text-slate-500 uppercase">
-                  <th className="px-4 py-3 w-10">
+                <tr className="table-header">
+                  <th className="w-10">
                     <input
                       type="checkbox"
                       checked={filteredPackageIds.size > 0 && selectedIds.size === filteredPackageIds.size}
@@ -329,59 +327,57 @@ export default function PackagesPanel() {
                       className="w-4 h-4 accent-indigo-600 cursor-pointer"
                     />
                   </th>
-                  <th className="px-4 py-3">Package ID</th>
-                  <th className="px-4 py-3">Tracking</th>
-                  <th className="px-4 py-3">Delivery</th>
-                  <th className="px-4 py-3">Status</th>
-                  <th className="px-4 py-3">Sender</th>
-                  <th className="px-4 py-3">Receiver</th>
-                  <th className="px-4 py-3">Delivery Address</th>
-                  <th className="px-4 py-3">Container</th>
-                  <th className="px-4 py-3 w-12">Summary</th>
+                  <th>Package ID</th>
+                  <th>Tracking</th>
+                  <th>Delivery</th>
+                  <th>Status</th>
+                  <th>Sender</th>
+                  <th>Receiver</th>
+                  <th>Delivery Address</th>
+                  <th>Container</th>
+                  <th className="w-12">Summary</th>
                 </tr>
               </thead>
               <tbody>
                 {filtered.map(({ mission, delivery, deliveryIdx, packageId }) => (
                   <tr
                     key={packageId}
-                    className={`border-b border-slate-100 hover:bg-slate-50/50 ${
-                      selectedIds.has(packageId) ? 'bg-indigo-50/50' : ''
+                    className={`table-row ${
+                      selectedIds.has(packageId) ? 'row-selected' : ''
                     }`}
                   >
-                    <td className="px-4 py-3">
+                    <td>
                       <input
                         type="checkbox"
                         checked={selectedIds.has(packageId)}
                         onChange={() => toggleSelect(packageId)}
-                        className="w-4 h-4 accent-indigo-600 cursor-pointer"
+                        className="w-4 h-4 accent-indigo-600 cursor-pointer rounded"
                       />
                     </td>
-                    <td className="px-4 py-3 font-mono font-bold text-blue-600 text-sm">
-                      {packageId}
-                    </td>
-                    <td className="px-4 py-3 max-w-[10rem]">
+                    <td><span className="table-id">{packageId}</span></td>
+                    <td className="max-w-[10rem]">
                       <p className="text-sm font-mono text-slate-600 truncate" title={(delivery.boxTrackingIds ?? []).filter(Boolean).join(', ')}>
                         {(delivery.boxTrackingIds ?? []).filter(Boolean).length > 0
                           ? (delivery.boxTrackingIds ?? []).filter(Boolean).join(', ')
                           : '—'}
                       </p>
                     </td>
-                    <td className="px-4 py-3">
-                      <span className="inline-flex items-center gap-1 text-sm font-medium px-2.5 py-1 rounded-full whitespace-nowrap bg-orange-100 text-orange-700">
+                    <td>
+                      <span className="badge-pill bg-orange-100 text-orange-700">
                         <Truck className="w-3.5 h-3.5 shrink-0" />
                         Pickup
                       </span>
                     </td>
-                    <td className="px-4 py-3">
+                    <td>
                       <span
-                        className={`text-sm font-medium px-2.5 py-1 rounded-full whitespace-nowrap ${
+                        className={`badge-pill ${
                           STATUS_COLORS[mission.status] || 'bg-slate-100 text-slate-600'
                         }`}
                       >
                         {STATUS_LABELS[mission.status] || mission.status}
                       </span>
                     </td>
-                    <td className="px-4 py-3 max-w-[10rem]">
+                    <td className="max-w-[10rem]">
                       <p className="text-sm font-medium text-slate-700 truncate">
                         {mission.fullName || '—'}
                       </p>
@@ -389,7 +385,7 @@ export default function PackagesPanel() {
                         {mission.customerPhone || ''}
                       </p>
                     </td>
-                    <td className="px-4 py-3 max-w-[10rem]">
+                    <td className="max-w-[10rem]">
                       <p className="text-sm font-medium text-slate-700 truncate">
                         {delivery.receiverName || '—'}
                       </p>
@@ -397,7 +393,7 @@ export default function PackagesPanel() {
                         {delivery.receiverPhone || ''}
                       </p>
                     </td>
-                    <td className="px-4 py-3 max-w-[12rem]">
+                    <td className="max-w-[12rem]">
                       {delivery.address?.lat ? (
                         <span className="inline-flex items-center gap-1 text-sm text-slate-600 truncate">
                           <MapPin className="w-3.5 h-3.5 text-green-500 shrink-0" />
@@ -407,14 +403,14 @@ export default function PackagesPanel() {
                         <span className="text-slate-300 text-sm">—</span>
                       )}
                     </td>
-                    <td className="px-4 py-3">
+                    <td>
                       <select
                         value={mission.containerId || ''}
                         onChange={(e) =>
                           handleContainerChange(mission.id, e.target.value || null)
                         }
                         disabled={updatingId === mission.id}
-                        className="text-sm px-2 py-1.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-200 min-w-[140px]"
+                        className="select-field !py-1.5 min-w-[140px]"
                       >
                         <option value="">No container</option>
                         {containers.map((c) => (
@@ -424,11 +420,11 @@ export default function PackagesPanel() {
                         ))}
                       </select>
                     </td>
-                    <td className="px-4 py-3">
+                    <td>
                       <button
                         type="button"
                         onClick={() => setPreviewPackage({ mission, delivery, packageId })}
-                        className="p-2 hover:bg-indigo-50 rounded-lg text-slate-500 hover:text-indigo-600 transition-colors"
+                        className="action-btn hover:bg-indigo-50 text-slate-400 hover:text-indigo-600"
                         title="View package summary"
                       >
                         <Info className="w-4 h-4" />

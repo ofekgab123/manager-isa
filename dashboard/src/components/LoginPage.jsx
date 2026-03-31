@@ -36,72 +36,108 @@ export default function LoginPage({ onLogin }) {
   };
 
   return (
-    <div className="min-h-screen bg-slate-800 flex items-center justify-center p-4">
-      <div className="w-full max-w-sm">
-        <div className="flex flex-col items-center mb-8 gap-3">
-          <img src="/isa-logo.png" alt="ISA Express" className="h-14 w-auto object-contain brightness-0 invert" />
-          <div className="text-center">
-            <h1 className="text-2xl font-bold text-white">Manager ISA</h1>
-            <p className="text-slate-400 text-sm mt-1">Sign in to continue</p>
+    <div className="gradient-header relative flex min-h-screen items-center justify-center overflow-hidden p-6 sm:p-10">
+      <div
+        className="pointer-events-none absolute inset-0 opacity-[0.4]"
+        aria-hidden="true"
+        style={{
+          backgroundImage: 'radial-gradient(rgba(255, 255, 255, 0.09) 1px, transparent 1px)',
+          backgroundSize: '28px 28px',
+        }}
+      />
+      <div
+        className="pointer-events-none absolute -right-24 -top-24 h-[28rem] w-[28rem] rounded-full bg-indigo-400/25 blur-[100px]"
+        aria-hidden="true"
+      />
+      <div
+        className="pointer-events-none absolute -bottom-32 -left-20 h-[22rem] w-[22rem] rounded-full bg-violet-500/20 blur-[90px]"
+        aria-hidden="true"
+      />
+      <div
+        className="pointer-events-none absolute left-1/2 top-1/2 h-[min(90vw,36rem)] w-[min(90vw,36rem)] -translate-x-1/2 -translate-y-1/2 rounded-full bg-amber-400/[0.07] blur-[110px]"
+        aria-hidden="true"
+      />
+
+      <div className="relative z-10 w-full max-w-md animate-fade-in">
+        <header className="mb-10 text-center sm:mb-12">
+          <div className="mx-auto mb-6 flex justify-center">
+            <div className="relative">
+              <div
+                className="absolute inset-0 -m-3 rounded-3xl bg-gradient-to-br from-white/15 to-indigo-400/10 blur-md"
+                aria-hidden="true"
+              />
+              <div className="relative rounded-2xl bg-white/10 p-4 shadow-lg ring-1 ring-white/20 backdrop-blur-sm">
+                <img
+                  src="/isa-logo.png"
+                  alt="ISA Express"
+                  className="h-12 w-auto object-contain brightness-0 invert sm:h-14"
+                />
+              </div>
+            </div>
           </div>
-        </div>
+          <h1 className="text-3xl font-bold tracking-tight text-white sm:text-[2rem]">
+            Manager ISA
+          </h1>
+          <p className="mt-3 text-base font-medium text-indigo-200/90">Sign in to continue</p>
+        </header>
 
         <form
           onSubmit={handleSubmit}
-          className="bg-white rounded-2xl shadow-2xl px-6 py-8 space-y-4"
+          className="glass-card animate-slide-up space-y-6 rounded-3xl px-8 py-10 shadow-[0_25px_50px_-12px_rgba(0,0,0,0.45),0_0_0_1px_rgba(255,255,255,0.08)] sm:px-10 sm:py-11"
         >
-          <div>
-            <label className="block text-xs font-semibold text-slate-500 mb-1.5 uppercase tracking-wide">
+          <div className="space-y-2">
+            <label htmlFor="login-username" className="label text-slate-600">
               Username
             </label>
             <input
+              id="login-username"
               type="text"
               autoComplete="username"
               value={form.username}
               onChange={(e) => setForm((p) => ({ ...p, username: e.target.value }))}
               placeholder="Enter username"
-              className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400"
+              className="input-field"
               disabled={loading}
             />
           </div>
 
-          <div>
-            <label className="block text-xs font-semibold text-slate-500 mb-1.5 uppercase tracking-wide">
+          <div className="space-y-2">
+            <label htmlFor="login-password" className="label text-slate-600">
               Password
             </label>
             <div className="relative">
               <input
+                id="login-password"
                 type={showPassword ? 'text' : 'password'}
                 autoComplete="current-password"
                 value={form.password}
                 onChange={(e) => setForm((p) => ({ ...p, password: e.target.value }))}
                 placeholder="Enter password"
-                className="w-full px-3 py-2.5 pr-10 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400"
+                className="input-field pr-11"
                 disabled={loading}
               />
               <button
                 type="button"
                 onClick={() => setShowPassword((v) => !v)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                className="absolute right-3 top-1/2 -translate-y-1/2 rounded-lg p-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
                 tabIndex={-1}
               >
-                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
               </button>
             </div>
           </div>
 
           {error && (
-            <p className="text-red-600 text-sm bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+            <div
+              className="rounded-xl border border-red-300 bg-red-50 px-4 py-3 text-sm font-semibold text-red-800 shadow-sm ring-2 ring-red-200/60"
+              role="alert"
+            >
               {error}
-            </p>
+            </div>
           )}
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full flex items-center justify-center gap-2 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white rounded-lg font-semibold text-sm transition-colors mt-2"
-          >
-            <LogIn className="w-4 h-4" />
+          <button type="submit" disabled={loading} className="btn-primary mt-2 w-full py-3">
+            <LogIn className="h-4 w-4 shrink-0" />
             {loading ? 'Signing in…' : 'Sign in'}
           </button>
         </form>
