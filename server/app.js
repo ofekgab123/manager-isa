@@ -230,6 +230,51 @@ app.post('/api/promo/validate', async (req, res) => {
   }
 });
 
+function phoneTailDigits(phone) {
+  const d = String(phone || '').replace(/\D/g, '');
+  if (d.length < 7) return null;
+  return d.slice(-9);
+}
+
+// ─── Public: affiliate for returning customer (by phone) — no manual promo code ─
+
+app.post('/api/affiliates/auto-for-phone', async (req, res) => {
+  try {
+    const tail = phoneTailDigits(req.body?.phone);
+    if (!tail) return res.json({ match: false });
+
+    const [affiliates, missions] = await Promise.all([readAffiliates(), readMissions()]);
+
+    const payload = (aff) => ({
+      match: true,
+      affiliateName: aff.name,
+      discountAmount: aff.discountAmount,
+      promoCode: aff.promoCode,
+      slug: aff.slug,
+    });
+
+    for (const m of missions) {
+      if (phoneTailDigits(m.customerPhone) !== tail) continue;
+      if (!m.affiliateName) continue;
+      const aff = affiliates.find((a) => a.name === m.affiliateName && a.active !== false);
+      if (aff) return res.json(payload(aff));
+    }
+
+    for (const aff of affiliates) {
+      if (aff.active === false) continue;
+      for (const c of aff.importedCustomers || []) {
+        if (phoneTailDigits(c?.phone) === tail) {
+          return res.json(payload(aff));
+        }
+      }
+    }
+
+    return res.json({ match: false });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── Public: POST /api/missions (no auth - for customer-facing forms) ──────────
 
 app.post('/api/missions', async (req, res) => {
