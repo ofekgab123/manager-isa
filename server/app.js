@@ -3,11 +3,35 @@ import cors from 'cors';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import pool from './db.js';
-import { readOrders, writeOrders, readAffiliates, writeAffiliates, readMissions, writeMissions, readUsers, writeUsers, readReceivers, writeReceivers, readContainers, writeContainers, readParcelContentTypes, writeParcelContentTypes } from './storage.js';
+import { readOrders, writeOrders, readAffiliates, writeAffiliates, readMissions, writeMissions, readUsers, writeUsers, readReceivers, writeReceivers, readContainers, writeContainers, readParcelContentTypes, writeParcelContentTypes, containerCountryKey } from './storage.js';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'isa-manager-jwt-secret-key';
 
 const app = express();
+
+function resolveDefaultPickupContainerId(containersList, bodyCountry) {
+  const hasCountry =
+    bodyCountry !== undefined && bodyCountry !== null && String(bodyCountry).trim() !== '';
+  if (hasCountry) {
+    const key = String(bodyCountry).trim();
+    const def = containersList.find(
+      (c) => c.isDefault && containerCountryKey(c.country) === key,
+    );
+    return def ? def.id : null;
+  }
+  const legacy = containersList.find((c) => c.isDefault);
+  return legacy ? legacy.id : null;
+}
+
+/** Customer empty-box flow: eventual ship-to (India / Thailand) — same ids as isa-express-web */
+const VALID_SHIPPING_DESTINATIONS = new Set(['india', 'thailand']);
+
+function normalizeShippingDestination(missionType, raw) {
+  if (missionType !== 'empty_box') return null;
+  if (raw == null || raw === '') return null;
+  const s = String(raw).trim().toLowerCase();
+  return VALID_SHIPPING_DESTINATIONS.has(s) ? s : null;
+}
 
 // DB migration: add country column to auth_users if it doesn't exist
 pool.query(`ALTER TABLE auth_users ADD COLUMN IF NOT EXISTS country VARCHAR(50)`).catch(() => {});
@@ -169,6 +193,43 @@ app.get('/api/customers/by-phone', async (req, res) => {
   }
 });
 
+// ─── Public: affiliate by slug (customer landing links, no auth) ───────────────
+
+app.get('/api/affiliates/by-slug/:slug', async (req, res) => {
+  try {
+    const affiliates = await readAffiliates();
+    const affiliate = affiliates.find(
+      (a) => a.slug === req.params.slug && a.active !== false
+    );
+    if (!affiliate) return res.status(404).json({ error: 'Affiliate not found' });
+    res.json({ name: affiliate.name, discountAmount: affiliate.discountAmount, slug: affiliate.slug });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Public: promo code validation (order forms, no auth) ────────────────────
+
+app.post('/api/promo/validate', async (req, res) => {
+  try {
+    const { code } = req.body;
+    if (!code) return res.status(400).json({ valid: false, error: 'Code is required' });
+    const affiliates = await readAffiliates();
+    const affiliate = affiliates.find(
+      (a) => a.promoCode.toUpperCase() === code.toUpperCase().trim() && a.active !== false
+    );
+    if (!affiliate) return res.json({ valid: false });
+    res.json({
+      valid: true,
+      affiliateName: affiliate.name,
+      affiliateId: affiliate.id,
+      discountAmount: affiliate.discountAmount,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── Public: POST /api/missions (no auth - for customer-facing forms) ──────────
 
 app.post('/api/missions', async (req, res) => {
@@ -183,8 +244,7 @@ app.post('/api/missions', async (req, res) => {
         pickupContainerId = body.containerId || null;
       } else {
         const containersList = await readContainers();
-        const def = containersList.find((c) => c.isDefault);
-        pickupContainerId = def ? def.id : null;
+        pickupContainerId = resolveDefaultPickupContainerId(containersList, body.country);
       }
     }
     const newMission = {
@@ -213,6 +273,7 @@ app.post('/api/missions', async (req, res) => {
       discountAmount: body.discountAmount || null,
       linkedEmptyBoxMissionId: body.linkedEmptyBoxMissionId || null,
       containerId: missionType === 'pickup' ? pickupContainerId : null,
+      shippingDestination: normalizeShippingDestination(missionType, body.shippingDestination),
     };
     missions.unshift(newMission);
     await writeMissions(missions);
@@ -618,6 +679,13 @@ app.patch('/api/missions/:id', async (req, res) => {
       updates.containerId = null;
     }
     const merged = { ...missions[idx], ...updates };
+    if (merged.type === 'pickup') {
+      merged.shippingDestination = null;
+    } else if (merged.type === 'empty_box') {
+      merged.shippingDestination = Object.prototype.hasOwnProperty.call(updates, 'shippingDestination')
+        ? normalizeShippingDestination('empty_box', updates.shippingDestination)
+        : normalizeShippingDestination('empty_box', merged.shippingDestination);
+    }
     if (merged.type === 'pickup' && merged.linkedEmptyBoxMissionId) {
       const ebId = merged.linkedEmptyBoxMissionId;
       const emptyBox = missions.find((m) => m.id === ebId && m.type === 'empty_box');
@@ -717,8 +785,11 @@ app.post('/api/containers', async (req, res) => {
       createdAt: body.createdAt || new Date().toISOString(),
     };
     if (wantDefault) {
+      const ck = containerCountryKey(newContainer.country);
       for (let i = 0; i < containers.length; i++) {
-        containers[i] = { ...containers[i], isDefault: false };
+        if (containerCountryKey(containers[i].country) === ck) {
+          containers[i] = { ...containers[i], isDefault: false };
+        }
       }
     }
     containers.push(newContainer);
@@ -766,17 +837,31 @@ app.patch('/api/containers/:id', async (req, res) => {
     }
     if (body.isDefault !== undefined) {
       updated.isDefault = Boolean(body.isDefault);
-      if (updated.isDefault) {
-        for (let i = 0; i < containers.length; i++) {
-          containers[i] =
-            containers[i].id === req.params.id
-              ? updated
-              : { ...containers[i], isDefault: false };
+    }
+
+    if (body.country !== undefined && updated.isDefault) {
+      const countryKey = containerCountryKey(updated.country);
+      for (let i = 0; i < containers.length; i++) {
+        if (containers[i].id === req.params.id) continue;
+        if (containerCountryKey(containers[i].country) === countryKey && containers[i].isDefault) {
+          containers[i] = { ...containers[i], isDefault: false };
         }
-        await writeContainers(containers);
-        res.json(containers.find((c) => c.id === req.params.id));
-        return;
       }
+    }
+
+    if (body.isDefault !== undefined && updated.isDefault) {
+      const countryKey = containerCountryKey(updated.country);
+      for (let i = 0; i < containers.length; i++) {
+        containers[i] =
+          containers[i].id === req.params.id
+            ? { ...updated, isDefault: true }
+            : containerCountryKey(containers[i].country) === countryKey
+              ? { ...containers[i], isDefault: false }
+              : containers[i];
+      }
+      await writeContainers(containers);
+      res.json(containers.find((c) => c.id === req.params.id));
+      return;
     }
     containers[idx] = updated;
     await writeContainers(containers);
@@ -872,19 +957,6 @@ app.get('/api/affiliates', async (req, res) => {
   try {
     const affiliates = await readAffiliates();
     res.json(affiliates);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.get('/api/affiliates/by-slug/:slug', async (req, res) => {
-  try {
-    const affiliates = await readAffiliates();
-    const affiliate = affiliates.find(
-      (a) => a.slug === req.params.slug && a.active !== false
-    );
-    if (!affiliate) return res.status(404).json({ error: 'Affiliate not found' });
-    res.json({ name: affiliate.name, discountAmount: affiliate.discountAmount, slug: affiliate.slug });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -992,28 +1064,6 @@ app.post('/api/affiliates/:id/customers/import', async (req, res) => {
     affiliates[idx] = { ...affiliates[idx], importedCustomers: merged };
     await writeAffiliates(affiliates);
     res.json(affiliates[idx]);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ─── Promo code validation ──────────────────────────────────────────────────────
-
-app.post('/api/promo/validate', async (req, res) => {
-  try {
-    const { code } = req.body;
-    if (!code) return res.status(400).json({ valid: false, error: 'Code is required' });
-    const affiliates = await readAffiliates();
-    const affiliate = affiliates.find(
-      (a) => a.promoCode.toUpperCase() === code.toUpperCase().trim() && a.active !== false
-    );
-    if (!affiliate) return res.json({ valid: false });
-    res.json({
-      valid: true,
-      affiliateName: affiliate.name,
-      affiliateId: affiliate.id,
-      discountAmount: affiliate.discountAmount,
-    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

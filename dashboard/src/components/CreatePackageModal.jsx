@@ -90,7 +90,7 @@ function SummaryRow({ label, value }) {
   );
 }
 
-export default function CreatePackageModal({ isOpen, onClose, onCreated }) {
+export default function CreatePackageModal({ isOpen, onClose, onCreated, authCountry = null }) {
   const [step, setStep] = useState(1);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -278,6 +278,7 @@ export default function CreatePackageModal({ isOpen, onClose, onCreated }) {
           receiverName: form.receiverName.trim(),
           receiverPhone: form.receiverPhone.trim(),
           receiverAddress: deliveryAddr,
+          ...(authCountry ? { country: authCountry } : {}),
         }),
       });
       if (!res.ok) throw new Error('Save error');

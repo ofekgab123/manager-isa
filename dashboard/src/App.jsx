@@ -39,6 +39,7 @@ import ContainersPanel from './components/ContainersPanel';
 import ParcelContentTypesPanel from './components/ParcelContentTypesPanel';
 import LoginPage from './components/LoginPage';
 import { API_BASE } from './config';
+import { shippingDestinationLabel } from './shippingDestinations';
 
 const TYPE_LABELS = {
   pickup: 'Pickup',
@@ -257,7 +258,7 @@ function Dashboard({ authUser, onLogout }) {
   const [filterAffiliate, setFilterAffiliate] = useState('');
 
   const [visibleColumns, setVisibleColumns] = useState({
-    type: true, status: true, sender: true, pickupAddr: true,
+    type: true, status: true, sender: true, pickupAddr: true, shipTo: true,
     receiver: true, deliveryAddr: true, boxes: true, source: true, date: true, affiliate: true,
     senderPhone: true, receiverPhone: true, missingInfo: true, tracking: true,
   });
@@ -266,7 +267,7 @@ function Dashboard({ authUser, onLogout }) {
     setSectionVisible((p) => {
       const newVal = !p[key];
       if (key === 'sender') {
-        setVisibleColumns((vc) => ({ ...vc, sender: newVal, senderPhone: newVal, pickupAddr: newVal }));
+        setVisibleColumns((vc) => ({ ...vc, sender: newVal, senderPhone: newVal, pickupAddr: newVal, shipTo: newVal }));
       } else if (key === 'receiver') {
         setVisibleColumns((vc) => ({ ...vc, receiver: newVal, receiverPhone: newVal, deliveryAddr: newVal, missingInfo: newVal }));
       }
@@ -512,7 +513,7 @@ function Dashboard({ authUser, onLogout }) {
       </div>
 
       <main className="p-5 sm:p-7">
-        {activeTab === 'packages' && <PackagesPanel />}
+        {activeTab === 'packages' && <PackagesPanel authCountry={authUser.country} />}
         {activeTab === 'containers' && <ContainersPanel />}
         {activeTab === 'affiliates' && <AffiliatesPanel missions={missions} />}
         {activeTab === 'customers' && <CustomersPanel />}
@@ -616,6 +617,9 @@ function Dashboard({ authUser, onLogout }) {
                         <div>
                           <ColLabel label="Pickup address" colKey="pickupAddr" vis={visibleColumns} toggle={toggleColumn} />
                           <input type="text" value={filterPickupAddr} onChange={(e) => setFilterPickupAddr(e.target.value)} placeholder="Street / city..." className="input-field" />
+                        </div>
+                        <div className="flex items-start pt-5">
+                          <ColLabel label="Ship to" colKey="shipTo" vis={visibleColumns} toggle={toggleColumn} />
                         </div>
                       </div>
                     )}
@@ -745,6 +749,7 @@ function Dashboard({ authUser, onLogout }) {
                         {visibleColumns.tracking    && <th className="w-36">Tracking</th>}
                         {visibleColumns.sender      && <th className="w-48">Sender</th>}
                         {visibleColumns.pickupAddr  && <th className="w-64">Pickup Addr</th>}
+                        {visibleColumns.shipTo      && <th className="w-28">Ship to</th>}
                         {visibleColumns.receiver    && <th className="w-48">Receiver</th>}
                         {visibleColumns.deliveryAddr && <th className="w-64">Delivery Addr</th>}
                         {visibleColumns.boxes       && <th className="w-28">Boxes</th>}
@@ -817,6 +822,19 @@ function Dashboard({ authUser, onLogout }) {
                                     <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
                                     Missing
                                   </span>
+                                )}
+                              </td>
+                            )}
+                            {visibleColumns.shipTo && (
+                              <td className="w-28 max-w-[7rem]">
+                                {mission.type === 'empty_box' && mission.shippingDestination ? (
+                                  <span className="text-sm font-medium text-slate-700 whitespace-nowrap">
+                                    {shippingDestinationLabel(mission.shippingDestination)}
+                                  </span>
+                                ) : mission.type === 'empty_box' ? (
+                                  <span className="text-xs text-amber-600" title="Not set on order">—</span>
+                                ) : (
+                                  <span className="text-slate-300 text-sm">—</span>
                                 )}
                               </td>
                             )}
@@ -997,6 +1015,7 @@ function Dashboard({ authUser, onLogout }) {
         isOpen={showCreateMission}
         onClose={() => setShowCreateMission(false)}
         onCreated={() => { refetch(); refetchStats(); setShowCreateMission(false); }}
+        authCountry={authUser.country}
       />
 
       {(previewMission || previewMissionSecondary) && (

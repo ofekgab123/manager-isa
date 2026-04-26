@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
-import { MapPin, User, Save, Trash2, AlertTriangle, Copy, Video, Image, X, Tag, Link2, Info, Plus } from 'lucide-react';
+import { MapPin, User, Save, Trash2, AlertTriangle, Copy, Video, Image, X, Tag, Link2, Info, Plus, Globe } from 'lucide-react';
 import AddressPicker from './AddressPicker';
 import PhoneInput from './PhoneInput';
 import { API_BASE } from '../config';
 import { maxPickupLinksForEmptyBox } from '../pickerSlots';
 import EmptyBoxMissionPickerModal from './EmptyBoxMissionPickerModal';
 import PickupMissionPickerModal from './PickupMissionPickerModal';
+import { SHIPPING_DESTINATIONS } from '../shippingDestinations';
 
 const TYPE_OPTIONS = [
   { value: 'pickup',    label: 'Pickup Box' },
@@ -613,6 +614,25 @@ export default function MissionDetails({ mission, onSave, onClose, onDelete, onO
           </div>
         </div>
       </div>
+
+      {!isPickup && edit.type === 'empty_box' && (
+        <div className="card p-4 space-y-2">
+          <h4 className="font-semibold text-slate-800 flex items-center gap-2 text-sm">
+            <Globe className="w-4 h-4" /> Ship to (after packing)
+          </h4>
+          <p className="text-xs text-slate-500">Destination country for the customer&apos;s packed shipment</p>
+          <select
+            value={edit.shippingDestination || ''}
+            onChange={(e) => update('shippingDestination', e.target.value || null)}
+            className="select-field"
+          >
+            <option value="">— Not set —</option>
+            {SHIPPING_DESTINATIONS.map((d) => (
+              <option key={d.id} value={d.id}>{d.label}</option>
+            ))}
+          </select>
+        </div>
+      )}
 
       {/* Linked pickup missions — empty box only */}
       {!isPickup && edit.type === 'empty_box' && edit.id && (

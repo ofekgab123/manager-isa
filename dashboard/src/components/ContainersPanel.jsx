@@ -24,6 +24,16 @@ import { API_BASE } from '../config';
 
 const CAPACITY_ALERT_THRESHOLD = 70;
 
+function containerCountryKey(country) {
+  if (country == null || String(country).trim() === '') return '';
+  return String(country).trim();
+}
+
+function defaultContainerForCountry(containers, country) {
+  const key = containerCountryKey(country);
+  return containers.find((c) => c.isDefault && containerCountryKey(c.country) === key) ?? null;
+}
+
 const CONTAINER_STATUS_LABELS = {
   open: 'Open',
   closed: 'Closed',
@@ -817,9 +827,6 @@ function ContainerSummaryModal({ container, packages, onClose }) {
 
 function ContainerFormModal({ container, onSave, onClose, containers = [] }) {
   const isEdit = !!container;
-  const defaultContainer = containers.find((c) => c.isDefault) ?? null;
-  const thisIsDefault = Boolean(container?.id && defaultContainer?.id === container.id);
-  const hasOtherDefault = Boolean(defaultContainer && (!container || defaultContainer.id !== container.id));
   const formStorageKey = container?.id ? SUMMARY_STORAGE_KEY(container.id) : 'container-summary-draft';
 
   const loadShipperSaved = () => {
@@ -855,6 +862,10 @@ function ContainerFormModal({ container, onSave, onClose, containers = [] }) {
   const [expandedMediaIndex, setExpandedMediaIndex] = useState(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+
+  const defaultContainer = defaultContainerForCountry(containers, form.country);
+  const thisIsDefault = Boolean(container?.id && defaultContainer?.id === container.id);
+  const hasOtherDefault = Boolean(defaultContainer && (!container || defaultContainer.id !== container.id));
 
   const handleChange = (e) =>
     setForm((p) => ({ ...p, [e.target.name]: e.target.value }));
@@ -982,7 +993,17 @@ function ContainerFormModal({ container, onSave, onClose, containers = [] }) {
             <select
               name="country"
               value={form.country}
-              onChange={handleChange}
+              onChange={(e) => {
+                const next = e.target.value;
+                setForm((p) => {
+                  const keyChanged = containerCountryKey(p.country) !== containerCountryKey(next);
+                  return {
+                    ...p,
+                    country: next,
+                    ...(isEdit && keyChanged ? { isDefault: false } : {}),
+                  };
+                });
+              }}
               className="input-field"
             >
               <option value="">— None —</option>
@@ -1021,22 +1042,24 @@ function ContainerFormModal({ container, onSave, onClose, containers = [] }) {
           </div>
           <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-3 space-y-3">
             <div className="text-sm text-slate-800 text-left">
-              <span className="font-medium text-slate-700">Current system default: </span>
+              <span className="font-medium text-slate-700">Default for this country: </span>
               {defaultContainer ? (
                 <span className="text-indigo-700 font-medium">{formatContainerLabel(defaultContainer)}</span>
               ) : (
-                <span className="text-slate-500">None — no default container is set</span>
+                <span className="text-slate-500">
+                  None — no default for {form.country ? form.country : 'containers with no country'}
+                </span>
               )}
             </div>
             {thisIsDefault && (
               <p className="text-xs text-slate-600 leading-relaxed text-left border-t border-slate-200/80 pt-2">
-                To set a different default: uncheck &quot;Default container&quot; on this container, save, then open the
-                container you want and mark it as default.
+                To set a different default for this country: uncheck here, save, then mark another container with the same
+                country as default.
               </p>
             )}
             {hasOtherDefault && !thisIsDefault && defaultContainer && (
               <p className="text-xs text-slate-600 leading-relaxed text-left border-t border-slate-200/80 pt-2">
-                To set this as default, first remove the default from{' '}
+                To set this as the default for this country, first remove the default from{' '}
                 <span className="font-medium text-slate-800">{formatContainerLabel(defaultContainer)}</span>.
               </p>
             )}
@@ -1050,9 +1073,9 @@ function ContainerFormModal({ container, onSave, onClose, containers = [] }) {
                   className="mt-0.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
                 />
                 <span className="text-sm text-slate-700 text-left">
-                  <span className="font-medium text-slate-800">Default container</span>
+                  <span className="font-medium text-slate-800">Default container (this country)</span>
                   <span className="block text-slate-500 mt-0.5">
-                    Only one container can be default. New pickup missions without a <code className="text-xs bg-slate-100 px-1 rounded">containerId</code> in the API are assigned here automatically.
+                    One default per country. Pickup missions without a <code className="text-xs bg-slate-100 px-1 rounded">containerId</code> use the default for the same <code className="text-xs bg-slate-100 px-1 rounded">country</code> in the API request (legacy: if <code className="text-xs bg-slate-100 px-1 rounded">country</code> is omitted, the first default in the list is used).
                   </span>
                 </span>
               </label>
@@ -1339,7 +1362,7 @@ export default function ContainersPanel() {
   };
 
   const containersOver70 = containersWithStats.filter((c) => c.isAtCapacityAlert);
-  const defaultContainerInList = containers.find((c) => c.isDefault) ?? null;
+  const defaultContainersInList = containers.filter((c) => c.isDefault);
 
   const exportAllContainers = () => {
     const escapeCsv = (val) => {
@@ -1537,12 +1560,16 @@ export default function ContainersPanel() {
 
       <div className="flex flex-wrap items-center gap-2 sm:gap-3 rounded-xl border border-amber-200/90 bg-amber-50/90 px-4 py-3 text-sm text-slate-800 shadow-sm">
         <Star className="w-5 h-5 text-amber-600 shrink-0 fill-amber-400/30" />
-        <span className="font-semibold text-slate-700">Default container</span>
+        <span className="font-semibold text-slate-700">Default containers</span>
         <span className="text-slate-400 hidden sm:inline">—</span>
-        {defaultContainerInList ? (
-          <span className="font-medium text-indigo-800">{formatContainerLabel(defaultContainerInList)}</span>
+        {defaultContainersInList.length > 0 ? (
+          <span className="font-medium text-indigo-800">
+            {defaultContainersInList
+              .map((c) => `${c.country || '—'}: ${formatContainerLabel(c)}`)
+              .join(' · ')}
+          </span>
         ) : (
-          <span className="text-slate-500">None set — choose one when creating or editing a container</span>
+          <span className="text-slate-500">None set — choose one per country when creating or editing a container</span>
         )}
       </div>
 

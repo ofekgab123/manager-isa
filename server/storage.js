@@ -67,23 +67,36 @@ export async function writeReceivers(receivers) {
   return writeTable('receivers', receivers);
 }
 
-/** At most one container may have isDefault true; first in array order keeps it. */
+/** Normalize country string for default-container grouping (empty = no country). */
+export function containerCountryKey(country) {
+  if (country == null) return '';
+  const s = String(country).trim();
+  return s;
+}
+
+/** At most one container per country may have isDefault true; first in array order keeps it. */
 export function normalizeContainersDefault(containers) {
   if (!Array.isArray(containers) || containers.length === 0) return containers;
-  let seenDefault = false;
+  const seen = new Set();
   return containers.map((c) => {
-    if (c.isDefault) {
-      if (seenDefault) return { ...c, isDefault: false };
-      seenDefault = true;
-      return { ...c, isDefault: true };
-    }
-    return { ...c, isDefault: false };
+    if (!c.isDefault) return { ...c, isDefault: false };
+    const key = containerCountryKey(c.country);
+    if (seen.has(key)) return { ...c, isDefault: false };
+    seen.add(key);
+    return { ...c, isDefault: true };
   });
 }
 
 function containersDefaultNeedsNormalize(containers) {
   if (!Array.isArray(containers)) return false;
-  return containers.filter((c) => c.isDefault).length > 1;
+  const seen = new Set();
+  for (const c of containers) {
+    if (!c.isDefault) continue;
+    const key = containerCountryKey(c.country);
+    if (seen.has(key)) return true;
+    seen.add(key);
+  }
+  return false;
 }
 
 export async function readContainers() {

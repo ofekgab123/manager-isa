@@ -36,7 +36,7 @@ const STATUS_COLORS = {
   completed: 'bg-green-100 text-green-700',
 };
 
-export default function PackagesPanel() {
+export default function PackagesPanel({ authCountry = null }) {
   const [missions, setMissions] = useState([]);
   const [containers, setContainers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -449,6 +449,7 @@ export default function PackagesPanel() {
         isOpen={createPackageOpen}
         onClose={() => setCreatePackageOpen(false)}
         onCreated={() => { setCreatePackageOpen(false); fetchData(); }}
+        authCountry={authCountry}
       />
     </div>
   );

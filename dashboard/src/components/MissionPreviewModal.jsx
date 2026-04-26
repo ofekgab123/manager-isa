@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
-import { X, User, MapPin, Package, Truck, Tag, FileText, Link2, Info, Plus } from 'lucide-react';
+import { X, User, MapPin, Package, Truck, Tag, FileText, Link2, Info, Plus, Globe } from 'lucide-react';
 import { API_BASE } from '../config';
 import { maxPickupLinksForEmptyBox } from '../pickerSlots';
+import { shippingDestinationLabel } from '../shippingDestinations';
 
 const TYPE_LABELS = { pickup: 'Pickup', empty_box: 'Empty Box' };
 const STATUS_LABELS = {
@@ -136,6 +137,18 @@ export default function MissionPreviewModal({
             <PreviewRow label="Name" value={mission.fullName} />
             <PreviewRow label="Phone" value={mission.customerPhone} />
           </PreviewSection>
+
+          {!isPickup && mission.type === 'empty_box' && !mission.shippingDestination && (
+            <div className="text-sm text-amber-700 bg-amber-50/80 border border-amber-100 rounded-xl px-3 py-2">
+              Ship to not selected — ask customer or set in edit
+            </div>
+          )}
+
+          {mission.shippingDestination && !isPickup && (
+            <PreviewSection icon={Globe} title="Ship to (after packing)">
+              <PreviewRow label="Country" value={shippingDestinationLabel(mission.shippingDestination)} />
+            </PreviewSection>
+          )}
 
           <PreviewSection icon={MapPin} title={isPickup ? 'Pickup Address' : 'Address'}>
             <PreviewRow label="Address" value={addr?.displayAddress} />
