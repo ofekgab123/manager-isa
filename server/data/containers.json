@@ -2,14 +2,12 @@
   {
     "id": "CNT-1773239070116",
     "name": null,
-    "maxWeight": 100,
     "maxPackages": 50,
     "createdAt": "2026-03-11T14:24:30.116Z"
   },
   {
     "id": "CNT-1773239319476",
     "name": "מזרח",
-    "maxWeight": 100,
     "maxPackages": 6,
     "createdAt": "2026-03-11T14:28:39.476Z"
   }

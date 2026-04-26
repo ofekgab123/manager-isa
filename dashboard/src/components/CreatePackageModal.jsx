@@ -1,9 +1,12 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { X, MapPin, User, CheckCircle, ChevronRight, ChevronLeft, Package, Plus, Trash2, Pencil } from 'lucide-react';
 import AddressPicker from './AddressPicker';
 import PhoneInput from './PhoneInput';
+import { authCountryToDefaultPhoneCode } from '../authCountryUtils';
 import { geocodeAddress } from '../utils/geocode';
 import { API_BASE } from '../config';
+import CollapsibleParcelContent from './CollapsibleParcelContent';
+import { formatIls, sumBoxContentsIls, valueIlsForTypeLabel } from '../parcelContentUtils';
 
 const PACKAGE_STEPS = [
   { id: 1, label: 'Sender', icon: User },
@@ -367,6 +370,23 @@ export default function CreatePackageModal({ isOpen, onClose, onCreated, authCou
     });
   };
 
+  const setContentTypeLabel = (boxIdx, itemIdx, label) => {
+    const unit = valueIlsForTypeLabel(parcelContentTypes, label);
+    setBoxContents((prev) => {
+      const next = [...prev];
+      if (!next[boxIdx]) next[boxIdx] = [];
+      next[boxIdx] = next[boxIdx].map((it, i) =>
+        i === itemIdx ? { ...it, description: label, price: label ? unit : 0 } : it
+      );
+      return next;
+    });
+  };
+
+  const contentsTotalIls = useMemo(
+    () => sumBoxContentsIls(boxContents.slice(0, boxCount)),
+    [boxContents, boxCount]
+  );
+
   if (!isOpen) return null;
 
   return (
@@ -389,6 +409,7 @@ export default function CreatePackageModal({ isOpen, onClose, onCreated, authCou
                 <Field label="Phone" required>
                   <div className="relative">
                     <PhoneInput
+                      defaultCode="+972"
                       value={form.israeliPhone}
                       onChange={(v) => { setForm((p) => ({ ...p, israeliPhone: v })); setActiveField('israeliPhone'); filterSuggestions('israeliPhone', v); }}
                       onFocus={() => { setActiveField('israeliPhone'); filterSuggestions('israeliPhone', form.israeliPhone); }}
@@ -423,6 +444,7 @@ export default function CreatePackageModal({ isOpen, onClose, onCreated, authCou
                 <Field label="Receiver phone" required>
                   <div className="relative">
                     <PhoneInput
+                      defaultCode={authCountryToDefaultPhoneCode(authCountry)}
                       value={form.receiverPhone}
                       onChange={(v) => {
                         setForm((p) => ({ ...p, receiverPhone: v }));
@@ -531,13 +553,20 @@ export default function CreatePackageModal({ isOpen, onClose, onCreated, authCou
                       </div>
                     </div>
                     <div className="pt-2 border-t border-slate-200">
-                      <span className="text-[10px] text-slate-500 font-medium block mb-1.5">Parcel content</span>
+                      <CollapsibleParcelContent
+                        defaultOpen
+                        title={(
+                          <span className="text-[10px] text-slate-500 font-medium">
+                            Parcel content
+                          </span>
+                        )}
+                      >
                       {((boxContents[i]) || []).map((item, j) => (
                         <div key={j} className="flex flex-wrap gap-2 mb-1.5">
                           <select
                             value={item.description || ''}
-                            onChange={(e) => updateContentItem(i, j, 'description', e.target.value)}
-                            className="flex-1 min-w-[100px] px-2 py-1.5 border border-slate-200 rounded-lg text-sm"
+                            onChange={(e) => setContentTypeLabel(i, j, e.target.value)}
+                            className="flex-1 min-w-0 max-w-[12rem] px-2 py-1.5 border border-slate-200 rounded-lg text-sm"
                           >
                             <option value="">Select type</option>
                             {parcelContentTypes.map((t) => (
@@ -550,7 +579,7 @@ export default function CreatePackageModal({ isOpen, onClose, onCreated, authCou
                             value={item.qty ?? ''}
                             onChange={(e) => updateContentItem(i, j, 'qty', parseInt(e.target.value) || 0)}
                             placeholder="qty"
-                            className="w-14 px-2 py-1.5 border border-slate-200 rounded-lg text-sm"
+                            className="w-[4.5rem] min-w-[4.5rem] shrink-0 px-2 py-1.5 border border-slate-200 rounded-lg text-sm"
                           />
                           <input
                             type="number"
@@ -559,7 +588,7 @@ export default function CreatePackageModal({ isOpen, onClose, onCreated, authCou
                             value={item.price ?? ''}
                             onChange={(e) => updateContentItem(i, j, 'price', parseFloat(e.target.value) || 0)}
                             placeholder="₪"
-                            className="w-16 px-2 py-1.5 border border-slate-200 rounded-lg text-sm"
+                            className="w-[5rem] min-w-[5rem] shrink-0 px-2 py-1.5 border border-slate-200 rounded-lg text-sm"
                           />
                           <button type="button" onClick={() => removeContentItem(i, j)} className="p-1 text-red-400 hover:text-red-600">
                             <Trash2 className="w-3.5 h-3.5" />
@@ -569,9 +598,15 @@ export default function CreatePackageModal({ isOpen, onClose, onCreated, authCou
                       <button type="button" onClick={() => addContentItem(i)} className="text-xs text-indigo-600 hover:underline flex items-center gap-1">
                         <Plus className="w-3 h-3" /> Add item
                       </button>
+                      </CollapsibleParcelContent>
                     </div>
                   </div>
                 ))}
+                <div className="flex justify-end pt-2 border-t border-slate-200 mt-2">
+                  <span className="text-sm font-semibold text-slate-800">
+                    סה״כ תוכן: {formatIls(contentsTotalIls)}
+                  </span>
+                </div>
               </div>
             )}
 
@@ -592,6 +627,7 @@ export default function CreatePackageModal({ isOpen, onClose, onCreated, authCou
                 <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
                   <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Package</p>
                   <SummaryRow label="Boxes" value={boxCount} />
+                  <SummaryRow label="Content total" value={formatIls(contentsTotalIls)} />
                 </div>
               </div>
             )}

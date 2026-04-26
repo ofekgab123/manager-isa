@@ -327,8 +327,7 @@ export default function PackagesPanel({ authCountry = null }) {
                       className="w-4 h-4 accent-indigo-600 cursor-pointer"
                     />
                   </th>
-                  <th>Package ID</th>
-                  <th>Tracking</th>
+                  <th>Tracking ID</th>
                   <th>Delivery</th>
                   <th>Status</th>
                   <th>Sender</th>
@@ -354,7 +353,6 @@ export default function PackagesPanel({ authCountry = null }) {
                         className="w-4 h-4 accent-indigo-600 cursor-pointer rounded"
                       />
                     </td>
-                    <td><span className="table-id">{packageId}</span></td>
                     <td className="max-w-[10rem]">
                       <p className="text-sm font-mono text-slate-600 truncate" title={(delivery.boxTrackingIds ?? []).filter(Boolean).join(', ')}>
                         {(delivery.boxTrackingIds ?? []).filter(Boolean).length > 0

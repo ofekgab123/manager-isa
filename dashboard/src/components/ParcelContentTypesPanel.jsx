@@ -30,8 +30,16 @@ const DEFAULT_LABELS = [
 function ParcelContentTypeFormModal({ type, onSave, onClose }) {
   const isEdit = !!type;
   const [label, setLabel] = useState(type?.label || '');
+  const [valueIls, setValueIls] = useState(
+    type?.valueIls != null && type?.valueIls !== '' ? String(type.valueIls) : '0'
+  );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    setLabel(type?.label || '');
+    setValueIls(type?.valueIls != null && type?.valueIls !== '' ? String(type.valueIls) : '0');
+  }, [type]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -46,10 +54,11 @@ function ParcelContentTypeFormModal({ type, onSave, onClose }) {
         ? `${API_BASE}/parcel-content-types/${type.id}`
         : `${API_BASE}/parcel-content-types`;
       const method = isEdit ? 'PATCH' : 'POST';
+      const parsedIls = Math.max(0, parseFloat(String(valueIls).replace(',', '.')) || 0);
       const res = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ label: label.trim() }),
+        body: JSON.stringify({ label: label.trim(), valueIls: parsedIls }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Save error');
@@ -90,6 +99,20 @@ function ParcelContentTypeFormModal({ type, onSave, onClose }) {
               className="input-field"
               required
             />
+          </div>
+          <div>
+            <label className="label">
+              Default unit value (₪)
+            </label>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              value={valueIls}
+              onChange={(e) => setValueIls(e.target.value)}
+              className="input-field"
+            />
+            <p className="text-xs text-slate-500 mt-1">Applied per quantity unit when choosing this type on a parcel line.</p>
           </div>
 
           {error && (
@@ -157,7 +180,7 @@ export default function ParcelContentTypesPanel() {
         await fetch(`${API_BASE}/parcel-content-types`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ label }),
+          body: JSON.stringify({ label, valueIls: 0 }),
         });
       }
       await fetchTypes();
@@ -254,8 +277,8 @@ export default function ParcelContentTypesPanel() {
             <table className="w-full text-center">
               <thead>
                 <tr className="table-header">
-                  <th>ID</th>
                   <th>Label</th>
+                  <th>Unit (₪)</th>
                   <th>Actions</th>
                 </tr>
               </thead>
@@ -265,9 +288,11 @@ export default function ParcelContentTypesPanel() {
                     key={t.id}
                     className="table-row"
                   >
-                    <td><span className="table-id">{t.id}</span></td>
                     <td className="font-medium text-slate-800">
                       {t.label}
+                    </td>
+                    <td className="text-slate-700 tabular-nums">
+                      {new Intl.NumberFormat('he-IL', { minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(Number(t.valueIls) || 0)}
                     </td>
                     <td>
                       <div className="table-actions">

@@ -1,4 +1,6 @@
 import { X, User, MapPin, Package, FileText } from 'lucide-react';
+import { formatIls, sumBoxContentsIls } from '../parcelContentUtils';
+import CollapsibleParcelContent from './CollapsibleParcelContent';
 
 function PreviewSection({ icon: Icon, title, children }) {
   return (
@@ -93,29 +95,36 @@ export default function PackagePreviewModal({ packageData, onClose }) {
             )}
             {(delivery?.boxContents?.length > 0) && (
               <div className="mt-3 pt-3 border-t border-slate-200">
-                <p className="text-xs font-semibold text-slate-500 uppercase mb-2">Parcel content</p>
-                <div className="space-y-2">
-                  {(delivery.boxContents || []).map((boxItems, bi) => {
-                    const items = Array.isArray(boxItems) ? boxItems : [];
-                    const str = items
-                      .filter((it) => it?.description)
-                      .map((it) => {
-                        const base = `${it.description} ×${it.qty ?? 1}`;
-                        const price =
-                          it.price != null && it.price !== '' && Number(it.price) > 0
-                            ? ` ₪${Number(it.price).toLocaleString()}`
-                            : '';
-                        return base + price;
-                      })
-                      .join(', ');
-                    if (!str) return null;
-                    return (
-                      <div key={bi} className="text-sm text-slate-700">
-                        <span className="font-medium text-slate-500">Box {bi + 1}:</span> {str}
-                      </div>
-                    );
-                  })}
-                </div>
+                <CollapsibleParcelContent
+                  title={<p className="text-xs font-semibold text-slate-500 uppercase mb-0">Parcel content</p>}
+                  buttonClassName="flex items-center gap-1.5 w-full text-left rounded-lg hover:bg-white -mx-1 px-1 py-1 transition-colors"
+                >
+                  <div className="space-y-2">
+                    {(delivery.boxContents || []).map((boxItems, bi) => {
+                      const items = Array.isArray(boxItems) ? boxItems : [];
+                      const str = items
+                        .filter((it) => it?.description)
+                        .map((it) => {
+                          const base = `${it.description} ×${it.qty ?? 1}`;
+                          const price =
+                            it.price != null && it.price !== '' && Number(it.price) > 0
+                              ? ` ₪${Number(it.price).toLocaleString()}`
+                              : '';
+                          return base + price;
+                        })
+                        .join(', ');
+                      if (!str) return null;
+                      return (
+                        <div key={bi} className="text-sm text-slate-700">
+                          <span className="font-medium text-slate-500">Box {bi + 1}:</span> {str}
+                        </div>
+                      );
+                    })}
+                    <p className="text-sm font-semibold text-slate-800 mt-2 pt-2 border-t border-slate-200">
+                      Content total: {formatIls(sumBoxContentsIls(delivery?.boxContents))}
+                    </p>
+                  </div>
+                </CollapsibleParcelContent>
               </div>
             )}
           </PreviewSection>

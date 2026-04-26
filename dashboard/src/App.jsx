@@ -89,8 +89,10 @@ function useMissions(onNewMissions) {
   const [error, setError] = useState(null);
   const knownIdsRef = useRef(new Set());
 
-  const fetchMissions = async (isPoll = false) => {
-    if (!isPoll) setLoading(true);
+  const fetchMissions = async (opts = {}) => {
+    const isPoll = opts.isPoll === true;
+    const silent = opts.silent === true;
+    if (!isPoll && !silent) setLoading(true);
     setError(null);
     try {
       const res = await fetch(`${API_BASE}/missions`);
@@ -106,36 +108,40 @@ function useMissions(onNewMissions) {
       setError(e.message);
       setMissions([]);
     } finally {
-      if (!isPoll) setLoading(false);
+      if (!isPoll && !silent) setLoading(false);
     }
   };
 
   useEffect(() => {
     fetchMissions();
-    const interval = setInterval(() => fetchMissions(true), 5000);
+    const interval = setInterval(() => fetchMissions({ isPoll: true }), 5000);
     return () => clearInterval(interval);
   }, []);
 
-  return { missions, loading, error, refetch: () => fetchMissions(false) };
+  /* Silent by default: keeps the table visible (no "Loading missions…" flash). */
+  return { missions, loading, error, refetch: () => fetchMissions({ silent: true }) };
 }
 
 function useMissionStats() {
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  const fetchStats = () => {
-    fetch(`${API_BASE}/missions/stats`)
+  const fetchStats = (silent = false) => {
+    if (!silent) setLoading(true);
+    return fetch(`${API_BASE}/missions/stats`)
       .then((r) => r.json())
       .then((d) => setStats(d))
       .catch(() => {})
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (!silent) setLoading(false);
+      });
   };
 
   useEffect(() => {
-    fetchStats();
+    fetchStats(false);
   }, []);
 
-  return { stats, loading, refetch: fetchStats };
+  return { stats, loading, refetch: () => fetchStats(true) };
 }
 
 const isMissingAddress = (m) => m.type === 'pickup' ? !m.receiverAddress?.lat : !m.address?.lat;
@@ -217,6 +223,12 @@ function Dashboard({ authUser, onLogout }) {
   const { missions, loading, error, refetch } = useMissions(handleNewMissions);
   const { stats, loading: statsLoading, refetch: refetchStats } = useMissionStats();
 
+  const [listRefreshing, setListRefreshing] = useState(false);
+  const handleHeaderRefresh = () => {
+    setListRefreshing(true);
+    return Promise.all([refetch(), refetchStats()]).finally(() => setListRefreshing(false));
+  };
+
   const [containers, setContainers] = useState([]);
   const [capacityAlertDismissed, setCapacityAlertDismissed] = useState(false);
   const fetchContainers = useCallback(async () => {
@@ -260,7 +272,7 @@ function Dashboard({ authUser, onLogout }) {
   const [visibleColumns, setVisibleColumns] = useState({
     type: true, status: true, sender: true, pickupAddr: true, shipTo: true,
     receiver: true, deliveryAddr: true, boxes: true, source: true, date: true, affiliate: true,
-    senderPhone: true, receiverPhone: true, missingInfo: true, tracking: true,
+    senderPhone: true, receiverPhone: true, missingInfo: true, trackingId: true,
   });
   const [sectionVisible, setSectionVisible] = useState({ sender: true, receiver: true });
   const toggleSection = (key) => {
@@ -305,7 +317,7 @@ function Dashboard({ authUser, onLogout }) {
     if (filterDateFrom && m.createdAt && new Date(m.createdAt) < new Date(filterDateFrom)) return false;
     if (filterBoxType === 'large' && !(m.boxSelection?.large > 0)) return false;
     if (filterBoxType === 'small' && !(m.boxSelection?.small > 0)) return false;
-    if (filterAffiliate && m.affiliateName !== filterAffiliate) return false;
+    if (filterAffiliate && (m.affiliateName !== filterAffiliate || m.type !== 'pickup')) return false;
     return true;
   });
 
@@ -400,11 +412,12 @@ function Dashboard({ authUser, onLogout }) {
                   Create new mission
                 </button>
                 <button
-                  onClick={() => { refetch(); refetchStats(); }}
-                  disabled={loading}
+                  type="button"
+                  onClick={() => { handleHeaderRefresh(); }}
+                  disabled={loading || listRefreshing}
                   className="btn-secondary !bg-white/10 !border-white/20 !text-white hover:!bg-white/20 disabled:opacity-50"
                 >
-                  <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+                  <RefreshCw className={`w-4 h-4 ${listRefreshing ? 'animate-spin' : ''}`} />
                   Refresh
                 </button>
               </>
@@ -522,8 +535,8 @@ function Dashboard({ authUser, onLogout }) {
           <StatisticsPanel
             missions={missions}
             affiliates={affiliates}
-            onRefresh={() => { refetch(); refetchStats(); }}
-            loading={loading}
+            onRefresh={handleHeaderRefresh}
+            loading={loading || listRefreshing}
           />
         )}
         {activeTab === 'settings' && <ParcelContentTypesPanel />}
@@ -709,7 +722,7 @@ function Dashboard({ authUser, onLogout }) {
                         <input type="date" value={filterDateFrom} onChange={(e) => setFilterDateFrom(e.target.value)} className="input-field" />
                       </div>
                       <div className="flex items-start pt-5">
-                        <ColLabel label="Tracking" colKey="tracking" vis={visibleColumns} toggle={toggleColumn} />
+                        <ColLabel label="Tracking ID" colKey="trackingId" vis={visibleColumns} toggle={toggleColumn} />
                       </div>
                     </div>
                   </div>
@@ -746,7 +759,7 @@ function Dashboard({ authUser, onLogout }) {
                         <th className="w-40">ID</th>
                         {visibleColumns.type        && <th className="w-28">Type</th>}
                         {visibleColumns.status      && <th className="w-32">Status</th>}
-                        {visibleColumns.tracking    && <th className="w-36">Tracking</th>}
+                        {visibleColumns.trackingId  && <th className="w-36">Tracking ID</th>}
                         {visibleColumns.sender      && <th className="w-48">Sender</th>}
                         {visibleColumns.pickupAddr  && <th className="w-64">Pickup Addr</th>}
                         {visibleColumns.shipTo      && <th className="w-28">Ship to</th>}
@@ -783,7 +796,7 @@ function Dashboard({ authUser, onLogout }) {
                                 </span>
                               </td>
                             )}
-                            {visibleColumns.tracking && (
+                            {visibleColumns.trackingId && (
                               <td className="max-w-[9rem]">
                                 {mission.type === 'pickup' ? (() => {
                                   const ids = (mission.deliveries?.length > 0 ? mission.deliveries : [mission])
@@ -904,7 +917,7 @@ function Dashboard({ authUser, onLogout }) {
                             )}
                             {visibleColumns.affiliate && (
                               <td>
-                                {mission.affiliateName ? (
+                                {mission.type === 'pickup' && mission.affiliateName ? (
                                   <span className="badge-pill text-indigo-700 bg-indigo-50 border border-indigo-200">
                                     <Tag className="w-3.5 h-3.5 shrink-0" />
                                     {mission.affiliateName}
@@ -1120,6 +1133,7 @@ function Dashboard({ authUser, onLogout }) {
         <CompleteDeliveryModal
           isOpen
           mission={completingMission}
+          authCountry={authUser.country}
           onClose={() => setCompletingMission(null)}
           onSaved={() => { refetch(); refetchStats(); setCompletingMission(null); }}
         />

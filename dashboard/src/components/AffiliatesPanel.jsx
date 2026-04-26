@@ -555,7 +555,7 @@ export default function AffiliatesPanel({ missions = [] }) {
     }
   };
 
-  const totalOrders = missions.filter((m) => m.affiliateName).length;
+  const totalOrders = missions.filter((m) => m.affiliateName && m.type === 'pickup').length;
 
   const filteredAffiliates = affiliates.filter((a) => {
     if (!search.trim()) return true;
@@ -659,7 +659,7 @@ export default function AffiliatesPanel({ missions = [] }) {
                 {filteredAffiliates.map((affiliate) => {
                   const trackingLink = `${SITE_URL}/?ref=${affiliate.slug}`;
                   const affiliateOrders = missions.filter(
-                    (m) => m.affiliateName === affiliate.name,
+                    (m) => m.affiliateName === affiliate.name && m.type === 'pickup',
                   );
                   const missionKeys = new Set(affiliateOrders.map(getCustomerKey));
                   const importedKeys = new Set(

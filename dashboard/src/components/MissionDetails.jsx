@@ -1,12 +1,14 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { MapPin, User, Save, Trash2, AlertTriangle, Copy, Video, Image, X, Tag, Link2, Info, Plus, Globe } from 'lucide-react';
 import AddressPicker from './AddressPicker';
 import PhoneInput from './PhoneInput';
 import { API_BASE } from '../config';
 import { maxPickupLinksForEmptyBox } from '../pickerSlots';
 import EmptyBoxMissionPickerModal from './EmptyBoxMissionPickerModal';
+import CollapsibleParcelContent from './CollapsibleParcelContent';
 import PickupMissionPickerModal from './PickupMissionPickerModal';
 import { SHIPPING_DESTINATIONS } from '../shippingDestinations';
+import { formatIls, sumAllDeliveriesContentsIls, valueIlsForTypeLabel } from '../parcelContentUtils';
 
 const TYPE_OPTIONS = [
   { value: 'pickup',    label: 'Pickup Box' },
@@ -248,7 +250,11 @@ function DeliveryEditCard({ delivery, idx, onChange, totalPickup, otherAssigned,
       {/* Parcel content per box */}
       {boxCount > 0 && (
         <div className="space-y-2 pt-2 border-t border-slate-100">
-          <label className="label">Parcel content per box</label>
+          <CollapsibleParcelContent
+            defaultOpen
+            title={<span className="label !mb-0">Parcel content per box</span>}
+            buttonClassName="flex items-center gap-1.5 w-full text-left rounded-lg hover:bg-slate-100/80 -mx-1 px-1 py-1 transition-colors"
+          >
           <div className="space-y-3">
             {Array.from({ length: boxCount }, (_, i) => (
               <div key={i} className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/50 space-y-2">
@@ -258,14 +264,16 @@ function DeliveryEditCard({ delivery, idx, onChange, totalPickup, otherAssigned,
                     <select
                       value={item.description || ''}
                       onChange={(e) => {
+                        const label = e.target.value;
+                        const unit = valueIlsForTypeLabel(parcelContentTypes, label);
                         const contents = [...(delivery.boxContents ?? [])];
                         if (!contents[i]) contents[i] = [];
                         contents[i] = contents[i].map((it, k) =>
-                          k === j ? { ...it, description: e.target.value } : it
+                          k === j ? { ...it, description: label, price: label ? unit : 0 } : it
                         );
                         onChange({ ...delivery, boxContents: contents });
                       }}
-                      className="select-field flex-1 min-w-[100px] !py-1.5"
+                      className="select-field flex-1 min-w-0 max-w-[12rem] !py-1.5"
                     >
                       <option value="">Select type</option>
                       {(parcelContentTypes ?? []).map((t) => (
@@ -285,7 +293,7 @@ function DeliveryEditCard({ delivery, idx, onChange, totalPickup, otherAssigned,
                         onChange({ ...delivery, boxContents: contents });
                       }}
                       placeholder="qty"
-                      className="input-field w-14 !py-1.5"
+                      className="input-field w-[4.5rem] min-w-[4.5rem] shrink-0 !py-1.5"
                     />
                     <input
                       type="number"
@@ -301,7 +309,7 @@ function DeliveryEditCard({ delivery, idx, onChange, totalPickup, otherAssigned,
                         onChange({ ...delivery, boxContents: contents });
                       }}
                       placeholder="₪"
-                      className="input-field w-16 !py-1.5"
+                      className="input-field w-[5rem] min-w-[5rem] shrink-0 !py-1.5"
                     />
                     <button
                       type="button"
@@ -332,6 +340,7 @@ function DeliveryEditCard({ delivery, idx, onChange, totalPickup, otherAssigned,
               </div>
             ))}
           </div>
+          </CollapsibleParcelContent>
         </div>
       )}
 
@@ -477,6 +486,25 @@ export default function MissionDetails({ mission, onSave, onClose, onDelete, onO
   }, [refreshLinkedPickups]);
 
   const isPickup = edit.type === 'pickup';
+
+  const normalizedDeliveriesForUi = useMemo(() => {
+    if (!isPickup) return [];
+    if (edit.deliveries?.length > 0) return edit.deliveries;
+    return [{
+      id: edit.id ? `PKG-${(edit.id || '').replace(/^MSN-/, '')}-0` : undefined,
+      receiverName: edit.receiverName || '',
+      receiverPhone: edit.receiverPhone || '',
+      address: edit.receiverAddress || {},
+      boxCount: edit.pickupBoxCount ?? 1,
+      boxContents: edit.deliveries?.[0]?.boxContents ?? Array.from({ length: edit.pickupBoxCount ?? 1 }, () => []),
+    }];
+  }, [isPickup, edit.deliveries, edit.id, edit.receiverName, edit.receiverPhone, edit.receiverAddress, edit.pickupBoxCount]);
+
+  const deliveriesContentTotalIls = useMemo(
+    () => sumAllDeliveriesContentsIls(normalizedDeliveriesForUi),
+    [normalizedDeliveriesForUi]
+  );
+
   const maxPickupLinksEmptyBox = edit.type === 'empty_box' ? maxPickupLinksForEmptyBox(edit) : 0;
   const emptyPickupSlots =
     edit.type === 'empty_box' ? Math.max(0, maxPickupLinksEmptyBox - linkedPickups.length) : 0;
@@ -491,7 +519,14 @@ export default function MissionDetails({ mission, onSave, onClose, onDelete, onO
       const [parent, key] = path.split('.');
       setEdit((p) => ({ ...p, [parent]: { ...(p[parent] || {}), [key]: value } }));
     } else {
-      setEdit((p) => ({ ...p, [path]: value }));
+      setEdit((p) => {
+        const next = { ...p, [path]: value };
+        if (path === 'type' && value !== 'pickup') {
+          next.affiliateName = null;
+          next.discountAmount = null;
+        }
+        return next;
+      });
     }
   };
 
@@ -759,26 +794,9 @@ export default function MissionDetails({ mission, onSave, onClose, onDelete, onO
               ? `Delivery addresses (${edit.deliveries.length})`
               : 'Delivery address'}
           </h4>
-          {(edit.deliveries?.length > 0 ? edit.deliveries : [
-            {
-              id: edit.id ? `PKG-${(edit.id || '').replace(/^MSN-/, '')}-0` : undefined,
-              receiverName: edit.receiverName || '',
-              receiverPhone: edit.receiverPhone || '',
-              address: edit.receiverAddress || {},
-              boxCount: edit.pickupBoxCount ?? 1,
-              boxContents: edit.deliveries?.[0]?.boxContents ?? Array.from({ length: edit.pickupBoxCount ?? 1 }, () => []),
-            }
-          ]).map((d, idx) => {
-            const deliveriesList = edit.deliveries?.length > 0 ? edit.deliveries : [{
-              id: edit.id ? `PKG-${(edit.id || '').replace(/^MSN-/, '')}-0` : undefined,
-              receiverName: edit.receiverName || '',
-              receiverPhone: edit.receiverPhone || '',
-              address: edit.receiverAddress || {},
-              boxCount: edit.pickupBoxCount ?? 1,
-              boxContents: [],
-            }];
+          {normalizedDeliveriesForUi.map((d, idx) => {
             const totalPickup = edit.pickupBoxCount ?? 1;
-            const otherAssigned = deliveriesList.reduce((s, r, i) => (i !== idx ? s + (r.boxCount || 0) : s), 0);
+            const otherAssigned = normalizedDeliveriesForUi.reduce((s, r, i) => (i !== idx ? s + (r.boxCount || 0) : s), 0);
             return (
             <DeliveryEditCard
               key={d.id || idx}
@@ -811,6 +829,11 @@ export default function MissionDetails({ mission, onSave, onClose, onDelete, onO
             />
             );
           })}
+          {normalizedDeliveriesForUi.length > 0 && (
+            <div className="flex justify-end text-sm font-semibold text-slate-800">
+              סה״כ תוכן: {formatIls(deliveriesContentTotalIls)}
+            </div>
+          )}
         </div>
       )}
 
@@ -902,7 +925,8 @@ export default function MissionDetails({ mission, onSave, onClose, onDelete, onO
         )}
       </div>
 
-      {/* Affiliate */}
+      {/* Affiliate — pickup only */}
+      {isPickup && (
       <div className="card p-4 space-y-2">
         <h4 className="font-semibold text-slate-800 flex items-center gap-2 text-sm">
           <Tag className="w-4 h-4" /> Affiliate
@@ -928,6 +952,7 @@ export default function MissionDetails({ mission, onSave, onClose, onDelete, onO
           </button>
         )}
       </div>
+      )}
 
       {/* Notes */}
       <div>

@@ -13,14 +13,14 @@ import {
   MapPin,
   Download,
   FileSpreadsheet,
-  FileText,
   FileCheck,
   ImagePlus,
   Video,
   Star,
 } from 'lucide-react';
-import { jsPDF } from 'jspdf';
 import { API_BASE } from '../config';
+import { formatIls, sumBoxContentsIls } from '../parcelContentUtils';
+import CollapsibleParcelContent from './CollapsibleParcelContent';
 
 const CAPACITY_ALERT_THRESHOLD = 70;
 
@@ -255,34 +255,77 @@ function ContainerPackagesModal({ container, packages, onClose }) {
                                 {d.address.displayAddress}
                               </p>
                             )}
-                            <div className="space-y-1.5">
-                              {Array.from({ length: boxCount }, (_, bi) => {
-                                const boxItems = boxContents[bi];
-                                const arr = Array.isArray(boxItems) ? boxItems : [];
-                                const str = arr
-                                  .filter((it) => it?.description)
-                                  .map((it) => {
-                                    const base = `${it.description} ×${it.qty ?? 1}`;
-                                    const price = it.price != null && it.price !== '' && Number(it.price) > 0
-                                      ? ` ₪${Number(it.price).toLocaleString()}`
-                                      : '';
-                                    return base + price;
-                                  })
-                                  .join(', ');
-                                const weight = boxWeights[bi];
-                                const weightStr = weight != null && String(weight).trim() !== '' ? ` · ${weight} kg` : '';
-                                if (!str && !weightStr) return null;
-                                return (
-                                  <div key={bi} className="text-xs text-slate-700 flex items-center gap-2">
-                                    <span className="font-medium text-slate-500 shrink-0">Box {bi + 1}:</span>
-                                    <span>
-                                      {str || '—'}
-                                      {weightStr}
-                                    </span>
-                                  </div>
-                                );
-                              })}
-                            </div>
+                            {hasContent ? (
+                              <CollapsibleParcelContent
+                                title={(
+                                  <span className="text-[10px] font-semibold text-slate-500 uppercase">
+                                    Parcel content
+                                  </span>
+                                )}
+                                buttonClassName="flex items-center gap-1.5 w-full text-left rounded-lg hover:bg-slate-50 -mx-0.5 px-0.5 py-0.5 transition-colors mb-1"
+                              >
+                                <div className="space-y-1.5">
+                                  {Array.from({ length: boxCount }, (_, bi) => {
+                                    const boxItems = boxContents[bi];
+                                    const arr = Array.isArray(boxItems) ? boxItems : [];
+                                    const str = arr
+                                      .filter((it) => it?.description)
+                                      .map((it) => {
+                                        const base = `${it.description} ×${it.qty ?? 1}`;
+                                        const price = it.price != null && it.price !== '' && Number(it.price) > 0
+                                          ? ` ₪${Number(it.price).toLocaleString()}`
+                                          : '';
+                                        return base + price;
+                                      })
+                                      .join(', ');
+                                    const weight = boxWeights[bi];
+                                    const weightStr = weight != null && String(weight).trim() !== '' ? ` · ${weight} kg` : '';
+                                    if (!str && !weightStr) return null;
+                                    return (
+                                      <div key={bi} className="text-xs text-slate-700 flex items-center gap-2">
+                                        <span className="font-medium text-slate-500 shrink-0">Box {bi + 1}:</span>
+                                        <span>
+                                          {str || '—'}
+                                          {weightStr}
+                                        </span>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                                <p className="text-xs font-semibold text-slate-800 mt-1.5 pt-1.5 border-t border-slate-200">
+                                  Content total: {formatIls(sumBoxContentsIls(boxContents))}
+                                </p>
+                              </CollapsibleParcelContent>
+                            ) : (
+                              <div className="space-y-1.5">
+                                {Array.from({ length: boxCount }, (_, bi) => {
+                                  const boxItems = boxContents[bi];
+                                  const arr = Array.isArray(boxItems) ? boxItems : [];
+                                  const str = arr
+                                    .filter((it) => it?.description)
+                                    .map((it) => {
+                                      const base = `${it.description} ×${it.qty ?? 1}`;
+                                      const price = it.price != null && it.price !== '' && Number(it.price) > 0
+                                        ? ` ₪${Number(it.price).toLocaleString()}`
+                                        : '';
+                                      return base + price;
+                                    })
+                                    .join(', ');
+                                  const weight = boxWeights[bi];
+                                  const weightStr = weight != null && String(weight).trim() !== '' ? ` · ${weight} kg` : '';
+                                  if (!str && !weightStr) return null;
+                                  return (
+                                    <div key={bi} className="text-xs text-slate-700 flex items-center gap-2">
+                                      <span className="font-medium text-slate-500 shrink-0">Box {bi + 1}:</span>
+                                      <span>
+                                        {str || '—'}
+                                        {weightStr}
+                                      </span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
                           </div>
                         );
                       })}
@@ -298,12 +341,11 @@ function ContainerPackagesModal({ container, packages, onClose }) {
   );
 }
 
-function ExportOptionsModal({ container, onExport, onClose }) {
+function ExportOptionsModal({ onExport, onClose }) {
   const [exportType, setExportType] = useState('courier');
-  const [fileType, setFileType] = useState('excel');
 
   const handleConfirm = () => {
-    onExport(exportType, fileType);
+    onExport(exportType);
     onClose();
   };
 
@@ -353,35 +395,10 @@ function ExportOptionsModal({ container, onExport, onClose }) {
               </button>
             </div>
           </div>
-          <div>
-            <p className="label mb-3">File format</p>
-            <div className="flex gap-3">
-              <button
-                type="button"
-                onClick={() => setFileType('excel')}
-                className={`flex-1 py-3 px-4 rounded-xl border-2 text-sm font-medium transition-colors flex items-center justify-center gap-2 ${
-                  fileType === 'excel'
-                    ? 'border-green-500 bg-green-50 text-green-700'
-                    : 'border-slate-200 text-slate-600 hover:border-slate-300'
-                }`}
-              >
-                <FileSpreadsheet className="w-4 h-4" />
-                Excel (CSV)
-              </button>
-              <button
-                type="button"
-                onClick={() => setFileType('pdf')}
-                className={`flex-1 py-3 px-4 rounded-xl border-2 text-sm font-medium transition-colors flex items-center justify-center gap-2 ${
-                  fileType === 'pdf'
-                    ? 'border-red-500 bg-red-50 text-red-700'
-                    : 'border-slate-200 text-slate-600 hover:border-slate-300'
-                }`}
-              >
-                <FileText className="w-4 h-4" />
-                PDF
-              </button>
-            </div>
-          </div>
+          <p className="text-sm text-slate-500 flex items-center gap-2">
+            <FileSpreadsheet className="w-4 h-4 shrink-0 text-green-600" />
+            Export downloads as CSV (Excel-compatible).
+          </p>
         </div>
         <div className="modal-footer">
           <button
@@ -539,124 +556,48 @@ function ContainerSummaryModal({ container, packages, onClose }) {
     return { rows, totalWeight, totalPackages, totalQty, grandTotal };
   };
 
-  const downloadSummary = async () => {
+  const downloadSummary = () => {
     const { rows, totalWeight, totalPackages, totalQty, grandTotal } = getContentRows();
-    const doc = new jsPDF();
-    const pageW = doc.internal.pageSize.getWidth();
-    const blue = [51, 102, 204];
-
-    let y = 10;
-
+    const escapeCsv = (val) => {
+      const s = String(val ?? '');
+      if (s.includes(',') || s.includes('"') || s.includes('\n')) {
+        return `"${s.replace(/"/g, '""')}"`;
+      }
+      return s;
+    };
     const downloadDate = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
-    doc.setFontSize(9);
-    doc.setTextColor(100, 100, 100);
-    doc.text(`Date: ${downloadDate}`, 14, y + 4);
-    y += 10;
-
-    try {
-      const base = (import.meta.env.BASE_URL || '/').replace(/\/$/, '') || '';
-      const logoUrl = `${window.location.origin}${base ? base + '/' : '/'}isa-logo-pdf.png`;
-      const logoRes = await fetch(logoUrl);
-      if (logoRes.ok) {
-        const logoBlob = await logoRes.blob();
-        const logoBase64 = await new Promise((resolve, reject) => {
-          const r = new FileReader();
-          r.onload = () => resolve(r.result);
-          r.onerror = reject;
-          r.readAsDataURL(logoBlob);
-        });
-        const logoW = Math.min(80, pageW - 28);
-        doc.addImage(logoBase64, 'PNG', 14, y, logoW, logoW * 0.4);
-        y += logoW * 0.4 + 8;
-      }
-    } catch {
-      doc.setFontSize(16);
-      doc.setTextColor(...blue);
-      doc.text('ISA WORLD EXPRESS', 14, y + 6);
-      y += 14;
-    }
-
-    doc.setFontSize(16);
-    doc.setTextColor(...blue);
-    doc.text('GOODS DECLARATION', pageW / 2, y + 4, { align: 'center' });
-    y += 8;
-    doc.setFontSize(10);
-    doc.setTextColor(50, 50, 50);
-    doc.text('Invoice:', 14, y + 4);
-    y += 10;
-
-    doc.setDrawColor(200, 200, 200);
-    doc.setLineWidth(0.3);
-    const lineH = 5;
-    const tableH = lineH * 5 + 6;
-    doc.rect(14, y, pageW - 28, tableH);
-    doc.setFontSize(10);
-    doc.setTextColor(50, 50, 50);
     const issueDate = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
-    doc.text(`Issue date: ${issueDate}`, 18, y + 5);
-    doc.text(`Shipper name: ${form.shipperName}`, 18, y + 10);
-    doc.text(`ID: ${form.shipperId}`, 18, y + 15);
-    doc.text(`Address: ${form.address}`, 18, y + 20);
-    doc.text(`Phone: ${form.phone}`, 18, y + 25);
-    y += tableH + 6;
-
-    doc.setFillColor(230, 235, 240);
-    const summaryH = 10;
-    doc.rect(14, y, pageW - 28, summaryH, 'F');
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(10);
-    doc.setTextColor(50, 50, 50);
-    doc.text(`Total number of packages: ${totalPackages}`, 18, y + 4);
-    doc.text(`Total gross weight: ${totalWeight.toFixed(2)} KG`, 18, y + 8);
-    doc.setFont('helvetica', 'normal');
-    y += summaryH + 6;
-
-    const colW = [(pageW - 28) * 0.5, (pageW - 28) * 0.15, (pageW - 28) * 0.17, (pageW - 28) * 0.18];
-    const headers = ['DESCRIPTION', 'QTY', 'PRICE', 'TOTAL'];
-    const headerH = 7;
-    doc.setFillColor(217, 224, 242);
-    doc.rect(14, y, pageW - 28, headerH, 'F');
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(10);
-    let x = 18;
-    headers.forEach((h, i) => {
-      doc.text(h, x, y + 5);
-      x += colW[i];
-    });
-    doc.setFont('helvetica', 'normal');
-    y += headerH + 2;
-
+    const csvLines = [
+      `Date: ${downloadDate}`,
+      '',
+      'GOODS DECLARATION',
+      `Issue date: ${issueDate}`,
+      `Shipper name: ${form.shipperName}`,
+      `ID: ${form.shipperId}`,
+      `Address: ${form.address}`,
+      `Phone: ${form.phone}`,
+      '',
+      `Total number of packages: ${totalPackages}`,
+      `Total gross weight (kg): ${totalWeight.toFixed(2)}`,
+      '',
+      ['Description', 'Qty', 'Unit price (NIS)', 'Total (NIS)'].map(escapeCsv).join(','),
+    ];
     rows.forEach((r) => {
-      if (y > 270) {
-        doc.addPage();
-        y = 20;
-      }
-      x = 18;
-      doc.text(String(r.description).substring(0, 50), x, y + 4);
-      x += colW[0];
-      doc.text(String(r.qty), x, y + 4);
-      x += colW[1];
-      doc.text(`NIS ${r.unitPrice.toFixed(2)}`, x, y + 4);
-      x += colW[2];
-      doc.text(`NIS ${r.total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, x, y + 4);
-      y += 6;
+      csvLines.push(
+        [r.description, r.qty, r.unitPrice.toFixed(2), r.total.toFixed(2)].map(escapeCsv).join(',')
+      );
     });
-
-    if (y > 258) {
-      doc.addPage();
-      y = 20;
-    }
-    const footerH = 10;
-    y += 2;
-    doc.setFont('helvetica', 'bold');
-    doc.setDrawColor(180, 180, 180);
-    doc.setLineWidth(0.3);
-    doc.rect(14, y, pageW - 28, footerH, 'S');
-    doc.text(String(totalQty), 18 + colW[0], y + 6);
-    doc.text(`NIS ${grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, 14 + colW[0] + colW[1] + colW[2] + 4, y + 6);
-
-    const fileName = `goods-declaration-${container.name || container.id}-${new Date().toISOString().slice(0, 10)}.pdf`;
-    doc.save(fileName);
+    csvLines.push('');
+    csvLines.push(['', '', 'Total qty', totalQty].map(escapeCsv).join(','));
+    csvLines.push(['', '', 'Grand total (NIS)', grandTotal.toFixed(2)].map(escapeCsv).join(','));
+    const csv = '\uFEFF' + csvLines.join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `goods-declaration-${container.name || container.id}-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
     onClose();
   };
 
@@ -817,7 +758,7 @@ function ContainerSummaryModal({ container, packages, onClose }) {
             disabled={!isFormValid}
             className="btn-primary flex-1 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            Download container summary
+            Download goods declaration (CSV)
           </button>
         </div>
       </div>
@@ -848,8 +789,7 @@ function ContainerFormModal({ container, onSave, onClose, containers = [] }) {
     status: container?.status || 'open',
     estimatedArrivalLocal: isoToDatetimeLocal(container?.estimatedArrivalAt),
     isDefault: Boolean(container?.isDefault),
-    maxWeight: container?.maxWeight ?? '',
-    maxPackages: container?.maxPackages ?? '',
+    maxPackages: container?.maxPackages ?? 220,
     shipperName: shipperSaved?.form?.shipperName ?? '',
     shipperId: shipperSaved?.form?.shipperId ?? '',
     address: shipperSaved?.form?.address ?? '',
@@ -912,10 +852,9 @@ function ContainerFormModal({ container, onSave, onClose, containers = [] }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
-    const maxWeight = Number(form.maxWeight);
     const maxPackages = Number(form.maxPackages);
-    if (!(maxWeight > 0) || !(maxPackages > 0)) {
-      setError('Max weight and max packages must be positive numbers');
+    if (!(maxPackages > 0)) {
+      setError('Max packages must be a positive number');
       return;
     }
     setSaving(true);
@@ -930,7 +869,6 @@ function ContainerFormModal({ container, onSave, onClose, containers = [] }) {
         status: form.status || 'open',
         estimatedArrivalAt: datetimeLocalToIso(form.estimatedArrivalLocal),
         isDefault: form.isDefault,
-        maxWeight,
         maxPackages,
       };
       const res = await fetch(url, {
@@ -1083,21 +1021,6 @@ function ContainerFormModal({ container, onSave, onClose, containers = [] }) {
           </div>
           <div>
             <label className="label">
-              Max weight (kg) *
-            </label>
-            <input
-              name="maxWeight"
-              type="number"
-              min="1"
-              value={form.maxWeight}
-              onChange={handleChange}
-              placeholder="100"
-              className="input-field"
-              required
-            />
-          </div>
-          <div>
-            <label className="label">
               Max packages *
             </label>
             <input
@@ -1106,7 +1029,7 @@ function ContainerFormModal({ container, onSave, onClose, containers = [] }) {
               min="1"
               value={form.maxPackages}
               onChange={handleChange}
-              placeholder="50"
+              placeholder="220"
               className="input-field"
               required
             />
@@ -1461,7 +1384,7 @@ export default function ContainersPanel() {
     return rows;
   };
 
-  const exportContainer = (container, exportType, fileType) => {
+  const exportContainer = (container, exportType) => {
     const isCourier = exportType === 'courier';
     const rows = isCourier ? getContainerExportRowsCourier(container) : getContainerExportRowsCustoms(container);
     const containerName = container.name || container.id;
@@ -1475,67 +1398,25 @@ export default function ContainersPanel() {
       return s;
     };
 
-    if (fileType === 'excel') {
-      const csvExportDate = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
-      const headers = isCourier
-        ? ['Package ID', 'Recipient Name', 'Recipient Phone', 'Recipient Address', 'Sender Name', 'Sender Phone', 'Weight (kg)']
-        : ['Package ID', 'Description', 'Weight (kg)'];
-      const csvLines = [`Date: ${csvExportDate}`, headers.map(escapeCsv).join(',')];
-      rows.forEach((r) => {
-        const cells = isCourier
-          ? [r.packageId, r.receiverName, r.receiverPhone, r.receiverAddress, r.senderName, r.senderPhone, r.weight]
-          : [r.packageId, r.description, r.weight];
-        csvLines.push(cells.map(escapeCsv).join(','));
-      });
-      const csv = '\uFEFF' + csvLines.join('\n');
-      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `container-${containerName}-${suffix}.csv`;
-      a.click();
-      URL.revokeObjectURL(url);
-    } else {
-      const doc = new jsPDF({ orientation: 'landscape' });
-      const exportDate = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
-      doc.setFontSize(9);
-      doc.setTextColor(100, 100, 100);
-      doc.text(`Date: ${exportDate}`, 14, 8);
-      doc.setFontSize(14);
-      doc.setTextColor(0, 0, 0);
-      doc.text(`Container: ${containerName} (${suffix})`, 14, 18);
-      doc.setFontSize(9);
-      const headers = isCourier
-        ? ['Package ID', 'Recipient', 'Recipient Phone', 'Recipient Address', 'Sender', 'Sender Phone', 'Weight']
-        : ['Package ID', 'Description', 'Weight (kg)'];
-      const colWidths = isCourier
-        ? [28, 32, 28, 55, 32, 28, 22]
-        : [45, 100, 30];
-      let y = 22;
-      doc.setFillColor(240, 240, 240);
-      doc.rect(14, y - 5, colWidths.reduce((a, b) => a + b, 0) + 10, 8, 'F');
-      doc.setFont('helvetica', 'bold');
-      headers.forEach((h, i) => {
-        doc.text(h, 14 + colWidths.slice(0, i).reduce((a, b) => a + b, 0) + 5, y);
-      });
-      doc.setFont('helvetica', 'normal');
-      y += 8;
-      rows.forEach((r) => {
-        if (y > 190) {
-          doc.addPage('landscape');
-          y = 20;
-        }
-        const cells = isCourier
-          ? [r.packageId, r.receiverName, r.receiverPhone, r.receiverAddress, r.senderName, r.senderPhone, String(r.weight)]
-          : [r.packageId, r.description, String(r.weight)];
-        cells.forEach((cell, i) => {
-          const text = String(cell).substring(0, 35);
-          doc.text(text, 14 + colWidths.slice(0, i).reduce((a, b) => a + b, 0) + 5, y);
-        });
-        y += 6;
-      });
-      doc.save(`container-${containerName}-${suffix}.pdf`);
-    }
+    const csvExportDate = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    const headers = isCourier
+      ? ['Package ID', 'Recipient Name', 'Recipient Phone', 'Recipient Address', 'Sender Name', 'Sender Phone', 'Weight (kg)']
+      : ['Package ID', 'Description', 'Weight (kg)'];
+    const csvLines = [`Date: ${csvExportDate}`, headers.map(escapeCsv).join(',')];
+    rows.forEach((r) => {
+      const cells = isCourier
+        ? [r.packageId, r.receiverName, r.receiverPhone, r.receiverAddress, r.senderName, r.senderPhone, r.weight]
+        : [r.packageId, r.description, r.weight];
+      csvLines.push(cells.map(escapeCsv).join(','));
+    });
+    const csv = '\uFEFF' + csvLines.join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `container-${containerName}-${suffix}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
     setExportModalContainer(null);
   };
 
@@ -1621,7 +1502,6 @@ export default function ContainersPanel() {
                   <th>Country</th>
                   <th>Status</th>
                   <th>Est. arrival</th>
-                  <th>Max weight</th>
                   <th>Max packages</th>
                   <th>Current packages</th>
                   <th>Current weight</th>
@@ -1657,12 +1537,6 @@ export default function ContainersPanel() {
                     </td>
                     <td className="text-sm text-slate-700 whitespace-nowrap">
                       {formatEstimatedArrival(c.estimatedArrivalAt)}
-                    </td>
-                    <td>
-                      <span className="inline-flex items-center justify-center gap-1 text-sm font-medium text-slate-700">
-                        <Weight className="w-4 h-4 text-slate-400" />
-                        {c.maxWeight} kg
-                      </span>
                     </td>
                     <td>
                       <span className="inline-flex items-center justify-center gap-1 text-sm font-medium text-slate-700">
@@ -1768,8 +1642,7 @@ export default function ContainersPanel() {
 
       {exportModalContainer && (
         <ExportOptionsModal
-          container={exportModalContainer}
-          onExport={(exportType, fileType) => exportContainer(exportModalContainer, exportType, fileType)}
+          onExport={(exportType) => exportContainer(exportModalContainer, exportType)}
           onClose={() => setExportModalContainer(null)}
         />
       )}

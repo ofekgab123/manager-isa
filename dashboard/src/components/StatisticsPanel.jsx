@@ -144,7 +144,7 @@ export default function StatisticsPanel({ missions = [], affiliates = [], onRefr
       if (filterType && m.type !== filterType) return false;
       if (filterStatus && m.status !== filterStatus) return false;
       if (filterCreatedBy && m.createdBy !== filterCreatedBy) return false;
-      if (filterAffiliate && m.affiliateName !== filterAffiliate) return false;
+      if (filterAffiliate && (m.affiliateName !== filterAffiliate || m.type !== 'pickup')) return false;
       if (filterDateFrom && m.createdAt && new Date(m.createdAt) < new Date(filterDateFrom))
         return false;
       if (
@@ -217,7 +217,7 @@ export default function StatisticsPanel({ missions = [], affiliates = [], onRefr
   const byAffiliate = useMemo(() => {
     const counts = {};
     filtered.forEach((m) => {
-      if (m.affiliateName) counts[m.affiliateName] = (counts[m.affiliateName] || 0) + 1;
+      if (m.affiliateName && m.type === 'pickup') counts[m.affiliateName] = (counts[m.affiliateName] || 0) + 1;
     });
     return Object.entries(counts)
       .map(([k, v]) => ({ name: k, missions: v }))
@@ -256,7 +256,7 @@ export default function StatisticsPanel({ missions = [], affiliates = [], onRefr
   );
 
   const affiliateOrderCount = useMemo(
-    () => filtered.filter((m) => m.affiliateName).length,
+    () => filtered.filter((m) => m.affiliateName && m.type === 'pickup').length,
     [filtered],
   );
 

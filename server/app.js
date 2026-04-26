@@ -3,9 +3,12 @@ import cors from 'cors';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import pool from './db.js';
-import { readOrders, writeOrders, readAffiliates, writeAffiliates, readMissions, writeMissions, readUsers, writeUsers, readReceivers, writeReceivers, readContainers, writeContainers, readParcelContentTypes, writeParcelContentTypes, containerCountryKey } from './storage.js';
+import { readOrders, writeOrders, readAffiliates, writeAffiliates, readMissions, writeMissions, updateMissionsData, deleteMissionsById, readUsers, writeUsers, readReceivers, writeReceivers, readContainers, writeContainers, readParcelContentTypes, writeParcelContentTypes, containerCountryKey } from './storage.js';
+import { israeliMobileKey } from './phoneKey.js';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'isa-manager-jwt-secret-key';
+/** Shared with isa-express-web (VITE_MANAGER_SERVICE_KEY). Bearer value must match. Legacy: VITE_CUSTOMER_SITE_API_KEY in server .env. */
+const SERVICE_KEY = (process.env.MANAGER_SERVICE_KEY || process.env.VITE_CUSTOMER_SITE_API_KEY || '').trim();
 
 const app = express();
 
@@ -21,6 +24,49 @@ function resolveDefaultPickupContainerId(containersList, bodyCountry) {
   }
   const legacy = containersList.find((c) => c.isDefault);
   return legacy ? legacy.id : null;
+}
+
+/** auth_users.country (India / Thailand) → mission.shippingDestination id */
+function userAuthCountryToShippingDestId(country) {
+  if (country == null || String(country).trim() === '') return null;
+  const s = String(country).trim().toLowerCase();
+  if (s === 'india') return 'india';
+  if (s === 'thailand') return 'thailand';
+  return null;
+}
+
+/**
+ * empty_box: visible when shippingDestination matches the user’s country (customer site sends india/thailand).
+ * pickup: visible when container is in the user’s country (containerId in set).
+ */
+function missionVisibleForUserCountry(m, userCountry, containerIdsForUser) {
+  if (!userCountry) return true;
+  const wantDest = userAuthCountryToShippingDestId(userCountry);
+  if (m.type === 'empty_box') {
+    if (!wantDest) return false;
+    return m.shippingDestination === wantDest;
+  }
+  if (m.type === 'pickup') {
+    if (!m.containerId) return false;
+    return containerIdsForUser.has(m.containerId);
+  }
+  return false;
+}
+
+async function filterMissionsForCountryUser(missions, user) {
+  if (!user?.country || user.isAdmin) return missions;
+  const containers = await readContainers();
+  const ids = new Set(containers.filter((c) => c.country === user.country).map((c) => c.id));
+  return missions.filter((m) => missionVisibleForUserCountry(m, user.country, ids));
+}
+
+async function assertMissionAccessForCountryUser(mission, user) {
+  if (!user?.country || user.isAdmin) return;
+  const containers = await readContainers();
+  const ids = new Set(containers.filter((c) => c.country === user.country).map((c) => c.id));
+  if (!missionVisibleForUserCountry(mission, user.country, ids)) {
+    throw new Error('FORBIDDEN_MISSION');
+  }
 }
 
 /** Customer empty-box flow: eventual ship-to (India / Thailand) — same ids as isa-express-web */
@@ -59,17 +105,32 @@ app.use(express.json());
 // ─── Auth middleware ───────────────────────────────────────────────────────────
 
 function requireAuth(req, res, next) {
-  // Allow unauthenticated POST /api/missions for customer form submissions (from isa-psi-six)
-  if (req.method === 'POST' && req.path === '/api/missions') {
+  // Under app.use('/api', …) req.path is e.g. /missions, not /api/missions
+  if (req.method === 'POST' && req.path === '/missions') {
     const createdBy = req.body?.createdBy ?? 'customer';
     if (createdBy === 'customer') return next();
+  }
+  // Public: orders filtered by customer phone (last 9 digits) — customer home / login checks (isa-express-web)
+  if (req.method === 'GET' && req.path === '/orders' && req.query.customerPhone) {
+    return next();
   }
   const header = req.headers['authorization'];
   if (!header || !header.startsWith('Bearer ')) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
+  const token = header.slice(7).trim();
+  if (SERVICE_KEY && token && token === SERVICE_KEY) {
+    req.user = {
+      id: 'service-isa-express',
+      username: 'isa-express',
+      isAdmin: false,
+      country: null,
+      service: true,
+    };
+    return next();
+  }
   try {
-    req.user = jwt.verify(header.slice(7), JWT_SECRET);
+    req.user = jwt.verify(token, JWT_SECRET);
     next();
   } catch {
     return res.status(401).json({ error: 'Invalid or expired token' });
@@ -183,10 +244,12 @@ app.delete('/api/auth/users/:id', requireAuth, requireAdmin, async (req, res) =>
 
 app.get('/api/customers/by-phone', async (req, res) => {
   try {
-    const phone = (req.query.phone || '').replace(/\D/g, '');
-    if (!phone || phone.length < 7) return res.json(null);
+    const qDigits = (req.query.phone || '').replace(/\D/g, '');
+    if (qDigits.length < 7) return res.json(null);
+    const qKey = israeliMobileKey(req.query.phone);
+    if (!qKey) return res.json(null);
     const users = await readUsers();
-    const match = users.find((u) => (u.phone || '').replace(/\D/g, '') === phone);
+    const match = users.find((u) => israeliMobileKey(u.phone) === qKey);
     res.json(match || null);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -231,9 +294,9 @@ app.post('/api/promo/validate', async (req, res) => {
 });
 
 function phoneTailDigits(phone) {
-  const d = String(phone || '').replace(/\D/g, '');
-  if (d.length < 7) return null;
-  return d.slice(-9);
+  const k = israeliMobileKey(phone);
+  if (!k || k.length < 7) return null;
+  return k;
 }
 
 // ─── Public: affiliate for returning customer (by phone) — no manual promo code ─
@@ -255,7 +318,7 @@ app.post('/api/affiliates/auto-for-phone', async (req, res) => {
 
     for (const m of missions) {
       if (phoneTailDigits(m.customerPhone) !== tail) continue;
-      if (!m.affiliateName) continue;
+      if (m.type !== 'pickup' || !m.affiliateName) continue;
       const aff = affiliates.find((a) => a.name === m.affiliateName && a.active !== false);
       if (aff) return res.json(payload(aff));
     }
@@ -275,6 +338,57 @@ app.post('/api/affiliates/auto-for-phone', async (req, res) => {
   }
 });
 
+/**
+ * When a customer mission is created, store that address on the user profile (same phone),
+ * so /api/customers/by-phone returns the last order location. Does not depend on a separate upsert from the site.
+ */
+async function mergeCustomerAddressFromCustomerMission(body, missionType) {
+  const phone = body.customerPhone;
+  const key = israeliMobileKey(phone);
+  if (!key || key.length < 7) return;
+  const addr = missionType === 'pickup' ? body.senderAddress : body.address;
+  if (!addr || typeof addr !== 'object') return;
+  const hasGeo = addr.lat != null && addr.lng != null;
+  const hasText = String(addr.displayAddress || addr.city || addr.street || '').trim();
+  if (!hasGeo && !hasText) return;
+
+  const fullName =
+    (body.fullName && String(body.fullName).trim()) ||
+    [body.firstName, body.lastName].filter(Boolean).join(' ').trim() ||
+    '';
+
+  const users = await readUsers();
+  const idx = users.findIndex((u) => israeliMobileKey(u.phone) === key);
+  if (idx !== -1) {
+    users[idx] = {
+      ...users[idx],
+      fullName: fullName || users[idx].fullName,
+      address: { ...addr },
+    };
+  } else {
+    users.unshift({
+      id: `USR-${Date.now()}`,
+      fullName: fullName,
+      phone: body.customerPhone,
+      address: { ...addr },
+      notes: '',
+      createdAt: new Date().toISOString(),
+    });
+  }
+  await writeUsers(users);
+}
+
+// Affiliate discount applies only to pickup missions
+function affiliateFieldsForMissionType(missionType, body) {
+  if (missionType !== 'pickup') {
+    return { affiliateName: null, discountAmount: null };
+  }
+  return {
+    affiliateName: body.affiliateName || null,
+    discountAmount: body.discountAmount != null ? body.discountAmount : null,
+  };
+}
+
 // ─── Public: POST /api/missions (no auth - for customer-facing forms) ──────────
 
 app.post('/api/missions', async (req, res) => {
@@ -283,6 +397,7 @@ app.post('/api/missions', async (req, res) => {
     const body = req.body;
     const validTypes = ['empty_box', 'pickup'];
     const missionType = validTypes.includes(body.type) ? body.type : 'pickup';
+    const { affiliateName, discountAmount } = affiliateFieldsForMissionType(missionType, body);
     let pickupContainerId = null;
     if (missionType === 'pickup') {
       if (Object.prototype.hasOwnProperty.call(body, 'containerId')) {
@@ -314,8 +429,8 @@ app.post('/api/missions', async (req, res) => {
       pickupBoxWeights: Array.isArray(body.pickupBoxWeights) ? body.pickupBoxWeights : null,
       deliveries: Array.isArray(body.deliveries) ? body.deliveries : undefined,
       notes: body.notes || body.orderNotes || null,
-      affiliateName: body.affiliateName || null,
-      discountAmount: body.discountAmount || null,
+      affiliateName,
+      discountAmount,
       linkedEmptyBoxMissionId: body.linkedEmptyBoxMissionId || null,
       containerId: missionType === 'pickup' ? pickupContainerId : null,
       shippingDestination: normalizeShippingDestination(missionType, body.shippingDestination),
@@ -323,10 +438,18 @@ app.post('/api/missions', async (req, res) => {
     missions.unshift(newMission);
     await writeMissions(missions);
 
-    if (body.affiliateName) {
+    if (!body.createdBy || body.createdBy === 'customer') {
+      try {
+        await mergeCustomerAddressFromCustomerMission(body, missionType);
+      } catch {
+        /* mission already stored */
+      }
+    }
+
+    if (affiliateName) {
       try {
         const affiliates = await readAffiliates();
-        const idx = affiliates.findIndex((a) => a.name === body.affiliateName);
+        const idx = affiliates.findIndex((a) => a.name === affiliateName);
         if (idx !== -1) {
           affiliates[idx] = { ...affiliates[idx], orderCount: (affiliates[idx].orderCount || 0) + 1 };
           await writeAffiliates(affiliates);
@@ -445,8 +568,10 @@ app.get('/api/orders', async (req, res) => {
     if (contacted === 'true') filtered = filtered.filter((o) => o.contacted === true);
     if (contacted === 'false') filtered = filtered.filter((o) => !o.contacted);
     if (customerPhone) {
-      const phone = customerPhone.replace(/\D/g, '');
-      filtered = filtered.filter((o) => (o.customerPhone || '').replace(/\D/g, '') === phone);
+      const qk = israeliMobileKey(customerPhone);
+      filtered = filtered.filter(
+        (o) => israeliMobileKey(o.customerPhone) === qk
+      );
     }
     res.json(filtered);
   } catch (err) {
@@ -512,14 +637,20 @@ app.post('/api/orders', async (req, res) => {
       createdBy: body.createdBy || 'customer',
       contacted: body.contacted ?? false,
     };
+    if (newOrder.type !== 'pickup') {
+      newOrder.affiliateName = null;
+      newOrder.affiliateSlug = null;
+      newOrder.discountAmount = null;
+      newOrder.promoCode = null;
+    }
     orders.unshift(newOrder);
     await writeOrders(orders);
 
-    // Increment affiliate orderCount when order is associated with an affiliate
-    if (body.affiliateName) {
+    // Increment affiliate orderCount when order is associated with an affiliate (pickup only)
+    if (newOrder.type === 'pickup' && newOrder.affiliateName) {
       try {
         const affiliates = await readAffiliates();
-        const idx = affiliates.findIndex((a) => a.name === body.affiliateName);
+        const idx = affiliates.findIndex((a) => a.name === newOrder.affiliateName);
         if (idx !== -1) {
           affiliates[idx] = { ...affiliates[idx], orderCount: (affiliates[idx].orderCount || 0) + 1 };
           await writeAffiliates(affiliates);
@@ -538,7 +669,14 @@ app.patch('/api/orders/:id', async (req, res) => {
     const orders = await readOrders();
     const idx = orders.findIndex((o) => o.id === req.params.id);
     if (idx === -1) return res.status(404).json({ error: 'Order not found' });
-    orders[idx] = { ...orders[idx], ...req.body };
+    let merged = { ...orders[idx], ...req.body };
+    if (merged.type !== 'pickup') {
+      merged.affiliateName = null;
+      merged.affiliateSlug = null;
+      merged.discountAmount = null;
+      merged.promoCode = null;
+    }
+    orders[idx] = merged;
     await writeOrders(orders);
     res.json(orders[idx]);
   } catch (err) {
@@ -641,11 +779,7 @@ const VALID_MISSION_TOP_TYPES = ['empty_box', 'pickup'];
 app.get('/api/missions/stats', async (req, res) => {
   try {
     let missions = await readMissions();
-    if (req.user?.country) {
-      const containers = await readContainers();
-      const ids = new Set(containers.filter((c) => c.country === req.user.country).map((c) => c.id));
-      missions = missions.filter((m) => m.containerId && ids.has(m.containerId));
-    }
+    missions = await filterMissionsForCountryUser(missions, req.user);
     const byStatus = {};
     const byType = {};
     const byCreatedBy = {};
@@ -668,19 +802,15 @@ app.get('/api/missions/stats', async (req, res) => {
 app.get('/api/missions', async (req, res) => {
   try {
     let missions = await readMissions();
-    if (req.user?.country) {
-      const containers = await readContainers();
-      const ids = new Set(containers.filter((c) => c.country === req.user.country).map((c) => c.id));
-      missions = missions.filter((m) => m.containerId && ids.has(m.containerId));
-    }
+    missions = await filterMissionsForCountryUser(missions, req.user);
     const { status, type, createdBy, customerPhone, affiliate, linkedEmptyBoxMissionId, containerId } = req.query;
     let filtered = missions;
     if (status) filtered = filtered.filter((m) => m.status === status);
     if (type) filtered = filtered.filter((m) => m.type === type);
     if (createdBy) filtered = filtered.filter((m) => m.createdBy === createdBy);
     if (customerPhone) {
-      const phone = customerPhone.replace(/\D/g, '');
-      filtered = filtered.filter((m) => (m.customerPhone || '').replace(/\D/g, '') === phone);
+      const key = israeliMobileKey(customerPhone);
+      filtered = filtered.filter((m) => israeliMobileKey(m.customerPhone) === key);
     }
     if (affiliate) filtered = filtered.filter((m) => m.affiliateName === affiliate);
     if (linkedEmptyBoxMissionId) filtered = filtered.filter((m) => m.linkedEmptyBoxMissionId === linkedEmptyBoxMissionId);
@@ -702,8 +832,10 @@ app.get('/api/missions/:id', async (req, res) => {
     const missions = await readMissions();
     const mission = missions.find((m) => m.id === req.params.id);
     if (!mission) return res.status(404).json({ error: 'Mission not found' });
+    await assertMissionAccessForCountryUser(mission, req.user);
     res.json(mission);
   } catch (err) {
+    if (err.message === 'FORBIDDEN_MISSION') return res.status(404).json({ error: 'Mission not found' });
     res.status(500).json({ error: err.message });
   }
 });
@@ -719,6 +851,7 @@ app.patch('/api/missions/:id', async (req, res) => {
     const missions = await readMissions();
     const idx = missions.findIndex((m) => m.id === req.params.id);
     if (idx === -1) return res.status(404).json({ error: 'Mission not found' });
+    await assertMissionAccessForCountryUser(missions[idx], req.user);
     const updates = { ...req.body };
     if (updates.containerId !== undefined && missions[idx].type !== 'pickup') {
       updates.containerId = null;
@@ -730,6 +863,10 @@ app.patch('/api/missions/:id', async (req, res) => {
       merged.shippingDestination = Object.prototype.hasOwnProperty.call(updates, 'shippingDestination')
         ? normalizeShippingDestination('empty_box', updates.shippingDestination)
         : normalizeShippingDestination('empty_box', merged.shippingDestination);
+    }
+    if (merged.type !== 'pickup') {
+      merged.affiliateName = null;
+      merged.discountAmount = null;
     }
     if (merged.type === 'pickup' && merged.linkedEmptyBoxMissionId) {
       const ebId = merged.linkedEmptyBoxMissionId;
@@ -749,9 +886,11 @@ app.patch('/api/missions/:id', async (req, res) => {
       }
     }
     missions[idx] = merged;
-    await writeMissions(missions);
-    res.json(missions[idx]);
+    await updateMissionsData(merged.id, merged);
+    res.json(merged);
   } catch (err) {
+    if (err.message === 'FORBIDDEN_MISSION') return res.status(404).json({ error: 'Mission not found' });
+    if (err.message === 'Mission not found') return res.status(404).json({ error: 'Mission not found' });
     res.status(500).json({ error: err.message });
   }
 });
@@ -759,11 +898,14 @@ app.patch('/api/missions/:id', async (req, res) => {
 app.delete('/api/missions/:id', async (req, res) => {
   try {
     const missions = await readMissions();
-    const filtered = missions.filter((m) => m.id !== req.params.id);
-    if (filtered.length === missions.length) return res.status(404).json({ error: 'Mission not found' });
-    await writeMissions(filtered);
+    const mission = missions.find((m) => m.id === req.params.id);
+    if (!mission) return res.status(404).json({ error: 'Mission not found' });
+    await assertMissionAccessForCountryUser(mission, req.user);
+    await deleteMissionsById(req.params.id);
     res.json({ success: true });
   } catch (err) {
+    if (err.message === 'FORBIDDEN_MISSION') return res.status(404).json({ error: 'Mission not found' });
+    if (err.message === 'Mission not found') return res.status(404).json({ error: 'Mission not found' });
     res.status(500).json({ error: err.message });
   }
 });
@@ -789,7 +931,7 @@ function parseEstimatedArrivalAt(bodyValue) {
 app.get('/api/containers', async (req, res) => {
   try {
     let containers = await readContainers();
-    if (req.user?.country) {
+    if (req.user?.country && !req.user.isAdmin) {
       containers = containers.filter((c) => c.country === req.user.country);
     }
     res.json(containers);
@@ -802,10 +944,11 @@ app.post('/api/containers', async (req, res) => {
   try {
     const containers = await readContainers();
     const body = req.body;
-    const maxWeight = Number(body.maxWeight);
-    const maxPackages = Number(body.maxPackages);
-    if (!(maxWeight > 0) || !(maxPackages > 0)) {
-      return res.status(400).json({ error: 'maxWeight and maxPackages must be positive numbers' });
+    const hasMaxPackages =
+      body.maxPackages !== undefined && body.maxPackages !== null && String(body.maxPackages).trim() !== '';
+    const maxPackages = hasMaxPackages ? Number(body.maxPackages) : 220;
+    if (!(maxPackages > 0)) {
+      return res.status(400).json({ error: 'maxPackages must be a positive number' });
     }
     const status = normalizeContainerStatusInput(body.status);
     if (status === null) {
@@ -822,7 +965,6 @@ app.post('/api/containers', async (req, res) => {
       id: `CNT-${Date.now()}`,
       name: body.name || null,
       country: body.country || null,
-      maxWeight,
       maxPackages,
       status,
       estimatedArrivalAt: arrivalParsed?.iso ?? null,
@@ -854,11 +996,6 @@ app.patch('/api/containers/:id', async (req, res) => {
     const updated = { ...containers[idx] };
     if (body.name !== undefined) updated.name = body.name || null;
     if (body.country !== undefined) updated.country = body.country || null;
-    if (body.maxWeight !== undefined) {
-      const v = Number(body.maxWeight);
-      if (!(v > 0)) return res.status(400).json({ error: 'maxWeight must be a positive number' });
-      updated.maxWeight = v;
-    }
     if (body.maxPackages !== undefined) {
       const v = Number(body.maxPackages);
       if (!(v > 0)) return res.status(400).json({ error: 'maxPackages must be a positive number' });
@@ -883,6 +1020,7 @@ app.patch('/api/containers/:id', async (req, res) => {
     if (body.isDefault !== undefined) {
       updated.isDefault = Boolean(body.isDefault);
     }
+    delete updated.maxWeight;
 
     if (body.country !== undefined && updated.isDefault) {
       const countryKey = containerCountryKey(updated.country);
@@ -940,6 +1078,12 @@ app.delete('/api/containers/:id', async (req, res) => {
 
 // ─── Parcel Content Types ──────────────────────────────────────────────────────
 
+function normalizeParcelTypeValueIls(v) {
+  if (v == null || v === '') return 0;
+  const n = Number(v);
+  return Number.isFinite(n) && n >= 0 ? n : 0;
+}
+
 app.get('/api/parcel-content-types', async (req, res) => {
   try {
     const types = await readParcelContentTypes();
@@ -952,13 +1096,14 @@ app.get('/api/parcel-content-types', async (req, res) => {
 app.post('/api/parcel-content-types', async (req, res) => {
   try {
     const types = await readParcelContentTypes();
-    const { label } = req.body;
+    const { label, valueIls } = req.body;
     if (!label || !String(label).trim()) {
       return res.status(400).json({ error: 'label is required' });
     }
     const newType = {
       id: `pct-${Date.now()}`,
       label: String(label).trim(),
+      valueIls: normalizeParcelTypeValueIls(valueIls),
     };
     types.push(newType);
     await writeParcelContentTypes(types);
@@ -973,9 +1118,10 @@ app.patch('/api/parcel-content-types/:id', async (req, res) => {
     const types = await readParcelContentTypes();
     const idx = types.findIndex((t) => t.id === req.params.id);
     if (idx === -1) return res.status(404).json({ error: 'Parcel content type not found' });
-    const { label } = req.body;
+    const { label, valueIls } = req.body;
     const updated = { ...types[idx] };
     if (label !== undefined) updated.label = String(label).trim();
+    if (valueIls !== undefined) updated.valueIls = normalizeParcelTypeValueIls(valueIls);
     types[idx] = updated;
     await writeParcelContentTypes(types);
     res.json(updated);
@@ -1092,9 +1238,9 @@ app.post('/api/affiliates/:id/customers/import', async (req, res) => {
     const merged = [...existing];
 
     for (const c of customers) {
-      const phone = (String(c.phone || '')).replace(/\D/g, '');
-      if (!phone) continue;
-      const alreadyExists = merged.some((e) => (String(e.phone || '')).replace(/\D/g, '') === phone);
+      const cKey = israeliMobileKey(c.phone);
+      if (!cKey) continue;
+      const alreadyExists = merged.some((e) => israeliMobileKey(e.phone) === cKey);
       if (!alreadyExists) {
         merged.push({
           id: `IC-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
@@ -1136,18 +1282,16 @@ app.post('/api/users', async (req, res) => {
   try {
     const users = await readUsers();
     const body = req.body;
-    const normalizedPhone = (body.phone || '').replace(/\D/g, '');
+    const key = israeliMobileKey(body.phone);
 
-    if (normalizedPhone) {
-      const existingIdx = users.findIndex(
-        (u) => (u.phone || '').replace(/\D/g, '') === normalizedPhone
-      );
+    if (key) {
+      const existingIdx = users.findIndex((u) => israeliMobileKey(u.phone) === key);
       if (existingIdx !== -1) {
         const updated = {
           ...users[existingIdx],
-          fullName: body.fullName || users[existingIdx].fullName,
-          address: body.address || users[existingIdx].address,
-          notes: body.notes || users[existingIdx].notes,
+          fullName: body.fullName !== undefined ? body.fullName : users[existingIdx].fullName,
+          address: body.address !== undefined ? body.address : users[existingIdx].address,
+          notes: body.notes !== undefined ? body.notes : users[existingIdx].notes,
         };
         users[existingIdx] = updated;
         await writeUsers(users);
@@ -1215,10 +1359,12 @@ app.get('/api/receivers', async (req, res) => {
 
 app.get('/api/receivers/by-phone', async (req, res) => {
   try {
-    const phone = (req.query.phone || '').replace(/\D/g, '');
-    if (!phone || phone.length < 7) return res.json(null);
+    const qDigits = (req.query.phone || '').replace(/\D/g, '');
+    if (!qDigits || qDigits.length < 7) return res.json(null);
+    const key = israeliMobileKey(req.query.phone);
+    if (!key) return res.json(null);
     const receivers = await readReceivers();
-    const match = receivers.find((r) => (r.phone || '').replace(/\D/g, '') === phone);
+    const match = receivers.find((r) => israeliMobileKey(r.phone) === key);
     res.json(match || null);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1229,12 +1375,10 @@ app.post('/api/receivers', async (req, res) => {
   try {
     const receivers = await readReceivers();
     const body = req.body;
-    const normalizedPhone = (body.phone || '').replace(/\D/g, '');
+    const key = israeliMobileKey(body.phone);
 
-    if (normalizedPhone) {
-      const existingIdx = receivers.findIndex(
-        (r) => (r.phone || '').replace(/\D/g, '') === normalizedPhone
-      );
+    if (key) {
+      const existingIdx = receivers.findIndex((r) => israeliMobileKey(r.phone) === key);
       if (existingIdx !== -1) {
         const updated = {
           ...receivers[existingIdx],

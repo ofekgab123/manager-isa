@@ -146,7 +146,16 @@ export default function OrderDetails({ order, onSave, onClose, onDelete }) {
       const [parent, key] = path.split('.');
       setEdit((p) => ({ ...p, [parent]: { ...(p[parent] || {}), [key]: value } }));
     } else {
-      setEdit((p) => ({ ...p, [path]: value }));
+      setEdit((p) => {
+        const next = { ...p, [path]: value };
+        if (path === 'type' && value !== 'pickup') {
+          next.affiliateName = null;
+          next.affiliateSlug = null;
+          next.discountAmount = null;
+          next.promoCode = null;
+        }
+        return next;
+      });
     }
   };
 
@@ -212,6 +221,7 @@ export default function OrderDetails({ order, onSave, onClose, onDelete }) {
         <EditableField label="Customer phone" value={edit.customerPhone} onChange={(v) => update('customerPhone', v)} type="tel" />
         <EditableField label="Scheduled for" value={edit.scheduledFor} onChange={(v) => update('scheduledFor', v)} />
         <EditableField label="Assigned to" value={edit.assignedTo} onChange={(v) => update('assignedTo', v)} />
+        {edit.type === 'pickup' && (
         <div>
           <label className="block text-xs font-medium text-slate-500 mb-1 flex items-center gap-1">
             <Users className="w-3.5 h-3.5" /> Affiliate
@@ -229,7 +239,7 @@ export default function OrderDetails({ order, onSave, onClose, onDelete }) {
                   discountAmount: p.discountAmount || selected.discountAmount,
                 }));
               } else {
-                setEdit((p) => ({ ...p, affiliateName: null, affiliateSlug: null }));
+                setEdit((p) => ({ ...p, affiliateName: null, affiliateSlug: null, discountAmount: null, promoCode: null }));
               }
             }}
             className="w-full px-3 py-2 border rounded-lg text-sm"
@@ -240,6 +250,7 @@ export default function OrderDetails({ order, onSave, onClose, onDelete }) {
             ))}
           </select>
         </div>
+        )}
         <div>
           <label className="block text-xs font-medium text-slate-500 mb-1">Contacted</label>
           <select

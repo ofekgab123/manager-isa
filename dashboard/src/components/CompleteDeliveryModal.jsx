@@ -1,12 +1,15 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { X, Plus, Trash2, MapPin, CheckCircle, Truck, Package, AlertTriangle, Copy, Link2, Box, Pencil } from 'lucide-react';
 import AddressPicker from './AddressPicker';
 import PhoneInput from './PhoneInput';
+import { authCountryToDefaultPhoneCode } from '../authCountryUtils';
 import EmptyBoxMissionPickerModal from './EmptyBoxMissionPickerModal';
+import CollapsibleParcelContent from './CollapsibleParcelContent';
 import { API_BASE } from '../config';
+import { formatIls, sumAllDeliveriesContentsIls, valueIlsForTypeLabel } from '../parcelContentUtils';
 
 /* ─── Single delivery row ────────────────────────────────────── */
-function DeliveryRow({ row, idx, totalPickup, otherAssigned, onChange, onDelete, canDelete, parcelContentTypes }) {
+function DeliveryRow({ row, idx, totalPickup, otherAssigned, onChange, onDelete, canDelete, parcelContentTypes, receiverDefaultCode = '+972' }) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const lookupTimeoutRef = useRef(null);
   const maxForRow = totalPickup - otherAssigned;
@@ -75,6 +78,7 @@ function DeliveryRow({ row, idx, totalPickup, otherAssigned, onChange, onDelete,
         <div>
           <label className="label">Receiver phone</label>
           <PhoneInput
+            defaultCode={receiverDefaultCode}
             value={row.receiverPhone}
             onChange={handleReceiverPhoneChange}
             placeholder="501234567"
@@ -184,20 +188,29 @@ function DeliveryRow({ row, idx, totalPickup, otherAssigned, onChange, onDelete,
                   </div>
                   {/* Parcel content per box */}
                   <div className="mt-2 pt-2 border-t border-slate-200">
-                    <span className="block text-[10px] text-slate-500 font-semibold uppercase tracking-wide mb-1.5">Parcel content</span>
+                    <CollapsibleParcelContent
+                      defaultOpen
+                      title={(
+                        <span className="block text-[10px] text-slate-500 font-semibold uppercase tracking-wide">
+                          Parcel content
+                        </span>
+                      )}
+                    >
                     {((row.boxContents ?? [])[i] ?? []).map((item, j) => (
                       <div key={j} className="flex flex-wrap gap-2 mb-1.5">
                         <select
                           value={item.description || ''}
                           onChange={(e) => {
+                            const label = e.target.value;
+                            const unit = valueIlsForTypeLabel(parcelContentTypes, label);
                             const contents = [...(row.boxContents ?? [])];
                             if (!contents[i]) contents[i] = [];
                             contents[i] = contents[i].map((it, k) =>
-                              k === j ? { ...it, description: e.target.value } : it
+                              k === j ? { ...it, description: label, price: label ? unit : 0 } : it
                             );
                             onChange({ ...row, boxContents: contents });
                           }}
-                          className="select-field flex-1 min-w-[100px] !py-1.5"
+                          className="select-field flex-1 min-w-0 max-w-[12rem] !py-1.5"
                         >
                           <option value="">Select type</option>
                           {(parcelContentTypes ?? []).map((t) => (
@@ -217,7 +230,7 @@ function DeliveryRow({ row, idx, totalPickup, otherAssigned, onChange, onDelete,
                             onChange({ ...row, boxContents: contents });
                           }}
                           placeholder="qty"
-                          className="input-field w-14 !py-1.5"
+                          className="input-field w-[4.5rem] min-w-[4.5rem] shrink-0 !py-1.5"
                         />
                         <input
                           type="number"
@@ -233,7 +246,7 @@ function DeliveryRow({ row, idx, totalPickup, otherAssigned, onChange, onDelete,
                             onChange({ ...row, boxContents: contents });
                           }}
                           placeholder="₪"
-                          className="input-field w-16 !py-1.5"
+                          className="input-field w-[5rem] min-w-[5rem] shrink-0 !py-1.5"
                         />
                         <button
                           type="button"
@@ -261,6 +274,7 @@ function DeliveryRow({ row, idx, totalPickup, otherAssigned, onChange, onDelete,
                     >
                       <Plus className="w-3 h-3" /> Add item
                     </button>
+                    </CollapsibleParcelContent>
                   </div>
                 </div>
               ))}
@@ -273,7 +287,9 @@ function DeliveryRow({ row, idx, totalPickup, otherAssigned, onChange, onDelete,
 }
 
 /* ─── Main modal ─────────────────────────────────────────────── */
-export default function CompleteDeliveryModal({ isOpen, mission, onClose, onSaved }) {
+export default function CompleteDeliveryModal({ isOpen, mission, onClose, onSaved, authCountry = null }) {
+  const receiverDefaultCode = authCountryToDefaultPhoneCode(authCountry);
+
   const initialBoxCount =
     mission.pickupBoxCount ||
     (mission.boxSelection?.large || 0) + (mission.boxSelection?.small || 0) ||
@@ -368,6 +384,11 @@ export default function CompleteDeliveryModal({ isOpen, mission, onClose, onSave
       setLinkedEmptyBoxMissionId(mission.linkedEmptyBoxMissionId ?? null);
     }
   }, [isOpen, mission.linkedEmptyBoxMissionId]);
+
+  const deliveriesContentTotal = useMemo(
+    () => sumAllDeliveriesContentsIls(deliveries),
+    [deliveries]
+  );
 
   if (!isOpen) return null;
 
@@ -649,9 +670,16 @@ export default function CompleteDeliveryModal({ isOpen, mission, onClose, onSave
                   onDelete={() => removeRow(idx)}
                   canDelete={deliveries.length > 1}
                   parcelContentTypes={parcelContentTypes}
+                  receiverDefaultCode={receiverDefaultCode}
                 />
               );
             })}
+          </div>
+
+          <div className="flex justify-end px-1">
+            <span className="text-sm font-semibold text-slate-800">
+              סה״כ תוכן: {formatIls(deliveriesContentTotal)}
+            </span>
           </div>
 
           {/* Add address */}

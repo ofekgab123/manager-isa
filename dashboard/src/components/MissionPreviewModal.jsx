@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { X, User, MapPin, Package, Truck, Tag, FileText, Link2, Info, Plus, Globe } from 'lucide-react';
 import { API_BASE } from '../config';
+import CollapsibleParcelContent from './CollapsibleParcelContent';
+import { formatIls, sumAllDeliveriesContentsIls, sumBoxContentsIls } from '../parcelContentUtils';
 import { maxPickupLinksForEmptyBox } from '../pickerSlots';
 import { shippingDestinationLabel } from '../shippingDestinations';
 
@@ -313,39 +315,51 @@ export default function MissionPreviewModal({
                       )}
                       {(d.boxContents?.length > 0) && (
                         <div className="mt-2 pt-2 border-t border-slate-100">
-                          <p className="label mb-1">Parcel content</p>
-                          <div className="space-y-1">
-                            {d.boxContents.map((boxItems, bi) => {
-                              const items = Array.isArray(boxItems) ? boxItems : [];
-                              const str = items
-                                .filter((it) => it?.description)
-                                .map((it) => {
-                                  const base = `${it.description} ×${it.qty ?? 1}`;
-                                  const price = it.price != null && it.price !== '' && Number(it.price) > 0
-                                    ? ` ₪${Number(it.price).toLocaleString()}`
-                                    : '';
-                                  return base + price;
-                                })
-                                .join(', ');
-                              if (!str) return null;
-                              return (
-                                <div key={bi} className="text-xs text-slate-700">
-                                  <span className="font-medium text-slate-500">Box {bi + 1}:</span> {str}
-                                </div>
-                              );
-                            })}
-                          </div>
+                          <CollapsibleParcelContent
+                            title={<p className="label mb-0">Parcel content</p>}
+                            buttonClassName="flex items-center gap-1.5 w-full text-left rounded-lg hover:bg-slate-50 -mx-1 px-1 py-0.5 transition-colors"
+                          >
+                            <div className="space-y-1">
+                              {d.boxContents.map((boxItems, bi) => {
+                                const items = Array.isArray(boxItems) ? boxItems : [];
+                                const str = items
+                                  .filter((it) => it?.description)
+                                  .map((it) => {
+                                    const base = `${it.description} ×${it.qty ?? 1}`;
+                                    const price = it.price != null && it.price !== '' && Number(it.price) > 0
+                                      ? ` ₪${Number(it.price).toLocaleString()}`
+                                      : '';
+                                    return base + price;
+                                  })
+                                  .join(', ');
+                                if (!str) return null;
+                                return (
+                                  <div key={bi} className="text-xs text-slate-700">
+                                    <span className="font-medium text-slate-500">Box {bi + 1}:</span> {str}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                            <p className="text-xs font-semibold text-slate-800 mt-2 pt-2 border-t border-slate-100">
+                              Content total: {formatIls(sumBoxContentsIls(d.boxContents))}
+                            </p>
+                          </CollapsibleParcelContent>
                         </div>
                       )}
                     </div>
                   ))}
+                  {deliveries.length > 1 && (
+                    <p className="text-sm font-semibold text-slate-800 px-0.5 pt-1">
+                      All deliveries content total: {formatIls(sumAllDeliveriesContentsIls(deliveries))}
+                    </p>
+                  )}
                 </div>
               )}
             </PreviewSection>
           )}
 
-          {/* Affiliate */}
-          {mission.affiliateName && (
+          {/* Affiliate (pickup missions only) */}
+          {mission.type === 'pickup' && mission.affiliateName && (
             <PreviewSection icon={Tag} title="Affiliate">
               <PreviewRow label="Name" value={mission.affiliateName} />
               {mission.discountAmount != null && <PreviewRow label="Discount" value={`₪${mission.discountAmount}`} />}

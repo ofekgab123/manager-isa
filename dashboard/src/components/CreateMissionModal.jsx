@@ -1,11 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
-import { X, Package, Truck, MapPin, User, Home, CheckCircle, ChevronRight, ChevronLeft, Box, Plus, Minus, Link2, Globe } from 'lucide-react';
+import { X, Package, Truck, MapPin, User, Home, CheckCircle, ChevronRight, ChevronLeft, Box, Plus, Minus, Link2 } from 'lucide-react';
 import AddressPicker from './AddressPicker';
 import PhoneInput from './PhoneInput';
+import { authCountryToShippingDestination } from '../authCountryUtils';
 import { geocodeAddress } from '../utils/geocode';
 import { API_BASE } from '../config';
 import EmptyBoxMissionPickerModal from './EmptyBoxMissionPickerModal';
-import { SHIPPING_DESTINATIONS, shippingDestinationLabel } from '../shippingDestinations';
 
 const BOX_TYPES = [
   { id: 'large', label: 'ISA-BOX-70', sub: 'Large – 45×45×70 cm · up to 50 kg', icon: Box,     color: 'indigo' },
@@ -221,7 +221,6 @@ export default function CreateMissionModal({ isOpen, onClose, onCreated, authCou
   // pickup only: how many boxes to collect from customer (null = not yet set)
   const [pickupBoxCount, setPickupBoxCount] = useState(null);
   const [pickupBoxCountInput, setPickupBoxCountInput] = useState('');
-  const [shippingDestination, setShippingDestination] = useState('');
 
   /* ─── User autocomplete ──────────────────────────────── */
   const [allUsers, setAllUsers]           = useState([]);
@@ -297,7 +296,7 @@ export default function CreateMissionModal({ isOpen, onClose, onCreated, authCou
     if (!missionType) return false;
     if (step === 1) return form.fullName.trim() && form.israeliPhone.trim();
     if (step === 2) {
-      if (missionType === 'empty_box') return !!mapAddress && !!shippingDestination;
+      if (missionType === 'empty_box') return !!mapAddress;
       return !!mapAddress;
     }
     if (step === 3) {
@@ -366,10 +365,12 @@ export default function CreateMissionModal({ isOpen, onClose, onCreated, authCou
           pickupBoxCount: missionType === 'pickup' ? (pickupBoxCount ?? 0) : null,
           linkedEmptyBoxMissionId: missionType === 'pickup' && linkedEmptyBoxMission ? linkedEmptyBoxMission.id : null,
           createdBy: 'customer_service',
-          affiliateName: viaAffiliate && selectedAffiliate ? selectedAffiliate.name : null,
-          discountAmount: viaAffiliate && selectedAffiliate ? selectedAffiliate.discountAmount : null,
+          affiliateName: missionType === 'pickup' && viaAffiliate && selectedAffiliate ? selectedAffiliate.name : null,
+          discountAmount: missionType === 'pickup' && viaAffiliate && selectedAffiliate ? selectedAffiliate.discountAmount : null,
           ...(missionType === 'pickup' && authCountry ? { country: authCountry } : {}),
-          ...(missionType === 'empty_box' && shippingDestination ? { shippingDestination } : {}),
+          ...(missionType === 'empty_box' && authCountryToShippingDestination(authCountry)
+            ? { shippingDestination: authCountryToShippingDestination(authCountry) }
+            : {}),
         }),
       });
       if (!res.ok) throw new Error('Save error');
@@ -397,7 +398,7 @@ export default function CreateMissionModal({ isOpen, onClose, onCreated, authCou
     setMissionType(null); setStep(1); setError('');
     setForm({ fullName: '', israeliPhone: '', senderCity: '', senderStreet: '', senderHouseNumber: '', senderApartment: '', senderFloor: '' });
     setMapAddress(null); setBoxCounts({ large: 0, small: 0 }); setBringBoxes(null);
-    setPickupBoxCount(null); setPickupBoxCountInput(''); setShippingDestination('');
+    setPickupBoxCount(null); setPickupBoxCountInput('');
     setLinkedEmptyBoxMission(null);
     setViaAffiliate(false); setSelectedAffiliate(null);
     onClose();
@@ -430,7 +431,7 @@ export default function CreateMissionModal({ isOpen, onClose, onCreated, authCou
                 <div className="grid grid-cols-2 gap-4">
                   <button
                     type="button"
-                    onClick={() => setMissionType('empty_box')}
+                    onClick={() => { setMissionType('empty_box'); setViaAffiliate(false); setSelectedAffiliate(null); }}
                     className="p-6 rounded-2xl border-2 border-slate-200 hover:border-indigo-400 hover:bg-indigo-50/50 flex flex-col items-center gap-3 transition-all duration-200 hover:shadow-md"
                   >
                     <Package className="w-10 h-10 text-indigo-500" />
@@ -499,6 +500,7 @@ export default function CreateMissionModal({ isOpen, onClose, onCreated, authCou
                     <Field label="Phone" required>
                       <div className="relative">
                         <PhoneInput
+                          defaultCode="+972"
                           value={form.israeliPhone}
                           onChange={(v) => {
                             setForm((p) => ({ ...p, israeliPhone: v }));
@@ -535,31 +537,6 @@ export default function CreateMissionModal({ isOpen, onClose, onCreated, authCou
 
                 {step === 2 && (
                   <div className="space-y-4">
-                    {missionType === 'empty_box' && (
-                      <div>
-                        <h3 className="text-base font-bold text-slate-800 mb-1 flex items-center gap-2">
-                          <Globe className="w-5 h-5 text-indigo-500" />
-                          Where will they ship (after packing)?
-                        </h3>
-                        <p className="text-sm text-slate-500 mb-3">Select destination country</p>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                          {SHIPPING_DESTINATIONS.map((d) => (
-                            <button
-                              key={d.id}
-                              type="button"
-                              onClick={() => setShippingDestination(d.id)}
-                              className={`py-3 px-4 rounded-xl border-2 text-left font-medium transition-all ${
-                                shippingDestination === d.id
-                                  ? 'border-indigo-500 bg-indigo-50 text-indigo-800'
-                                  : 'border-slate-200 bg-white text-slate-700 hover:border-indigo-300'
-                              }`}
-                            >
-                              {d.label}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    )}
                     <h3 className="text-base font-bold text-slate-800 mb-1">Address</h3>
                     <AddressBlock
                       mapAddr={mapAddress}
@@ -674,14 +651,6 @@ export default function CreateMissionModal({ isOpen, onClose, onCreated, authCou
                       <SummaryRow label="Phone" value={form.israeliPhone} />
                       <SummaryRow label="Type"  value={missionType === 'pickup' ? 'Pickup Box' : 'Empty Box'} />
                     </div>
-                    {missionType === 'empty_box' && shippingDestination && (
-                      <div className="card p-4 space-y-2">
-                        <p className="label mb-2 flex items-center gap-1.5">
-                          <Globe className="w-4 h-4 text-indigo-500" /> Ship to
-                        </p>
-                        <SummaryRow label="Country" value={shippingDestinationLabel(shippingDestination)} />
-                      </div>
-                    )}
                     <div className="card p-4 space-y-2">
                       <p className="label mb-2">Address</p>
                       <SummaryRow label="Address" value={mapAddress?.displayAddress || [form.senderStreet, form.senderHouseNumber, form.senderCity].filter(Boolean).join(', ')} />
@@ -716,7 +685,9 @@ export default function CreateMissionModal({ isOpen, onClose, onCreated, authCou
                       </div>
                     )}
 
-                    {/* Affiliate */}
+                    {missionType === 'pickup' && (
+                    <>
+                    {/* Affiliate — pickup missions only (discount & commission) */}
                     <label className={`flex items-start gap-3 p-4 rounded-xl border-2 cursor-pointer transition-all duration-200 ${viaAffiliate ? 'border-indigo-400 bg-indigo-50/60' : 'border-slate-200 hover:border-indigo-300 hover:bg-indigo-50/30'}`}>
                       <input
                         type="checkbox"
@@ -750,6 +721,8 @@ export default function CreateMissionModal({ isOpen, onClose, onCreated, authCou
                           </button>
                         )}
                       </div>
+                    )}
+                    </>
                     )}
                   </div>
                 )}

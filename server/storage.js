@@ -51,6 +51,20 @@ export async function writeMissions(missions) {
   return writeTable('missions', missions);
 }
 
+/** Single-row update — avoids DELETE + re-insert of the entire table (very slow for large mission lists). */
+export async function updateMissionsData(id, data) {
+  const { rowCount } = await pool.query(
+    `UPDATE missions SET data = $2::jsonb WHERE id = $1`,
+    [id, data]
+  );
+  if (rowCount === 0) throw new Error('Mission not found');
+}
+
+export async function deleteMissionsById(id) {
+  const { rowCount } = await pool.query('DELETE FROM missions WHERE id = $1', [id]);
+  if (rowCount === 0) throw new Error('Mission not found');
+}
+
 export async function readUsers() {
   return readTable('users');
 }

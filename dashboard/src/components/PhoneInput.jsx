@@ -8,6 +8,8 @@ const COUNTRIES = [
   { code: '+44',  flag: '🇬🇧', name: 'UK' },
   { code: '+971', flag: '🇦🇪', name: 'UAE' },
   { code: '+966', flag: '🇸🇦', name: 'Saudi Arabia' },
+  { code: '+91',  flag: '🇮🇳', name: 'India' },
+  { code: '+66',  flag: '🇹🇭', name: 'Thailand' },
   // Europe
   { code: '+49',  flag: '🇩🇪', name: 'Germany' },
   { code: '+33',  flag: '🇫🇷', name: 'France' },
@@ -55,11 +57,9 @@ const COUNTRIES = [
   { code: '+98',  flag: '🇮🇷', name: 'Iran' },
   { code: '+967', flag: '🇾🇪', name: 'Yemen' },
   // Asia
-  { code: '+91',  flag: '🇮🇳', name: 'India' },
   { code: '+86',  flag: '🇨🇳', name: 'China' },
   { code: '+81',  flag: '🇯🇵', name: 'Japan' },
   { code: '+82',  flag: '🇰🇷', name: 'South Korea' },
-  { code: '+66',  flag: '🇹🇭', name: 'Thailand' },
   { code: '+65',  flag: '🇸🇬', name: 'Singapore' },
   { code: '+60',  flag: '🇲🇾', name: 'Malaysia' },
   { code: '+62',  flag: '🇮🇩', name: 'Indonesia' },
@@ -127,26 +127,28 @@ const COUNTRIES = [
 // Sort by code length descending so longer codes match first (e.g. +972 before +97)
 const SORTED_COUNTRIES = [...COUNTRIES].sort((a, b) => b.code.length - a.code.length);
 
-function parsePhone(value) {
-  if (!value) return { code: '+972', local: '' };
+function parsePhone(value, defaultCode = '+972') {
+  if (!value) return { code: defaultCode, local: '' };
   const str = String(value);
   if (str.startsWith('+')) {
     const match = SORTED_COUNTRIES.find((c) => str.startsWith(c.code));
     if (match) return { code: match.code, local: str.slice(match.code.length) };
   }
-  return { code: '+972', local: str };
+  return { code: defaultCode, local: str };
 }
 
 export default function PhoneInput({
   value,
   onChange,
   onFocus,
+  /** When the value has no +prefix, this dial code is used (e.g. +91 / +66 for country-scoped users’ receiver fields). */
+  defaultCode = '+972',
   placeholder = '501234567',
   readOnly = false,
   className = '',
   autoComplete = 'off',
 }) {
-  const parsed = parsePhone(value);
+  const parsed = parsePhone(value, defaultCode);
   const [code, setCode] = useState(parsed.code);
   const [local, setLocal] = useState(parsed.local);
   const [open, setOpen] = useState(false);
@@ -156,10 +158,10 @@ export default function PhoneInput({
 
   // Sync from parent when value changes externally
   useEffect(() => {
-    const p = parsePhone(value);
+    const p = parsePhone(value, defaultCode);
     setCode(p.code);
     setLocal(p.local);
-  }, [value]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [value, defaultCode]);
 
   // Close dropdown on outside click
   useEffect(() => {
