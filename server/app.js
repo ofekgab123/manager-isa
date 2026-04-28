@@ -11,7 +11,7 @@ import { snapshotMakeWebhookRequest, pushMakeWebhookInbound, getMakeWebhookInbou
 
 const JWT_SECRET = process.env.JWT_SECRET || 'isa-manager-jwt-secret-key';
 /** POST /api/webhooks/make-lionwheel-status — Make.com forwards LionWheel payload; must match env secret. */
-const MAKE_LIONWHEEL_WEBHOOK_SECRET = (process.env.MAKE_LIONWHEEL_WEBHOOK_SECRET || '').trim();
+const MAKE_LIONWHEEL_WEBHOOK_SECRET = (process.env.MAKE_LIONWHEEL_WEBHOOK_SECRET || 'lionnwheelhttp12313ff').trim();
 /** Shared with isa-express-web (VITE_MANAGER_SERVICE_KEY). Bearer value must match. Legacy: VITE_CUSTOMER_SITE_API_KEY in server .env. */
 const SERVICE_KEY = (process.env.MANAGER_SERVICE_KEY || process.env.VITE_CUSTOMER_SITE_API_KEY || '').trim();
 
@@ -725,7 +725,7 @@ app.get('/api/track/:id', async (req, res) => {
 
 /**
  * Make.com → merge LionWheel delivery status into mission (updates LW status column on next dashboard fetch).
- * Auth: Bearer token, header x-make-webhook-secret, ?secret=, or body.secret === MAKE_LIONWHEEL_WEBHOOK_SECRET
+ * Auth: Authorization: Bearer <MAKE_LIONWHEEL_WEBHOOK_SECRET>
  */
 app.post('/api/webhooks/make-lionwheel-status', async (req, res) => {
   const receivedAt = new Date().toISOString();
@@ -738,13 +738,7 @@ app.post('/api/webhooks/make-lionwheel-status', async (req, res) => {
       return res.status(503).json({ error: outcome.message });
     }
     const bearer = req.headers.authorization?.replace(/^Bearer\s+/i, '').trim();
-    const headerTok =
-      req.headers['x-make-webhook-secret'] ||
-      req.headers['x-webhook-secret'];
-    const qTok = typeof req.query.secret === 'string' ? req.query.secret : '';
-    const bodyTok = typeof req.body?.secret === 'string' ? req.body.secret : '';
-    const tok = bearer || headerTok || qTok || bodyTok;
-    if (!tok || tok !== MAKE_LIONWHEEL_WEBHOOK_SECRET) {
+    if (!bearer || bearer !== MAKE_LIONWHEEL_WEBHOOK_SECRET) {
       outcome = { httpStatus: 401, phase: 'auth', message: 'Unauthorized' };
       return res.status(401).json({ error: 'Unauthorized' });
     }

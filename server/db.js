@@ -47,14 +47,17 @@ export async function initDb() {
     );
   `);
 
-  const { rows } = await pool.query('SELECT COUNT(*) FROM auth_users');
-  if (parseInt(rows[0].count) === 0) {
+  const { rows: adminRows } = await pool.query(
+    `SELECT id FROM auth_users WHERE username = $1`,
+    ['admin']
+  );
+  if (adminRows.length === 0) {
     const hash = await bcrypt.hash('admin', 10);
     await pool.query(
       'INSERT INTO auth_users (id, username, password_hash, is_admin) VALUES ($1, $2, $3, $4)',
       [`AU-${Date.now()}`, 'admin', hash, true]
     );
-    console.log('Created default admin user (admin/admin)');
+    console.log('Created default admin user (username: admin, password: admin)');
   }
 
   console.log('Database tables initialized');

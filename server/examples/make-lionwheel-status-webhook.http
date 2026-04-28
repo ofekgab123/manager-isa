@@ -1,0 +1,39 @@
+# Make.com → Manager ISA (עדכון סטטוס LionWheel במסך המשימות)
+#
+# מודול ב-Make: HTTP → Make a request
+# • URL:    {BASE_URL}/api/webhooks/make-lionwheel-status
+# • Method: POST
+# • Headers:
+#     Content-Type: application/json
+#     Authorization: Bearer lionnwheelhttp12313ff   (ברירת מחדל בשרת — ניתן לדריסה ב-.env: MAKE_LIONWHEEL_WEBHOOK_SECRET)
+# • Body: JSON — ראה דוגמאות למטה
+#
+# פורט ברירת מחדל מקומית: 3002 (ראה server/index.js).
+
+@baseUrl = http://localhost:3002
+@secret = lionnwheelhttp12313ff
+
+### דוגמה — מזהה משימת LW + סטטוס מספרי (0–10)
+POST {{baseUrl}}/api/webhooks/make-lionwheel-status
+Authorization: Bearer {{secret}}
+Content-Type: application/json
+
+{
+  "task_id": 12345678,
+  "status": 2
+}
+
+### דוגמה — taskId + סטטוס כמחרוזת LionWheel (ACTIVE, COMPLETED, …)
+POST {{baseUrl}}/api/webhooks/make-lionwheel-status
+Authorization: Bearer {{secret}}
+Content-Type: application/json
+
+{
+  "taskId": 12345678,
+  "status": "COMPLETED"
+}
+
+### מה חובה בגוף (שרת — lionwheel.js → extractLionWheelWebhookFields)
+# סטטוס: חובה — מספר או אחת מהמחרוזות (UNASSIGNED, ASSIGNED, ACTIVE, …).
+# משימה: עדיף task_id / taskId השווה ל-lionwheel.taskId שנשמר במשימה אצלך.
+# גיבוי: mission_id בפורמט MSN-… אם LionWheel לא שולח task_id אבל יש קישור למספר הזמנה.

@@ -3,6 +3,7 @@ import { X, Package, Truck, MapPin, User, Home, CheckCircle, ChevronRight, Chevr
 import AddressPicker from './AddressPicker';
 import PhoneInput from './PhoneInput';
 import { authCountryToShippingDestination } from '../authCountryUtils';
+import { SHIPPING_DESTINATIONS, shippingDestinationLabel } from '../shippingDestinations';
 import { geocodeAddress } from '../utils/geocode';
 import { API_BASE } from '../config';
 import EmptyBoxMissionPickerModal from './EmptyBoxMissionPickerModal';
@@ -223,6 +224,12 @@ export default function CreateMissionModal({ isOpen, onClose, onCreated, authCou
   const [pickupBoxCount, setPickupBoxCount] = useState(null);
   const [pickupBoxCountInput, setPickupBoxCountInput] = useState('');
   const [notes, setNotes] = useState('');
+  /** When dashboard user has no country (e.g. admin), empty_box still needs india/thailand on the server. */
+  const [manualShippingDestination, setManualShippingDestination] = useState('');
+
+  const impliedShippingDestination = authCountryToShippingDestination(authCountry);
+  const effectiveEmptyBoxShippingDestination =
+    impliedShippingDestination || (manualShippingDestination === 'india' || manualShippingDestination === 'thailand' ? manualShippingDestination : null);
 
   /* ─── User autocomplete ──────────────────────────────── */
   const [allUsers, setAllUsers]           = useState([]);
@@ -318,6 +325,7 @@ export default function CreateMissionModal({ isOpen, onClose, onCreated, authCou
         if (bringBoxes === false) return true;
         return boxCounts.large + boxCounts.small > 0;
       }
+      if (missionType === 'empty_box' && !effectiveEmptyBoxShippingDestination) return false;
       return boxCounts.large + boxCounts.small > 0;
     }
     return true;
@@ -344,6 +352,10 @@ export default function CreateMissionModal({ isOpen, onClose, onCreated, authCou
   };
 
   const handleSubmit = async () => {
+    if (missionType === 'empty_box' && !effectiveEmptyBoxShippingDestination) {
+      setError('Choose ship-to: India or Thailand');
+      return;
+    }
     setSubmitting(true); setError('');
     try {
       const coords = mapAddress ? { lat: mapAddress.lat, lng: mapAddress.lng } : await geocodeAddress({ city: form.senderCity, street: form.senderStreet, houseNumber: form.senderHouseNumber });
@@ -373,8 +385,8 @@ export default function CreateMissionModal({ isOpen, onClose, onCreated, authCou
           affiliateName: missionType === 'pickup' && viaAffiliate && selectedAffiliate ? selectedAffiliate.name : null,
           discountAmount: missionType === 'pickup' && viaAffiliate && selectedAffiliate ? selectedAffiliate.discountAmount : null,
           ...(missionType === 'pickup' && authCountry ? { country: authCountry } : {}),
-          ...(missionType === 'empty_box' && authCountryToShippingDestination(authCountry)
-            ? { shippingDestination: authCountryToShippingDestination(authCountry) }
+          ...(missionType === 'empty_box' && effectiveEmptyBoxShippingDestination
+            ? { shippingDestination: effectiveEmptyBoxShippingDestination }
             : {}),
           notes: notes.trim() || undefined,
         }),
@@ -409,6 +421,7 @@ export default function CreateMissionModal({ isOpen, onClose, onCreated, authCou
     setLinkedEmptyBoxMission(null);
     setViaAffiliate(false); setSelectedAffiliate(null);
     setNotes('');
+    setManualShippingDestination('');
     onClose();
   };
 
@@ -539,7 +552,7 @@ export default function CreateMissionModal({ isOpen, onClose, onCreated, authCou
                 <div className="grid grid-cols-2 gap-4">
                   <button
                     type="button"
-                    onClick={() => { setMissionType('empty_box'); setViaAffiliate(false); setSelectedAffiliate(null); }}
+                    onClick={() => { setMissionType('empty_box'); setViaAffiliate(false); setSelectedAffiliate(null); setManualShippingDestination(''); }}
                     className="p-6 rounded-2xl border-2 border-slate-200 hover:border-indigo-400 hover:bg-indigo-50/50 flex flex-col items-center gap-3 transition-all duration-200 hover:shadow-md"
                   >
                     <Package className="w-10 h-10 text-indigo-500" />
@@ -548,7 +561,7 @@ export default function CreateMissionModal({ isOpen, onClose, onCreated, authCou
                   </button>
                   <button
                     type="button"
-                    onClick={() => setMissionType('pickup')}
+                    onClick={() => { setMissionType('pickup'); setManualShippingDestination(''); }}
                     className="p-6 rounded-2xl border-2 border-slate-200 hover:border-indigo-400 hover:bg-indigo-50/50 flex flex-col items-center gap-3 transition-all duration-200 hover:shadow-md"
                   >
                     <Truck className="w-10 h-10 text-indigo-500" />
@@ -657,6 +670,25 @@ export default function CreateMissionModal({ isOpen, onClose, onCreated, authCou
 
                 {step === 3 && (
                   <div className="space-y-4">
+                    {missionType === 'empty_box' && !impliedShippingDestination && (
+                      <div className="rounded-xl border border-indigo-200 bg-indigo-50/50 p-4 space-y-2">
+                        <h3 className="text-base font-bold text-slate-800">Ship boxes to</h3>
+                        <p className="text-sm text-slate-600">
+                          Required — admin accounts have no default region; choose where boxes ship (same as LionWheel destination).
+                        </p>
+                        <select
+                          value={manualShippingDestination}
+                          onChange={(e) => setManualShippingDestination(e.target.value)}
+                          className="select-field w-full"
+                          required
+                        >
+                          <option value="">India or Thailand…</option>
+                          {SHIPPING_DESTINATIONS.map((d) => (
+                            <option key={d.id} value={d.id}>{d.label}</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
                     {missionType === 'pickup' && pickupBoxCount === null ? (
                       <>
                         <div className="flex items-center gap-2 flex-wrap">
@@ -758,6 +790,9 @@ export default function CreateMissionModal({ isOpen, onClose, onCreated, authCou
                       <SummaryRow label="Name"  value={form.fullName} />
                       <SummaryRow label="Phone" value={form.israeliPhone} />
                       <SummaryRow label="Type"  value={missionType === 'pickup' ? 'Pickup Box' : 'Empty Box'} />
+                      {missionType === 'empty_box' && effectiveEmptyBoxShippingDestination && (
+                        <SummaryRow label="Ship to" value={shippingDestinationLabel(effectiveEmptyBoxShippingDestination)} />
+                      )}
                     </div>
                     <div className="card p-4 space-y-2">
                       <p className="label mb-2">Address</p>

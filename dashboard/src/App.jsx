@@ -39,6 +39,7 @@ import PackagesPanel from './components/PackagesPanel';
 import ContainersPanel from './components/ContainersPanel';
 import ParcelContentTypesPanel from './components/ParcelContentTypesPanel';
 import MakeWebhookInboundPanel from './components/MakeWebhookInboundPanel';
+import TableHorizontalScroll from './components/TableHorizontalScroll';
 import LoginPage from './components/LoginPage';
 import { API_BASE } from './config';
 import { shippingDestinationLabel } from './shippingDestinations';
@@ -48,23 +49,20 @@ const TYPE_LABELS = {
   empty_box: 'Empty Box',
 };
 
-const STATUS_LABELS = {
-  received: 'Received',
-  linewhel_transferred: 'Transferred',
-  linewhel_scheduled: 'Scheduled',
-  collected: 'Collected',
-  shipped: 'Shipped',
-  completed: 'Completed',
-};
-
-const STATUS_COLORS = {
-  received: 'bg-blue-100 text-blue-700',
-  linewhel_transferred: 'bg-amber-100 text-amber-700',
-  linewhel_scheduled: 'bg-purple-100 text-purple-700',
-  collected: 'bg-cyan-100 text-cyan-700',
-  shipped: 'bg-indigo-100 text-indigo-700',
-  completed: 'bg-green-100 text-green-700',
-};
+/** LionWheel task status codes (tasks/show) — must match server lionWheelTaskStatusLabel */
+const LW_STATUS_FILTER_OPTIONS = [
+  [0, 'Unassigned'],
+  [1, 'Assigned'],
+  [2, 'Active'],
+  [3, 'Completed'],
+  [4, 'Canceled'],
+  [5, 'Roundtrip delivered'],
+  [6, 'In inventory'],
+  [7, 'Out inventory'],
+  [8, 'Failed'],
+  [9, 'Final failed'],
+  [10, 'In transfer'],
+];
 
 const CREATED_BY_LABELS = {
   customer: 'Customer',
@@ -267,7 +265,7 @@ function Dashboard({ authUser, onLogout }) {
   const showCapacityFloating = containersOver70.length > 0 && !capacityAlertDismissed;
 
   const [filterType, setFilterType] = useState('');
-  const [filterStatus, setFilterStatus] = useState('');
+  const [filterLwStatus, setFilterLwStatus] = useState('');
   const [filterCreatedBy, setFilterCreatedBy] = useState('');
   const [filterMissingAddress, setFilterMissingAddress] = useState('');
   const [filterName, setFilterName] = useState('');
@@ -281,7 +279,7 @@ function Dashboard({ authUser, onLogout }) {
   const [filterAffiliate, setFilterAffiliate] = useState('');
 
   const [visibleColumns, setVisibleColumns] = useState({
-    type: true, status: true, sender: true, pickupAddr: true, shipTo: true,
+    type: true, sender: true, pickupAddr: true, shipTo: true,
     receiver: true, deliveryAddr: true, boxes: true, source: true, date: true, affiliate: true,
     senderPhone: true, receiverPhone: true, missingInfo: true, trackingId: true, lwTaskId: false, lwStatus: true,
   });
@@ -311,11 +309,11 @@ function Dashboard({ authUser, onLogout }) {
   const [showCreateMission, setShowCreateMission] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
 
-  const activeFilterCount = [filterType, filterStatus, filterCreatedBy, filterMissingAddress, filterName, filterPhone, filterReceiverName, filterReceiverPhone, filterPickupAddr, filterDeliveryAddr, filterDateFrom, filterBoxType, filterAffiliate].filter(Boolean).length;
+  const activeFilterCount = [filterType, filterLwStatus, filterCreatedBy, filterMissingAddress, filterName, filterPhone, filterReceiverName, filterReceiverPhone, filterPickupAddr, filterDeliveryAddr, filterDateFrom, filterBoxType, filterAffiliate].filter(Boolean).length;
 
   const filtered = missions.filter((m) => {
     if (filterType && m.type !== filterType) return false;
-    if (filterStatus && m.status !== filterStatus) return false;
+    if (filterLwStatus !== '' && Number(m.lionwheel?.taskStatus) !== Number(filterLwStatus)) return false;
     if (filterCreatedBy && m.createdBy !== filterCreatedBy) return false;
     if (filterMissingAddress === 'yes' && !isMissingAddress(m)) return false;
     if (filterMissingAddress === 'no' && isMissingAddress(m)) return false;
@@ -333,7 +331,7 @@ function Dashboard({ authUser, onLogout }) {
   });
 
   const clearFilters = () => {
-    setFilterType(''); setFilterStatus(''); setFilterCreatedBy(''); setFilterMissingAddress('');
+    setFilterType(''); setFilterLwStatus(''); setFilterCreatedBy(''); setFilterMissingAddress('');
     setFilterName(''); setFilterPhone(''); setFilterReceiverName(''); setFilterReceiverPhone('');
     setFilterPickupAddr(''); setFilterDeliveryAddr('');
     setFilterDateFrom(''); setFilterBoxType(''); setFilterAffiliate('');
@@ -710,10 +708,12 @@ function Dashboard({ authUser, onLogout }) {
                         </select>
                       </div>
                       <div>
-                        <ColLabel label="Status" colKey="status" vis={visibleColumns} toggle={toggleColumn} />
-                        <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="select-field">
-                          <option value="">All statuses</option>
-                          {Object.entries(STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                        <ColLabel label="LionWheel status" colKey="lwStatus" vis={visibleColumns} toggle={toggleColumn} />
+                        <select value={filterLwStatus} onChange={(e) => setFilterLwStatus(e.target.value)} className="select-field">
+                          <option value="">All LW statuses</option>
+                          {LW_STATUS_FILTER_OPTIONS.map(([code, label]) => (
+                            <option key={code} value={String(code)}>{label}</option>
+                          ))}
                         </select>
                       </div>
                       <div>
@@ -749,7 +749,6 @@ function Dashboard({ authUser, onLogout }) {
                       </div>
                       <div className="flex items-start pt-5">
                         <ColLabel label="LionWheel ID" colKey="lwTaskId" vis={visibleColumns} toggle={toggleColumn} />
-                        <ColLabel label="LionWheel status" colKey="lwStatus" vis={visibleColumns} toggle={toggleColumn} />
                       </div>
                     </div>
                   </div>
@@ -779,13 +778,13 @@ function Dashboard({ authUser, onLogout }) {
               ) : filtered.length === 0 ? (
                 <div className="p-10 text-center text-slate-400 text-sm">No missions to display</div>
               ) : (
-                <div className="overflow-x-auto">
+                <TableHorizontalScroll className="px-3 pb-5">
                   <table className="w-full text-center">
                     <thead>
                       <tr className="table-header">
                         <th className="w-40">ID</th>
                         {visibleColumns.type        && <th className="w-28">Type</th>}
-                        {visibleColumns.status      && <th className="w-32">Status</th>}
+                        {visibleColumns.lwStatus    && <th className="w-36">LionWheel status</th>}
                         {visibleColumns.trackingId  && <th className="w-36">Tracking ID</th>}
                         {visibleColumns.sender      && <th className="w-48">Sender</th>}
                         {visibleColumns.pickupAddr  && <th className="w-64">Pickup Addr</th>}
@@ -797,7 +796,6 @@ function Dashboard({ authUser, onLogout }) {
                         {visibleColumns.affiliate   && <th className="w-32">Affiliate</th>}
                         {visibleColumns.date        && <th className="w-40">Date</th>}
                         {visibleColumns.lwTaskId    && <th className="w-32">LionWheel ID</th>}
-                        {visibleColumns.lwStatus    && <th className="w-36">LW status</th>}
                         <th className="w-20"></th>
                       </tr>
                     </thead>
@@ -832,11 +830,31 @@ function Dashboard({ authUser, onLogout }) {
                                 </span>
                               </td>
                             )}
-                            {visibleColumns.status && (
-                              <td>
-                                <span className={`badge-pill ${STATUS_COLORS[mission.status] || 'bg-slate-100 text-slate-600'}`}>
-                                  {STATUS_LABELS[mission.status] || mission.status}
-                                </span>
+                            {visibleColumns.lwStatus && (
+                              <td className="whitespace-nowrap max-w-[10rem]">
+                                {mission.lionwheel?.syncError ? (
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded-lg text-xs font-medium bg-red-100 text-red-800 border border-red-200">
+                                    Sync failed
+                                  </span>
+                                ) : mission.lionwheel?.taskStatusFetchError ? (
+                                  <span
+                                    title={mission.lionwheel.taskStatusFetchError}
+                                    className="inline-flex items-center px-2 py-0.5 rounded-lg text-xs font-medium bg-amber-100 text-amber-900 border border-amber-200 max-w-[9rem] truncate cursor-help"
+                                  >
+                                    LW status unavailable
+                                  </span>
+                                ) : mission.lionwheel?.taskStatusLabel ? (
+                                  <span
+                                    title={typeof mission.lionwheel.taskStatus === 'number' ? `Code ${mission.lionwheel.taskStatus}` : undefined}
+                                    className={`inline-flex items-center px-2 py-0.5 rounded-lg text-xs font-medium ${lwStatusBadgeClasses(mission.lionwheel.taskStatus)}`}
+                                  >
+                                    {mission.lionwheel.taskStatusLabel}
+                                  </span>
+                                ) : mission.lionwheel?.taskId ? (
+                                  <span className="text-xs text-slate-400">Pending…</span>
+                                ) : (
+                                  <span className="text-slate-300 text-sm">—</span>
+                                )}
                               </td>
                             )}
                             {visibleColumns.trackingId && (
@@ -883,7 +901,7 @@ function Dashboard({ authUser, onLogout }) {
                             )}
                             {visibleColumns.shipTo && (
                               <td className="w-28 max-w-[7rem]">
-                                {mission.type === 'empty_box' && mission.shippingDestination ? (
+                                {mission.shippingDestination ? (
                                   <span className="text-sm font-medium text-slate-700 whitespace-nowrap">
                                     {shippingDestinationLabel(mission.shippingDestination)}
                                   </span>
@@ -988,33 +1006,6 @@ function Dashboard({ authUser, onLogout }) {
                                 )}
                               </td>
                             )}
-                            {visibleColumns.lwStatus && (
-                              <td className="whitespace-nowrap max-w-[10rem]">
-                                {mission.lionwheel?.syncError ? (
-                                  <span className="inline-flex items-center px-2 py-0.5 rounded-lg text-xs font-medium bg-red-100 text-red-800 border border-red-200">
-                                    Sync failed
-                                  </span>
-                                ) : mission.lionwheel?.taskStatusFetchError ? (
-                                  <span
-                                    title={mission.lionwheel.taskStatusFetchError}
-                                    className="inline-flex items-center px-2 py-0.5 rounded-lg text-xs font-medium bg-amber-100 text-amber-900 border border-amber-200 max-w-[9rem] truncate cursor-help"
-                                  >
-                                    LW status unavailable
-                                  </span>
-                                ) : mission.lionwheel?.taskStatusLabel ? (
-                                  <span
-                                    title={typeof mission.lionwheel.taskStatus === 'number' ? `Code ${mission.lionwheel.taskStatus}` : undefined}
-                                    className={`inline-flex items-center px-2 py-0.5 rounded-lg text-xs font-medium ${lwStatusBadgeClasses(mission.lionwheel.taskStatus)}`}
-                                  >
-                                    {mission.lionwheel.taskStatusLabel}
-                                  </span>
-                                ) : mission.lionwheel?.taskId ? (
-                                  <span className="text-xs text-slate-400">Pending…</span>
-                                ) : (
-                                  <span className="text-slate-300 text-sm">—</span>
-                                )}
-                              </td>
-                            )}
                             <td>
                               <div className="table-actions">
                                 <button
@@ -1069,7 +1060,7 @@ function Dashboard({ authUser, onLogout }) {
                       })}
                     </tbody>
                   </table>
-                </div>
+                </TableHorizontalScroll>
               )}
             </section>
           </>
