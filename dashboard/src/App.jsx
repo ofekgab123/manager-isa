@@ -23,6 +23,7 @@ import {
   List,
   LogOut,
   ShieldCheck,
+  Webhook,
 } from 'lucide-react';
 import CreateMissionModal from './components/CreateMissionModal';
 import EmptyBoxMissionPickerModal from './components/EmptyBoxMissionPickerModal';
@@ -37,6 +38,7 @@ import StatisticsPanel from './components/StatisticsPanel';
 import PackagesPanel from './components/PackagesPanel';
 import ContainersPanel from './components/ContainersPanel';
 import ParcelContentTypesPanel from './components/ParcelContentTypesPanel';
+import MakeWebhookInboundPanel from './components/MakeWebhookInboundPanel';
 import LoginPage from './components/LoginPage';
 import { API_BASE } from './config';
 import { shippingDestinationLabel } from './shippingDestinations';
@@ -68,6 +70,15 @@ const CREATED_BY_LABELS = {
   customer: 'Customer',
   customer_service: 'CS',
 };
+
+function lwStatusBadgeClasses(code) {
+  if (typeof code !== 'number') return 'bg-slate-100 text-slate-600 border border-slate-200';
+  if (code === 3 || code === 5) return 'bg-emerald-100 text-emerald-800 border border-emerald-200';
+  if (code === 4 || code === 8 || code === 9) return 'bg-red-100 text-red-800 border border-red-200';
+  if (code === 2 || code === 1) return 'bg-blue-100 text-blue-800 border border-blue-200';
+  if (code === 0) return 'bg-slate-100 text-slate-700 border border-slate-200';
+  return 'bg-indigo-50 text-indigo-800 border border-indigo-200';
+}
 
 function ColLabel({ label, colKey, vis, toggle }) {
   return (
@@ -272,7 +283,7 @@ function Dashboard({ authUser, onLogout }) {
   const [visibleColumns, setVisibleColumns] = useState({
     type: true, status: true, sender: true, pickupAddr: true, shipTo: true,
     receiver: true, deliveryAddr: true, boxes: true, source: true, date: true, affiliate: true,
-    senderPhone: true, receiverPhone: true, missingInfo: true, trackingId: true,
+    senderPhone: true, receiverPhone: true, missingInfo: true, trackingId: true, lwTaskId: false, lwStatus: true,
   });
   const [sectionVisible, setSectionVisible] = useState({ sender: true, receiver: true });
   const toggleSection = (key) => {
@@ -504,6 +515,17 @@ function Dashboard({ authUser, onLogout }) {
               Users
             </button>
           )}
+          {authUser.isAdmin && (
+            <button
+              onClick={() => setActiveTab('webhook-log')}
+              className={`flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-xl transition-all duration-200 whitespace-nowrap ${
+                activeTab === 'webhook-log' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-600 hover:text-slate-800 hover:bg-white/60'
+              }`}
+            >
+              <Webhook className="w-4 h-4" />
+              Webhook log
+            </button>
+          )}
           <button
             onClick={() => setActiveTab('statistics')}
             className={`flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-xl transition-all duration-200 whitespace-nowrap ${
@@ -531,6 +553,7 @@ function Dashboard({ authUser, onLogout }) {
         {activeTab === 'affiliates' && <AffiliatesPanel missions={missions} />}
         {activeTab === 'customers' && <CustomersPanel />}
         {activeTab === 'users' && authUser.isAdmin && <UsersPanel />}
+        {activeTab === 'webhook-log' && authUser.isAdmin && <MakeWebhookInboundPanel />}
         {activeTab === 'statistics' && (
           <StatisticsPanel
             missions={missions}
@@ -724,6 +747,10 @@ function Dashboard({ authUser, onLogout }) {
                       <div className="flex items-start pt-5">
                         <ColLabel label="Tracking ID" colKey="trackingId" vis={visibleColumns} toggle={toggleColumn} />
                       </div>
+                      <div className="flex items-start pt-5">
+                        <ColLabel label="LionWheel ID" colKey="lwTaskId" vis={visibleColumns} toggle={toggleColumn} />
+                        <ColLabel label="LionWheel status" colKey="lwStatus" vis={visibleColumns} toggle={toggleColumn} />
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -769,6 +796,8 @@ function Dashboard({ authUser, onLogout }) {
                         {visibleColumns.source      && <th className="w-20">Source</th>}
                         {visibleColumns.affiliate   && <th className="w-32">Affiliate</th>}
                         {visibleColumns.date        && <th className="w-40">Date</th>}
+                        {visibleColumns.lwTaskId    && <th className="w-32">LionWheel ID</th>}
+                        {visibleColumns.lwStatus    && <th className="w-36">LW status</th>}
                         <th className="w-20"></th>
                       </tr>
                     </thead>
@@ -780,7 +809,21 @@ function Dashboard({ authUser, onLogout }) {
                             key={mission.id}
                             className={`table-row ${missingAddr ? 'row-warning' : ''}`}
                           >
-                            <td className="whitespace-nowrap"><span className="table-id">{mission.id}</span></td>
+                            <td className="whitespace-nowrap">
+                              <span className="table-id">{mission.id}</span>
+                              {mission.lionwheel?.taskId && (
+                                <div className="font-mono text-xs text-indigo-600 mt-0.5 flex items-center gap-1">
+                                  <span className="text-slate-400">LW</span>
+                                  {mission.lionwheel.trackingLink ? (
+                                    <a href={mission.lionwheel.trackingLink} target="_blank" rel="noopener noreferrer" className="hover:underline" title="Open LionWheel tracking">
+                                      {mission.lionwheel.taskId}
+                                    </a>
+                                  ) : (
+                                    <span>{mission.lionwheel.taskId}</span>
+                                  )}
+                                </div>
+                              )}
+                            </td>
                             {visibleColumns.type && (
                               <td>
                                 <span className={`badge-pill ${mission.type === 'pickup' ? 'bg-orange-100 text-orange-700' : 'bg-yellow-100 text-yellow-700'}`}>
@@ -934,6 +977,44 @@ function Dashboard({ authUser, onLogout }) {
                                   : '—'}
                               </td>
                             )}
+                            {visibleColumns.lwTaskId && (
+                              <td className="whitespace-nowrap">
+                                {mission.lionwheel?.taskId ? (
+                                  <span className="font-mono text-xs text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100">
+                                    {mission.lionwheel.taskId}
+                                  </span>
+                                ) : (
+                                  <span className="text-slate-300 text-sm">—</span>
+                                )}
+                              </td>
+                            )}
+                            {visibleColumns.lwStatus && (
+                              <td className="whitespace-nowrap max-w-[10rem]">
+                                {mission.lionwheel?.syncError ? (
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded-lg text-xs font-medium bg-red-100 text-red-800 border border-red-200">
+                                    Sync failed
+                                  </span>
+                                ) : mission.lionwheel?.taskStatusFetchError ? (
+                                  <span
+                                    title={mission.lionwheel.taskStatusFetchError}
+                                    className="inline-flex items-center px-2 py-0.5 rounded-lg text-xs font-medium bg-amber-100 text-amber-900 border border-amber-200 max-w-[9rem] truncate cursor-help"
+                                  >
+                                    LW status unavailable
+                                  </span>
+                                ) : mission.lionwheel?.taskStatusLabel ? (
+                                  <span
+                                    title={typeof mission.lionwheel.taskStatus === 'number' ? `Code ${mission.lionwheel.taskStatus}` : undefined}
+                                    className={`inline-flex items-center px-2 py-0.5 rounded-lg text-xs font-medium ${lwStatusBadgeClasses(mission.lionwheel.taskStatus)}`}
+                                  >
+                                    {mission.lionwheel.taskStatusLabel}
+                                  </span>
+                                ) : mission.lionwheel?.taskId ? (
+                                  <span className="text-xs text-slate-400">Pending…</span>
+                                ) : (
+                                  <span className="text-slate-300 text-sm">—</span>
+                                )}
+                              </td>
+                            )}
                             <td>
                               <div className="table-actions">
                                 <button
@@ -1027,7 +1108,7 @@ function Dashboard({ authUser, onLogout }) {
       <CreateMissionModal
         isOpen={showCreateMission}
         onClose={() => setShowCreateMission(false)}
-        onCreated={() => { refetch(); refetchStats(); setShowCreateMission(false); }}
+        onCreated={() => { refetch(); refetchStats(); }}
         authCountry={authUser.country}
       />
 

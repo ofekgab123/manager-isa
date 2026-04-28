@@ -161,6 +161,35 @@ export default function MissionPreviewModal({
             )}
           </PreviewSection>
 
+          {mission.lionwheel && (
+            <PreviewSection icon={Truck} title="LionWheel">
+              {mission.lionwheel.trackingLink ? (
+                <div className="text-sm">
+                  <a
+                    href={mission.lionwheel.trackingLink}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-indigo-600 font-medium hover:underline break-all"
+                  >
+                    Open tracking
+                  </a>
+                </div>
+              ) : null}
+              <PreviewRow label="Task ID" value={mission.lionwheel.taskId} />
+              <PreviewRow label="Public ID" value={mission.lionwheel.publicId} />
+              <PreviewRow label="Barcode" value={mission.lionwheel.barcode} />
+              {(mission.lionwheel.taskStatusLabel || typeof mission.lionwheel.taskStatus === 'number') && (
+                <PreviewRow label="Status (LionWheel)" value={mission.lionwheel.taskStatusLabel ?? String(mission.lionwheel.taskStatus)} />
+              )}
+              {mission.lionwheel.taskStatusFetchError && (
+                <PreviewRow label="LW status fetch" value={mission.lionwheel.taskStatusFetchError} />
+              )}
+              {mission.lionwheel.syncError ? (
+                <PreviewRow label="Sync error" value={mission.lionwheel.syncError} />
+              ) : null}
+            </PreviewSection>
+          )}
+
           {/* Linked empty box — pickup only */}
           {isPickup && (
             <PreviewSection icon={Link2} title="Linked Empty Box Mission">

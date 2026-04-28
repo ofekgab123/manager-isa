@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { X, Package, Truck, MapPin, User, Home, CheckCircle, ChevronRight, ChevronLeft, Box, Plus, Minus, Link2 } from 'lucide-react';
+import { X, Package, Truck, MapPin, User, Home, CheckCircle, ChevronRight, ChevronLeft, Box, Plus, Minus, Link2, Loader2 } from 'lucide-react';
 import AddressPicker from './AddressPicker';
 import PhoneInput from './PhoneInput';
 import { authCountryToShippingDestination } from '../authCountryUtils';
@@ -199,6 +199,7 @@ export default function CreateMissionModal({ isOpen, onClose, onCreated, authCou
   const [step, setStep] = useState(1);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const [createdMission, setCreatedMission] = useState(null);
   const [mapOpen, setMapOpen] = useState(false);
 
   /* ─── Link to empty box (pickup only) ─────────────────── */
@@ -221,6 +222,7 @@ export default function CreateMissionModal({ isOpen, onClose, onCreated, authCou
   // pickup only: how many boxes to collect from customer (null = not yet set)
   const [pickupBoxCount, setPickupBoxCount] = useState(null);
   const [pickupBoxCountInput, setPickupBoxCountInput] = useState('');
+  const [notes, setNotes] = useState('');
 
   /* ─── User autocomplete ──────────────────────────────── */
   const [allUsers, setAllUsers]           = useState([]);
@@ -250,7 +252,10 @@ export default function CreateMissionModal({ isOpen, onClose, onCreated, authCou
     const q = value.toLowerCase();
     const matches = allUsers.filter((u) => {
       if (name === 'fullName')     return (u.fullName || '').toLowerCase().includes(q);
-      if (name === 'israeliPhone') return (u.phone   || '').replace(/\D/g, '').includes(q.replace(/\D/g, ''));
+      if (name === 'israeliPhone') {
+        const normalize = (p) => String(p || '').replace(/\D/g, '').replace(/^0+/, '');
+        return normalize(u.phone).includes(normalize(q));
+      }
       return false;
     });
     setUserSuggestions(matches.slice(0, 6));
@@ -371,6 +376,7 @@ export default function CreateMissionModal({ isOpen, onClose, onCreated, authCou
           ...(missionType === 'empty_box' && authCountryToShippingDestination(authCountry)
             ? { shippingDestination: authCountryToShippingDestination(authCountry) }
             : {}),
+          notes: notes.trim() || undefined,
         }),
       });
       if (!res.ok) throw new Error('Save error');
@@ -386,7 +392,7 @@ export default function CreateMissionModal({ isOpen, onClose, onCreated, authCou
         }),
       }).catch(() => {});
       onCreated?.(mission);
-      handleClose();
+      setCreatedMission(mission);
     } catch (e) {
       setError(e.message || 'Error saving mission');
     } finally {
@@ -396,15 +402,117 @@ export default function CreateMissionModal({ isOpen, onClose, onCreated, authCou
 
   const handleClose = () => {
     setMissionType(null); setStep(1); setError('');
+    setCreatedMission(null);
     setForm({ fullName: '', israeliPhone: '', senderCity: '', senderStreet: '', senderHouseNumber: '', senderApartment: '', senderFloor: '' });
     setMapAddress(null); setBoxCounts({ large: 0, small: 0 }); setBringBoxes(null);
     setPickupBoxCount(null); setPickupBoxCountInput('');
     setLinkedEmptyBoxMission(null);
     setViaAffiliate(false); setSelectedAffiliate(null);
+    setNotes('');
     onClose();
   };
 
   if (!isOpen) return null;
+
+  if (submitting && !createdMission) {
+    return (
+      <>
+        <div className="modal-overlay z-50 items-end sm:items-center p-0 sm:p-4">
+          <div className="modal-content max-w-md max-h-[95vh] rounded-t-2xl sm:rounded-2xl flex flex-col items-center justify-center py-16 px-8">
+            <Loader2 className="w-14 h-14 text-indigo-500 animate-spin mb-6 shrink-0" aria-hidden />
+            <p className="text-lg font-semibold text-slate-800 text-center">Creating mission...</p>
+            <p className="text-sm text-slate-500 mt-2 text-center max-w-xs">
+              Saving your mission and syncing with LionWheel.
+            </p>
+          </div>
+        </div>
+      </>
+    );
+  }
+
+  if (createdMission) {
+    const lwOk = !!createdMission.lionwheel?.taskId;
+    const lwErr = createdMission.lionwheel?.syncError;
+    const notesForDriver = String(createdMission.notes || '').trim();
+    return (
+      <>
+        <div className="modal-overlay z-50 items-end sm:items-center p-0 sm:p-4">
+          <div className="modal-content max-w-3xl max-h-[95vh] rounded-t-2xl sm:rounded-2xl">
+            <div className="modal-header flex-shrink-0">
+              <h2 className="text-lg font-bold text-slate-800">Mission Created</h2>
+              <button onClick={handleClose} className="action-btn hover:bg-slate-100 text-slate-400 hover:text-slate-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="modal-body flex flex-col items-center gap-5 py-8">
+              {/* Mission OK */}
+              <div className="flex flex-col items-center gap-2">
+                <div className="w-16 h-16 rounded-full bg-emerald-100 flex items-center justify-center">
+                  <CheckCircle className="w-9 h-9 text-emerald-500" />
+                </div>
+                <p className="font-bold text-slate-800 text-base">Mission saved</p>
+                    <p className="font-mono text-sm text-indigo-600">{createdMission.id}</p>
+              </div>
+
+              {notesForDriver && (
+                <>
+                  <div className="w-full border-t border-slate-100" />
+                  <div className="w-full max-w-md px-1 text-center">
+                    <p className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">Notes for driver (LionWheel)</p>
+                    <p className="text-sm text-slate-700 whitespace-pre-wrap break-words">{notesForDriver}</p>
+                  </div>
+                </>
+              )}
+
+              {/* Divider */}
+              <div className="w-full border-t border-slate-100" />
+
+              {/* LionWheel status */}
+              <div className="flex flex-col items-center gap-2">
+                {lwOk ? (
+                  <>
+                    <div className="w-12 h-12 rounded-full bg-indigo-100 flex items-center justify-center">
+                      <CheckCircle className="w-7 h-7 text-indigo-500" />
+                    </div>
+                    <p className="font-semibold text-slate-700 text-sm">Synced to LionWheel</p>
+                    <p className="font-mono text-xs text-indigo-600">Task ID: {createdMission.lionwheel.taskId}</p>
+                    {createdMission.lionwheel.trackingLink && (
+                      <a
+                        href={createdMission.lionwheel.trackingLink}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs text-indigo-500 hover:underline"
+                      >
+                        Open tracking
+                      </a>
+                    )}
+                  </>
+                ) : lwErr ? (
+                  <>
+                    <div className="w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center">
+                      <Package className="w-7 h-7 text-amber-500" />
+                    </div>
+                    <p className="font-semibold text-slate-700 text-sm">LionWheel sync failed</p>
+                    <p className="text-xs text-red-500 text-center max-w-xs">{lwErr}</p>
+                  </>
+                ) : (
+                  <>
+                    <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center">
+                      <Package className="w-7 h-7 text-slate-400" />
+                    </div>
+                    <p className="text-sm text-slate-400">Not synced to LionWheel</p>
+                  </>
+                )}
+              </div>
+            </div>
+            <div className="modal-footer flex-shrink-0">
+              <button onClick={handleClose} className="btn-primary flex-1">Done</button>
+            </div>
+          </div>
+        </div>
+      </>
+    );
+  }
 
   return (
     <>
@@ -657,6 +765,19 @@ export default function CreateMissionModal({ isOpen, onClose, onCreated, authCou
                       {form.senderApartment && <SummaryRow label="Apt"   value={form.senderApartment} />}
                       {form.senderFloor     && <SummaryRow label="Floor" value={form.senderFloor} />}
                     </div>
+                    <div className="card p-4 space-y-2">
+                      <p className="label mb-1">Notes for driver</p>
+                      <p className="text-xs text-slate-500 mb-2">
+                        Optional. Appended to LionWheel task notes and shown to the driver.
+                      </p>
+                      <textarea
+                        value={notes}
+                        onChange={(e) => setNotes(e.target.value)}
+                        rows={3}
+                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-400/40 focus:border-indigo-300 resize-y min-h-[4.5rem]"
+                        placeholder="Gate code, floor, timing, etc."
+                      />
+                    </div>
                     {(missionType !== 'pickup' || bringBoxes !== false) && (
                       <div className="p-4 rounded-2xl bg-indigo-50/60 border border-indigo-100 space-y-2">
                         <p className="label text-indigo-600 mb-2">Boxes</p>
@@ -760,7 +881,7 @@ export default function CreateMissionModal({ isOpen, onClose, onCreated, authCou
                 className="btn-success flex-1"
               >
                 <CheckCircle className="w-4 h-4" />
-                {submitting ? 'Saving...' : 'Create Mission'}
+                Create Mission
               </button>
             ))}
           </div>

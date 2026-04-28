@@ -5,8 +5,13 @@ import jwt from 'jsonwebtoken';
 import pool from './db.js';
 import { readOrders, writeOrders, readAffiliates, writeAffiliates, readMissions, writeMissions, updateMissionsData, deleteMissionsById, readUsers, writeUsers, readReceivers, writeReceivers, readContainers, writeContainers, readParcelContentTypes, writeParcelContentTypes, containerCountryKey } from './storage.js';
 import { israeliMobileKey } from './phoneKey.js';
+import { createLionWheelTaskForEmptyBoxMission, createLionWheelTaskForPickupMission, buildLionWheelPayloadFromRequest, sendLionWheelCreatePayload, fetchLionWheelTaskShow, lionWheelTaskStatusLabel, lionWheelDestinationFromMission, extractLionWheelWebhookFields } from './lionwheel.js';
+import { notifyEmptyBoxMissionWebhook } from './missionWebhook.js';
+import { snapshotMakeWebhookRequest, pushMakeWebhookInbound, getMakeWebhookInboundEntries, clearMakeWebhookInbound } from './makeWebhookInboundLog.js';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'isa-manager-jwt-secret-key';
+/** POST /api/webhooks/make-lionwheel-status — Make.com forwards LionWheel payload; must match env secret. */
+const MAKE_LIONWHEEL_WEBHOOK_SECRET = (process.env.MAKE_LIONWHEEL_WEBHOOK_SECRET || '').trim();
 /** Shared with isa-express-web (VITE_MANAGER_SERVICE_KEY). Bearer value must match. Legacy: VITE_CUSTOMER_SITE_API_KEY in server .env. */
 const SERVICE_KEY = (process.env.MANAGER_SERVICE_KEY || process.env.VITE_CUSTOMER_SITE_API_KEY || '').trim();
 
@@ -69,6 +74,70 @@ async function assertMissionAccessForCountryUser(mission, user) {
   }
 }
 
+const LW_STATUS_REFRESH_MS = 10 * 60 * 1000;
+const LW_STATUS_RETRY_AFTER_ERROR_MS = 2 * 60 * 1000;
+const LW_STATUS_REFRESH_CAP = 40;
+
+async function enrichMissionsWithLionWheelStatuses(missions) {
+  const now = Date.now();
+  const candidates = missions
+    .filter((m) => {
+      const lw = m.lionwheel;
+      if (!lw?.taskId) return false;
+      const dest = lionWheelDestinationFromMission(m);
+      if (!dest) return false;
+      const fetchedAt = lw.taskStatusFetchedAt ? new Date(lw.taskStatusFetchedAt).getTime() : 0;
+      const ttl = lw.taskStatusFetchError ? LW_STATUS_RETRY_AFTER_ERROR_MS : LW_STATUS_REFRESH_MS;
+      const cacheFresh = now - fetchedAt < ttl;
+      if (cacheFresh) return false;
+      return true;
+    })
+    .slice(0, LW_STATUS_REFRESH_CAP);
+
+  let dirty = false;
+  const batch = 6;
+  for (let i = 0; i < candidates.length; i += batch) {
+    await Promise.all(
+      candidates.slice(i, i + batch).map(async (m) => {
+        const dest = lionWheelDestinationFromMission(m);
+        if (!dest) return;
+        const fr = await fetchLionWheelTaskShow(m.lionwheel.taskId, dest, { originalOrderId: m.id });
+        const idx = missions.findIndex((x) => x.id === m.id);
+        if (idx === -1) return;
+        if (!fr.ok || typeof fr.taskStatus !== 'number') {
+          const rawMsg =
+            fr.skipped && fr.reason
+              ? fr.reason
+              : fr.error || (fr.status ? `HTTP ${fr.status}` : 'Unknown error');
+          const msg = rawMsg.length > 500 ? `${rawMsg.slice(0, 497)}…` : rawMsg;
+          missions[idx] = {
+            ...missions[idx],
+            lionwheel: {
+              ...missions[idx].lionwheel,
+              taskStatusFetchedAt: new Date().toISOString(),
+              taskStatusFetchError: msg,
+            },
+          };
+          dirty = true;
+          return;
+        }
+        missions[idx] = {
+          ...missions[idx],
+          lionwheel: {
+            ...missions[idx].lionwheel,
+            taskStatus: fr.taskStatus,
+            taskStatusLabel: lionWheelTaskStatusLabel(fr.taskStatus),
+            taskStatusFetchedAt: new Date().toISOString(),
+            taskStatusFetchError: undefined,
+          },
+        };
+        dirty = true;
+      }),
+    );
+  }
+  if (dirty) await writeMissions(missions);
+}
+
 /** Customer empty-box flow: eventual ship-to (India / Thailand) — same ids as isa-express-web */
 const VALID_SHIPPING_DESTINATIONS = new Set(['india', 'thailand']);
 
@@ -77,6 +146,11 @@ function normalizeShippingDestination(missionType, raw) {
   if (raw == null || raw === '') return null;
   const s = String(raw).trim().toLowerCase();
   return VALID_SHIPPING_DESTINATIONS.has(s) ? s : null;
+}
+
+/** Pickup: LionWheel account key — derive from dashboard auth country (same as empty_box ship-to). */
+function shippingDestinationForPickup(body) {
+  return userAuthCountryToShippingDestId(body.country);
 }
 
 // DB migration: add country column to auth_users if it doesn't exist
@@ -433,10 +507,56 @@ app.post('/api/missions', async (req, res) => {
       discountAmount,
       linkedEmptyBoxMissionId: body.linkedEmptyBoxMissionId || null,
       containerId: missionType === 'pickup' ? pickupContainerId : null,
-      shippingDestination: normalizeShippingDestination(missionType, body.shippingDestination),
+      country: body.country ?? null,
+      shippingDestination:
+        missionType === 'empty_box'
+          ? normalizeShippingDestination(missionType, body.shippingDestination)
+          : missionType === 'pickup'
+            ? shippingDestinationForPickup(body)
+            : null,
     };
     missions.unshift(newMission);
     await writeMissions(missions);
+
+    let missionToReturn = newMission;
+    const shouldSyncLionWheel = missionType === 'empty_box' || missionType === 'pickup';
+    if (shouldSyncLionWheel) {
+      try {
+        const lw = missionType === 'empty_box'
+          ? await createLionWheelTaskForEmptyBoxMission(newMission)
+          : await createLionWheelTaskForPickupMission(newMission);
+        if (!lw.skipped) {
+          const lionwheel = lw.ok
+            ? {
+                taskId: lw.taskId,
+                publicId: lw.publicId,
+                trackingLink: lw.trackingLink,
+                barcode: lw.barcode,
+                label: lw.label,
+                destinationRegionStr: lw.destinationRegionStr,
+                syncedAt: new Date().toISOString(),
+              }
+            : {
+                syncError: lw.error,
+                syncHttpStatus: lw.status,
+                syncAttemptedAt: new Date().toISOString(),
+              };
+          missionToReturn = { ...newMission, lionwheel };
+          const i = missions.findIndex((m) => m.id === newMission.id);
+          if (i !== -1) missions[i] = missionToReturn;
+          await writeMissions(missions);
+        }
+      } catch (e) {
+        const lionwheel = {
+          syncError: e.message || String(e),
+          syncAttemptedAt: new Date().toISOString(),
+        };
+        missionToReturn = { ...newMission, lionwheel };
+        const i = missions.findIndex((m) => m.id === newMission.id);
+        if (i !== -1) missions[i] = missionToReturn;
+        await writeMissions(missions);
+      }
+    }
 
     if (!body.createdBy || body.createdBy === 'customer') {
       try {
@@ -457,7 +577,62 @@ app.post('/api/missions', async (req, res) => {
       } catch {}
     }
 
-    res.status(201).json(newMission);
+    if (missionType === 'empty_box') {
+      notifyEmptyBoxMissionWebhook(missionToReturn).catch((e) =>
+        console.warn('[MISSION_WEBHOOK_URL]', e.message || e),
+      );
+    }
+    if (missionType === 'pickup') {
+      notifyEmptyBoxMissionWebhook(missionToReturn).catch((e) =>
+        console.warn('[MISSION_WEBHOOK_URL pickup]', e.message || e),
+      );
+    }
+
+    res.status(201).json(missionToReturn);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── POST /api/lionwheel/create — standalone LionWheel task creation (auth required) ──
+
+app.post('/api/lionwheel/create', requireAuth, async (req, res) => {
+  try {
+    const { orderId, type, boxes, emptyBoxes, city, street, number, name, phone, destination } = req.body || {};
+
+    const missing = [];
+    if (!orderId) missing.push('orderId');
+    if (!type || !['pickup', 'empty'].includes(type)) missing.push('type (pickup|empty)');
+    if (!destination || !['thailand', 'india'].includes(String(destination).toLowerCase())) missing.push('destination (thailand|india)');
+    if (!city) missing.push('city');
+    if (!street) missing.push('street');
+    if (!number) missing.push('number');
+    if (!name) missing.push('name');
+    if (!phone) missing.push('phone');
+    if (missing.length) {
+      return res.status(400).json({ error: `Missing required fields: ${missing.join(', ')}` });
+    }
+
+    const payload = buildLionWheelPayloadFromRequest({
+      orderId, type, boxes: boxes || 0, emptyBoxes: emptyBoxes || 0,
+      city, street, number, name, phone, destination,
+    });
+
+    const lw = await sendLionWheelCreatePayload(payload, destination);
+
+    if (lw.skipped) {
+      return res.status(503).json({ error: 'LionWheel credentials not configured', detail: lw.reason });
+    }
+    if (!lw.ok) {
+      return res.status(502).json({ error: lw.error, lionwheel_status: lw.status });
+    }
+
+    return res.json({
+      success: true,
+      task_id: lw.taskId,
+      public_id: lw.publicId,
+      tracking_link: lw.trackingLink,
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -548,9 +723,113 @@ app.get('/api/track/:id', async (req, res) => {
   }
 });
 
+/**
+ * Make.com → merge LionWheel delivery status into mission (updates LW status column on next dashboard fetch).
+ * Auth: Bearer token, header x-make-webhook-secret, ?secret=, or body.secret === MAKE_LIONWHEEL_WEBHOOK_SECRET
+ */
+app.post('/api/webhooks/make-lionwheel-status', async (req, res) => {
+  const receivedAt = new Date().toISOString();
+  const inbound = snapshotMakeWebhookRequest(req);
+  let outcome = { httpStatus: 500, phase: 'unknown' };
+
+  try {
+    if (!MAKE_LIONWHEEL_WEBHOOK_SECRET) {
+      outcome = { httpStatus: 503, phase: 'config', message: 'MAKE_LIONWHEEL_WEBHOOK_SECRET is not configured on server' };
+      return res.status(503).json({ error: outcome.message });
+    }
+    const bearer = req.headers.authorization?.replace(/^Bearer\s+/i, '').trim();
+    const headerTok =
+      req.headers['x-make-webhook-secret'] ||
+      req.headers['x-webhook-secret'];
+    const qTok = typeof req.query.secret === 'string' ? req.query.secret : '';
+    const bodyTok = typeof req.body?.secret === 'string' ? req.body.secret : '';
+    const tok = bearer || headerTok || qTok || bodyTok;
+    if (!tok || tok !== MAKE_LIONWHEEL_WEBHOOK_SECRET) {
+      outcome = { httpStatus: 401, phase: 'auth', message: 'Unauthorized' };
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const rawBody = req.body && typeof req.body === 'object' ? { ...req.body } : {};
+    delete rawBody.secret;
+
+    const fields = extractLionWheelWebhookFields(rawBody);
+    if (!Number.isFinite(fields.taskStatusNum)) {
+      outcome = {
+        httpStatus: 400,
+        phase: 'parse',
+        message: 'Missing or unknown LionWheel status in payload',
+        parsed: fields,
+      };
+      return res.status(400).json({ error: 'Missing or unknown LionWheel status in payload' });
+    }
+
+    const missions = await readMissions();
+    let idx = -1;
+    if (fields.taskId != null) {
+      idx = missions.findIndex((m) => Number(m.lionwheel?.taskId) === Number(fields.taskId));
+    }
+    if (idx === -1 && fields.missionIdHint) {
+      idx = missions.findIndex((m) => m.id === fields.missionIdHint);
+    }
+    if (idx === -1) {
+      outcome = {
+        httpStatus: 404,
+        phase: 'mission',
+        message: 'Mission not found for task_id / mission id',
+        parsed: fields,
+      };
+      return res.status(404).json({ error: 'Mission not found for task_id / mission id' });
+    }
+
+    const merged = {
+      ...missions[idx],
+      lionwheel: {
+        ...(missions[idx].lionwheel || {}),
+        taskStatus: fields.taskStatusNum,
+        taskStatusLabel: lionWheelTaskStatusLabel(fields.taskStatusNum),
+        taskStatusFetchedAt: new Date().toISOString(),
+        taskStatusFetchError: undefined,
+        lastWebhookSource: 'make',
+        lastWebhookAt: new Date().toISOString(),
+      },
+    };
+    await updateMissionsData(merged.id, merged);
+    outcome = {
+      httpStatus: 200,
+      phase: 'ok',
+      missionId: merged.id,
+      taskStatus: fields.taskStatusNum,
+      parsed: fields,
+    };
+    return res.json({ ok: true, missionId: merged.id, taskStatus: fields.taskStatusNum });
+  } catch (err) {
+    outcome = { httpStatus: 500, phase: 'exception', message: err.message };
+    return res.status(500).json({ error: err.message });
+  } finally {
+    pushMakeWebhookInbound({ receivedAt, ...inbound, outcome });
+  }
+});
+
 // ─── Apply auth to all other /api routes ──────────────────────────────────────
 
 app.use('/api', requireAuth);
+
+app.get('/api/debug/make-webhook-inbound-log', requireAdmin, (req, res) => {
+  try {
+    res.json({ entries: getMakeWebhookInboundEntries() });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/debug/make-webhook-inbound-log', requireAdmin, (req, res) => {
+  try {
+    clearMakeWebhookInbound();
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 const normalizeStatus = (s) => {
   if (s === 'recorded' || s === 'pending') return s === 'recorded' ? 'received' : 'linewhel_transferred';
@@ -802,6 +1081,7 @@ app.get('/api/missions/stats', async (req, res) => {
 app.get('/api/missions', async (req, res) => {
   try {
     let missions = await readMissions();
+    await enrichMissionsWithLionWheelStatuses(missions);
     missions = await filterMissionsForCountryUser(missions, req.user);
     const { status, type, createdBy, customerPhone, affiliate, linkedEmptyBoxMissionId, containerId } = req.query;
     let filtered = missions;
@@ -1269,7 +1549,7 @@ app.get('/api/users', async (req, res) => {
     const result = q
       ? users.filter((u) =>
           (u.fullName || '').toLowerCase().includes(q) ||
-          (u.phone || '').replace(/\D/g, '').includes(q.replace(/\D/g, ''))
+          israeliMobileKey(u.phone).includes(israeliMobileKey(q) || q.replace(/\D/g, ''))
         )
       : users;
     res.json(result);
