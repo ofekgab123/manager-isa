@@ -13,6 +13,8 @@ export async function notifyEmptyBoxMissionWebhook(mission) {
   const lionwheel_create = buildLionWheelCreatePayloadForEmptyBox(mission);
   const body = JSON.stringify({
     event: 'empty_box_created',
+    /** Explicit region for automations (lionwheel_create mirrors LionWheel API shape only). */
+    shippingDestination: mission.shippingDestination ?? null,
     lionwheel_create,
   });
 
