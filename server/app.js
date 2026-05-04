@@ -1337,6 +1337,8 @@ app.post('/api/missions/:id/send-to-lionwheel', requireAuth, async (req, res) =>
     if (idx === -1) return res.status(404).json({ error: 'Mission not found' });
     const mission = missions[idx];
 
+    await assertMissionAccessForCountryUser(mission, req.user);
+
     if (!['pickup', 'empty_box'].includes(mission.type)) {
       return res.status(400).json({ error: 'Mission type must be pickup or empty_box' });
     }
@@ -1351,9 +1353,29 @@ app.post('/api/missions/:id/send-to-lionwheel', requireAuth, async (req, res) =>
         : await createLionWheelTaskForPickupMission(mission);
     } catch (e) {
       const lionwheel = { syncError: e.message || String(e), syncAttemptedAt: new Date().toISOString() };
-      missions[idx] = { ...mission, lionwheel };
-      await updateMissionsData(missions[idx].id, missions[idx]);
-      return res.status(502).json({ error: e.message, mission: missions[idx] });
+      const updated = { ...mission, lionwheel };
+      missions[idx] = updated;
+      await updateMissionsData(updated.id, updated);
+      if (mission.type === 'empty_box') {
+        notifyEmptyBoxMissionWebhook(updated).catch((wErr) =>
+          console.warn('[MISSION_WEBHOOK_URL]', wErr.message || wErr),
+        );
+      }
+      if (mission.type === 'pickup') {
+        notifyEmptyBoxMissionWebhook(updated).catch((wErr) =>
+          console.warn('[MISSION_WEBHOOK_URL pickup]', wErr.message || wErr),
+        );
+      }
+      return res.status(502).json({ error: e.message, mission: updated });
+    }
+
+    /** Match POST /api/missions: do not persist lionwheel when credentials are missing (skipped). */
+    if (lw.skipped) {
+      return res.status(503).json({
+        error: 'LionWheel credentials not configured',
+        detail: lw.reason,
+        mission,
+      });
     }
 
     const lionwheel = lw.ok
@@ -1372,18 +1394,28 @@ app.post('/api/missions/:id/send-to-lionwheel', requireAuth, async (req, res) =>
           syncAttemptedAt: new Date().toISOString(),
         };
 
-    missions[idx] = { ...mission, lionwheel };
-    await updateMissionsData(missions[idx].id, missions[idx]);
+    const updated = { ...mission, lionwheel };
+    missions[idx] = updated;
+    await updateMissionsData(updated.id, updated);
 
-    if (lw.skipped) {
-      return res.status(503).json({ error: 'LionWheel credentials not configured', detail: lw.reason, mission: missions[idx] });
+    if (mission.type === 'empty_box') {
+      notifyEmptyBoxMissionWebhook(updated).catch((wErr) =>
+        console.warn('[MISSION_WEBHOOK_URL]', wErr.message || wErr),
+      );
     }
+    if (mission.type === 'pickup') {
+      notifyEmptyBoxMissionWebhook(updated).catch((wErr) =>
+        console.warn('[MISSION_WEBHOOK_URL pickup]', wErr.message || wErr),
+      );
+    }
+
     if (!lw.ok) {
-      return res.status(502).json({ error: lw.error, lionwheel_status: lw.status, mission: missions[idx] });
+      return res.status(502).json({ error: lw.error, lionwheel_status: lw.status, mission: updated });
     }
 
-    return res.json({ success: true, mission: missions[idx] });
+    return res.json({ success: true, mission: updated });
   } catch (err) {
+    if (err.message === 'FORBIDDEN_MISSION') return res.status(404).json({ error: 'Mission not found' });
     res.status(500).json({ error: err.message });
   }
 });

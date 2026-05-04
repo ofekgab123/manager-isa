@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "start": "node index.js",
+    "start": "node --env-file=.env index.js",
     "dev": "node --env-file=.env --watch index.js",
     "mock-webhook": "node scripts/sendMockMissionWebhook.mjs"
   },
