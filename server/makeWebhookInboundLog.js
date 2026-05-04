@@ -60,3 +60,31 @@ export function getMakeWebhookInboundEntries() {
 export function clearMakeWebhookInbound() {
   entries.length = 0;
 }
+
+const DEBUG_CAPTURE_MAX = 100;
+/** @type {Array<object>} */
+const debugCaptures = [];
+
+/**
+ * Full inbound snapshot for debugging (e.g. point Make at this URL temporarily).
+ * Stored in memory only; restart clears the list.
+ */
+export function pushMakeWebhookDebugCapture(record) {
+  const id = randomUUID();
+  const receivedAt = new Date().toISOString();
+  debugCaptures.unshift({
+    id,
+    receivedAt,
+    ...record,
+  });
+  while (debugCaptures.length > DEBUG_CAPTURE_MAX) debugCaptures.pop();
+  return { id, receivedAt };
+}
+
+export function getMakeWebhookDebugCaptures() {
+  return debugCaptures.map((e) => ({ ...e }));
+}
+
+export function clearMakeWebhookDebugCaptures() {
+  debugCaptures.length = 0;
+}

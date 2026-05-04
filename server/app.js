@@ -7,11 +7,21 @@ import { readOrders, writeOrders, readAffiliates, writeAffiliates, readMissions,
 import { israeliMobileKey } from './phoneKey.js';
 import { createLionWheelTaskForEmptyBoxMission, createLionWheelTaskForPickupMission, buildLionWheelPayloadFromRequest, sendLionWheelCreatePayload, fetchLionWheelTaskShow, lionWheelTaskStatusLabel, lionWheelDestinationFromMission, extractLionWheelWebhookFields } from './lionwheel.js';
 import { notifyEmptyBoxMissionWebhook } from './missionWebhook.js';
-import { snapshotMakeWebhookRequest, pushMakeWebhookInbound, getMakeWebhookInboundEntries, clearMakeWebhookInbound } from './makeWebhookInboundLog.js';
+import {
+  snapshotMakeWebhookRequest,
+  pushMakeWebhookInbound,
+  getMakeWebhookInboundEntries,
+  clearMakeWebhookInbound,
+  pushMakeWebhookDebugCapture,
+  getMakeWebhookDebugCaptures,
+  clearMakeWebhookDebugCaptures,
+} from './makeWebhookInboundLog.js';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'isa-manager-jwt-secret-key';
 /** POST /api/webhooks/make-lionwheel-status — Make.com forwards LionWheel payload; must match env secret. */
 const MAKE_LIONWHEEL_WEBHOOK_SECRET = (process.env.MAKE_LIONWHEEL_WEBHOOK_SECRET || 'lionnwheelhttp12313ff').trim();
+/** POST /api/webhooks/make-inspect — log full inbound from Make for debugging; defaults to same secret as LionWheel. */
+const MAKE_WEBHOOK_INSPECT_SECRET = (process.env.MAKE_WEBHOOK_INSPECT_SECRET || MAKE_LIONWHEEL_WEBHOOK_SECRET).trim();
 /** Shared with isa-express-web (VITE_MANAGER_SERVICE_KEY). Bearer value must match. Legacy: VITE_CUSTOMER_SITE_API_KEY in server .env. */
 const SERVICE_KEY = (process.env.MANAGER_SERVICE_KEY || process.env.VITE_CUSTOMER_SITE_API_KEY || '').trim();
 
@@ -78,21 +88,23 @@ const LW_STATUS_REFRESH_MS = 10 * 60 * 1000;
 const LW_STATUS_RETRY_AFTER_ERROR_MS = 2 * 60 * 1000;
 const LW_STATUS_REFRESH_CAP = 40;
 
-async function enrichMissionsWithLionWheelStatuses(missions) {
+async function enrichMissionsWithLionWheelStatuses(missions, { force = false } = {}) {
   const now = Date.now();
-  const candidates = missions
-    .filter((m) => {
-      const lw = m.lionwheel;
-      if (!lw?.taskId) return false;
-      const dest = lionWheelDestinationFromMission(m);
-      if (!dest) return false;
-      const fetchedAt = lw.taskStatusFetchedAt ? new Date(lw.taskStatusFetchedAt).getTime() : 0;
-      const ttl = lw.taskStatusFetchError ? LW_STATUS_RETRY_AFTER_ERROR_MS : LW_STATUS_REFRESH_MS;
-      const cacheFresh = now - fetchedAt < ttl;
-      if (cacheFresh) return false;
-      return true;
-    })
-    .slice(0, LW_STATUS_REFRESH_CAP);
+  let candidates = missions.filter((m) => {
+    const lw = m.lionwheel;
+    if (!lw?.taskId) return false;
+    const dest = lionWheelDestinationFromMission(m);
+    if (!dest) return false;
+    if (force) return true;
+    const fetchedAt = lw.taskStatusFetchedAt ? new Date(lw.taskStatusFetchedAt).getTime() : 0;
+    const ttl = lw.taskStatusFetchError ? LW_STATUS_RETRY_AFTER_ERROR_MS : LW_STATUS_REFRESH_MS;
+    const cacheFresh = now - fetchedAt < ttl;
+    if (cacheFresh) return false;
+    return true;
+  });
+  if (!force) {
+    candidates = candidates.slice(0, LW_STATUS_REFRESH_CAP);
+  }
 
   let dirty = false;
   const batch = 6;
@@ -136,6 +148,18 @@ async function enrichMissionsWithLionWheelStatuses(missions) {
     );
   }
   if (dirty) await writeMissions(missions);
+}
+
+/** Full LW refresh for every mission with taskId + resolvable destination (startup / dashboard reload). */
+export async function runStartupLionWheelSync() {
+  try {
+    const missions = await readMissions();
+    await enrichMissionsWithLionWheelStatuses(missions, { force: true });
+    const n = missions.filter((m) => m.lionwheel?.taskId && lionWheelDestinationFromMission(m)).length;
+    console.log(`[lionwheel] startup sync finished (${n} mission(s) with LW task id)`);
+  } catch (err) {
+    console.error('[lionwheel] startup sync failed:', err.message || err);
+  }
 }
 
 /** Customer empty-box flow: eventual ship-to (India / Thailand) — same ids as isa-express-web */
@@ -724,10 +748,14 @@ app.get('/api/track/:id', async (req, res) => {
 });
 
 /**
- * Make.com → merge LionWheel delivery status into mission (updates LW status column on next dashboard fetch).
+ * LionWheel / Make → distilled taskId + status → update mission.lionwheel in DB.
+ * Native payload: { "task": { "id": 24309382, "status": "ACTIVE", "order_id": "MSN-…" }, … }
  * Auth: Authorization: Bearer <MAKE_LIONWHEEL_WEBHOOK_SECRET>
+ *
+ * @param {{ lastWebhookSource: string }} opts
  */
-app.post('/api/webhooks/make-lionwheel-status', async (req, res) => {
+async function handleLionWheelTaskStatusWebhook(req, res, opts) {
+  const { lastWebhookSource } = opts;
   const receivedAt = new Date().toISOString();
   const inbound = snapshotMakeWebhookRequest(req);
   let outcome = { httpStatus: 500, phase: 'unknown' };
@@ -783,7 +811,7 @@ app.post('/api/webhooks/make-lionwheel-status', async (req, res) => {
         taskStatusLabel: lionWheelTaskStatusLabel(fields.taskStatusNum),
         taskStatusFetchedAt: new Date().toISOString(),
         taskStatusFetchError: undefined,
-        lastWebhookSource: 'make',
+        lastWebhookSource,
         lastWebhookAt: new Date().toISOString(),
       },
     };
@@ -795,12 +823,76 @@ app.post('/api/webhooks/make-lionwheel-status', async (req, res) => {
       taskStatus: fields.taskStatusNum,
       parsed: fields,
     };
-    return res.json({ ok: true, missionId: merged.id, taskStatus: fields.taskStatusNum });
+    return res.json({
+      ok: true,
+      missionId: merged.id,
+      taskStatus: fields.taskStatusNum,
+      taskStatusLabel: lionWheelTaskStatusLabel(fields.taskStatusNum),
+      lionwheelTaskId: fields.taskId,
+    });
   } catch (err) {
     outcome = { httpStatus: 500, phase: 'exception', message: err.message };
     return res.status(500).json({ error: err.message });
   } finally {
     pushMakeWebhookInbound({ receivedAt, ...inbound, outcome });
+  }
+}
+
+/** מממש שני נתיבי webhook; מעדיף lionwheel-task לגוף מלא מ-LionWheel. */
+app.post('/api/webhooks/make-lionwheel-status', (req, res) =>
+  handleLionWheelTaskStatusWebhook(req, res, { lastWebhookSource: 'make-lionwheel-status' }),
+);
+
+/**
+ * Native LionWheel-style body: `{ task: { id, status, order_id, … }, trigger_field? }`.
+ * מזקק מ-task.id + task.status (ו-fallback ל-task.order_id = mission id).
+ */
+app.post('/api/webhooks/lionwheel-task', (req, res) =>
+  handleLionWheelTaskStatusWebhook(req, res, { lastWebhookSource: 'lionwheel-task' }),
+);
+
+/**
+ * Debug only: receives any JSON body from Make (or another client), stores a full snapshot in memory, returns echo.
+ * Does not update missions. Same Bearer as LionWheel unless MAKE_WEBHOOK_INSPECT_SECRET is set.
+ *
+ * URL for Make: POST {PUBLIC_BASE_URL}/api/webhooks/make-inspect
+ * Header: Authorization: Bearer <secret>
+ */
+app.post('/api/webhooks/make-inspect', async (req, res) => {
+  try {
+    if (!MAKE_WEBHOOK_INSPECT_SECRET) {
+      return res.status(503).json({ error: 'MAKE_WEBHOOK_INSPECT_SECRET / MAKE_LIONWHEEL_WEBHOOK_SECRET not configured' });
+    }
+    const bearer = req.headers.authorization?.replace(/^Bearer\s+/i, '').trim();
+    if (!bearer || bearer !== MAKE_WEBHOOK_INSPECT_SECRET) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const snapshot = snapshotMakeWebhookRequest(req);
+    const parsedFields = (() => {
+      try {
+        return extractLionWheelWebhookFields(
+          req.body && typeof req.body === 'object' ? req.body : {},
+        );
+      } catch {
+        return null;
+      }
+    })();
+
+    const record = {
+      snapshot,
+      lionwheelParsePreview: parsedFields,
+    };
+    const { id, receivedAt } = pushMakeWebhookDebugCapture(record);
+
+    return res.status(200).json({
+      ok: true,
+      message: 'Captured. Admins: GET /api/debug/make-webhook-inspect-log',
+      receivedAt,
+      id,
+    });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
   }
 });
 
@@ -819,6 +911,23 @@ app.get('/api/debug/make-webhook-inbound-log', requireAdmin, (req, res) => {
 app.delete('/api/debug/make-webhook-inbound-log', requireAdmin, (req, res) => {
   try {
     clearMakeWebhookInbound();
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/debug/make-webhook-inspect-log', requireAdmin, (req, res) => {
+  try {
+    res.json({ entries: getMakeWebhookDebugCaptures() });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/debug/make-webhook-inspect-log', requireAdmin, (req, res) => {
+  try {
+    clearMakeWebhookDebugCaptures();
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1075,7 +1184,11 @@ app.get('/api/missions/stats', async (req, res) => {
 app.get('/api/missions', async (req, res) => {
   try {
     let missions = await readMissions();
-    await enrichMissionsWithLionWheelStatuses(missions);
+    const forceLw =
+      req.query.lionwheelSync === '1' ||
+      req.query.lionwheelSync === 'true' ||
+      req.query.lionwheelSync === '';
+    await enrichMissionsWithLionWheelStatuses(missions, { force: forceLw });
     missions = await filterMissionsForCountryUser(missions, req.user);
     const { status, type, createdBy, customerPhone, affiliate, linkedEmptyBoxMissionId, containerId } = req.query;
     let filtered = missions;

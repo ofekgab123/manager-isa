@@ -1,20 +1,37 @@
-# Make.com → Manager ISA (עדכון סטטוס LionWheel במסך המשימות)
+# Make.com / LionWheel → עדכון סטטוס במשימה (lionwheel.taskStatus במסד)
 #
-# מודול ב-Make: HTTP → Make a request
+# מומלץ לגוף מלא מ-LionWheel:
+# • URL:    {BASE_URL}/api/webhooks/lionwheel-task
+#
+# גם עובד (אותה לוגיקה):
 # • URL:    {BASE_URL}/api/webhooks/make-lionwheel-status
-# • Method: POST
-# • Headers:
+#
+# Method: POST
+# Headers:
 #     Content-Type: application/json
-#     Authorization: Bearer lionnwheelhttp12313ff   (ברירת מחדל בשרת — ניתן לדריסה ב-.env: MAKE_LIONWHEEL_WEBHOOK_SECRET)
-# • Body: JSON — ראה דוגמאות למטה
+#     Authorization: Bearer … (ברירת מחדל בשרת — .env: MAKE_LIONWHEEL_WEBHOOK_SECRET)
 #
 # פורט ברירת מחדל מקומית: 3002 (ראה server/index.js).
 
 @baseUrl = http://localhost:3002
 @secret = lionnwheelhttp12313ff
 
-### דוגמה — מזהה משימת LW + סטטוס מספרי (0–10)
-POST {{baseUrl}}/api/webhooks/make-lionwheel-status
+### מומלץ — גוף webhook מלא כמו מ-LionWheel (task.id + task.status + task.order_id)
+POST {{baseUrl}}/api/webhooks/lionwheel-task
+Authorization: Bearer {{secret}}
+Content-Type: application/json
+
+{
+  "task": {
+    "id": 24309382,
+    "status": "ACTIVE",
+    "order_id": "MSN-1777403712006"
+  },
+  "trigger_field": "status"
+}
+
+### דוגמה קצרה — מזהה משימת LW + סטטוס מספרי (0–10)
+POST {{baseUrl}}/api/webhooks/lionwheel-task
 Authorization: Bearer {{secret}}
 Content-Type: application/json
 
@@ -23,8 +40,8 @@ Content-Type: application/json
   "status": 2
 }
 
-### דוגמה — taskId + סטטוס כמחרוזת LionWheel (ACTIVE, COMPLETED, …)
-POST {{baseUrl}}/api/webhooks/make-lionwheel-status
+### דוגמה — taskId על השורש + סטטוס כמחרוזת
+POST {{baseUrl}}/api/webhooks/lionwheel-task
 Authorization: Bearer {{secret}}
 Content-Type: application/json
 
@@ -33,7 +50,20 @@ Content-Type: application/json
   "status": "COMPLETED"
 }
 
-### מה חובה בגוף (שרת — lionwheel.js → extractLionWheelWebhookFields)
-# סטטוס: חובה — מספר או אחת מהמחרוזות (UNASSIGNED, ASSIGNED, ACTIVE, …).
-# משימה: עדיף task_id / taskId השווה ל-lionwheel.taskId שנשמר במשימה אצלך.
-# גיבוי: mission_id בפורמט MSN-… אם LionWheel לא שולח task_id אבל יש קישור למספר הזמנה.
+### חילוץ שדות (שרת — lionwheel.js → extractLionWheelWebhookFields)
+# סטטוס: חובה — מספר או מחרוזת LionWheel (UNASSIGNED, ASSIGNED, ACTIVE, CANCELED, …).
+# משימה: מ-task.id (או task_id בשורש) — מתאים ל-mission.lionwheel.taskId.
+# גיבוי: task.order_id (MSN-…) או mission_id בשורש — מתאים ל-mission.id.
+
+### דיבוג — מה Make באמת שולח (לא מעדכן משימות)
+# כתובת ב-Make: POST {BASE_URL}/api/webhooks/make-inspect
+# אותו Bearer כמו למעלה (או MAKE_WEBHOOK_INSPECT_SECRET ב-.env).
+# תגובה: JSON עם id; צפייה ברשימה (אדמין + JWT): GET /api/debug/make-webhook-inspect-log
+POST {{baseUrl}}/api/webhooks/make-inspect
+Authorization: Bearer {{secret}}
+Content-Type: application/json
+
+{
+  "anything": "from Make",
+  "nested": { "task_id": 999 }
+}

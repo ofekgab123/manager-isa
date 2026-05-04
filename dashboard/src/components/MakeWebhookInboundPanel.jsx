@@ -69,6 +69,10 @@ export default function MakeWebhookInboundPanel() {
             <p className="text-slate-600 text-sm max-w-xl leading-relaxed">
               Incoming POST requests to{' '}
               <code className="text-xs bg-slate-100 px-1.5 py-0.5 rounded font-mono text-indigo-800">
+                /api/webhooks/lionwheel-task
+              </code>{' '}
+              or{' '}
+              <code className="text-xs bg-slate-100 px-1.5 py-0.5 rounded font-mono text-indigo-800">
                 /api/webhooks/make-lionwheel-status
               </code>{' '}
               are logged here (secrets redacted). Polls every few seconds while this tab is open.

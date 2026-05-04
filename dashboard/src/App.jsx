@@ -104,7 +104,8 @@ function useMissions(onNewMissions) {
     if (!isPoll && !silent) setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`${API_BASE}/missions`);
+      const qs = !isPoll ? '?lionwheelSync=1' : '';
+      const res = await fetch(`${API_BASE}/missions${qs}`);
       if (!res.ok) throw new Error('Failed to fetch');
       const data = await res.json();
       if (isPoll && onNewMissions && knownIdsRef.current.size > 0) {

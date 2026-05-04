@@ -337,12 +337,19 @@ export function extractLionWheelWebhookFields(body) {
     taskStatusNum = extractTaskStatusFromShowPayload(b);
   }
 
+  const orderIdCoerced =
+    nested.order_id != null && String(nested.order_id).trim()
+      ? String(nested.order_id).trim()
+      : b.order_id != null && String(b.order_id).trim()
+        ? String(b.order_id).trim()
+        : null;
+
   const missionIdHint =
     (typeof b.original_order_id === 'string' && b.original_order_id.trim()) ||
     (typeof b.wp_order_id === 'string' && b.wp_order_id.trim()) ||
     (typeof nested.wp_order_id === 'string' && nested.wp_order_id.trim()) ||
     (typeof b.mission_id === 'string' && b.mission_id.trim()) ||
-    null;
+    orderIdCoerced;
 
   return {
     taskId: Number.isFinite(tid) ? tid : null,
