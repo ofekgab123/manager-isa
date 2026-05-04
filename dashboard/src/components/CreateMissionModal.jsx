@@ -446,6 +446,7 @@ export default function CreateMissionModal({ isOpen, onClose, onCreated, authCou
   if (createdMission) {
     const lwOk = !!createdMission.lionwheel?.taskId;
     const lwErr = createdMission.lionwheel?.syncError;
+    const lwSkipReason = createdMission.lionwheel?.syncSkipReason;
     const notesForDriver = String(createdMission.notes || '').trim();
     return (
       <>
@@ -507,6 +508,14 @@ export default function CreateMissionModal({ isOpen, onClose, onCreated, authCou
                     </div>
                     <p className="font-semibold text-slate-700 text-sm">LionWheel sync failed</p>
                     <p className="text-xs text-red-500 text-center max-w-xs">{lwErr}</p>
+                  </>
+                ) : lwSkipReason ? (
+                  <>
+                    <div className="w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center">
+                      <Package className="w-7 h-7 text-amber-500" />
+                    </div>
+                    <p className="font-semibold text-slate-700 text-sm">LionWheel skipped</p>
+                    <p className="text-xs text-amber-800 text-center max-w-md px-3">{lwSkipReason}</p>
                   </>
                 ) : (
                   <>

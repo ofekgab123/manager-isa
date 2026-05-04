@@ -622,7 +622,18 @@ app.post('/api/missions', async (req, res) => {
           missionType === 'empty_box'
             ? await createLionWheelTaskForEmptyBoxMission(missionStored)
             : await createLionWheelTaskForPickupMission(missionStored);
-        if (!lw.skipped) {
+        if (lw.skipped) {
+          const lionwheel = {
+            syncSkipped: true,
+            syncSkipReason: lw.reason || 'LionWheel sync skipped',
+            syncAttemptedAt: new Date().toISOString(),
+          };
+          missionToReturn = { ...missionStored, lionwheel };
+          const i = missions.findIndex((m) => m.id === missionStored.id);
+          if (i !== -1) missions[i] = missionToReturn;
+          await writeMissions(missions);
+          console.warn('[LionWheel] skipped', missionStored.id, lw.reason);
+        } else {
           const lionwheel = lw.ok
             ? {
                 taskId: lw.taskId,
