@@ -529,7 +529,7 @@ function Dashboard({ authUser, onLogout }) {
         </div>
       </div>
 
-      <main className="p-5 sm:p-7">
+      <main className="px-2 py-4 sm:px-4 sm:py-5">
         {activeTab === 'packages' && <PackagesPanel authCountry={authUser.country} />}
         {activeTab === 'containers' && <ContainersPanel />}
         {activeTab === 'affiliates' && <AffiliatesPanel missions={missions} />}
@@ -762,25 +762,25 @@ function Dashboard({ authUser, onLogout }) {
               ) : filtered.length === 0 ? (
                 <div className="p-10 text-center text-slate-400 text-sm">No missions to display</div>
               ) : (
-                <TableHorizontalScroll className="px-3 pb-5">
-                  <table className="w-full text-center">
+                <div className="px-2 pb-4">
+                  <table className="w-full text-center table-fixed text-xs">
                     <thead>
                       <tr className="table-header">
-                        <th className="w-40">ID</th>
-                        {visibleColumns.type        && <th className="w-28">Type</th>}
-                        {visibleColumns.lwStatus    && <th className="w-36">LionWheel status</th>}
-                        {visibleColumns.trackingId  && <th className="w-36">Tracking ID</th>}
-                        {visibleColumns.sender      && <th className="w-48">Sender</th>}
-                        {visibleColumns.pickupAddr  && <th className="w-64">Pickup Addr</th>}
-                        {visibleColumns.shipTo      && <th className="w-28">Ship to</th>}
-                        {visibleColumns.receiver    && <th className="w-48">Receiver</th>}
-                        {visibleColumns.deliveryAddr && <th className="w-64">Delivery Addr</th>}
-                        {visibleColumns.boxes       && <th className="w-28">Boxes</th>}
-                        {visibleColumns.source      && <th className="w-20">Source</th>}
-                        {visibleColumns.affiliate   && <th className="w-32">Affiliate</th>}
-                        {visibleColumns.date        && <th className="w-40">Date</th>}
-                        {visibleColumns.lwTaskId    && <th className="w-32">LionWheel ID</th>}
-                        <th className="w-20"></th>
+                        <th className="min-w-[7rem]">ID</th>
+                        {visibleColumns.type        && <th className="min-w-[5rem]">Type</th>}
+                        {visibleColumns.lwStatus    && <th className="min-w-[7rem]">LW Status</th>}
+                        {visibleColumns.trackingId  && <th className="min-w-[5rem]">Tracking</th>}
+                        {visibleColumns.sender      && <th className="min-w-[7rem]">Sender</th>}
+                        {visibleColumns.pickupAddr  && <th className="min-w-[9rem]">Pickup Addr</th>}
+                        {visibleColumns.shipTo      && <th className="min-w-[4rem]">Ship to</th>}
+                        {visibleColumns.receiver    && <th className="min-w-[7rem]">Receiver</th>}
+                        {visibleColumns.deliveryAddr && <th className="min-w-[9rem]">Delivery Addr</th>}
+                        {visibleColumns.boxes       && <th className="min-w-[4rem]">Boxes</th>}
+                        {visibleColumns.source      && <th className="min-w-[3.5rem]">Source</th>}
+                        {visibleColumns.affiliate   && <th className="min-w-[5rem]">Affiliate</th>}
+                        {visibleColumns.date        && <th className="min-w-[6rem]">Date</th>}
+                        {visibleColumns.lwTaskId    && <th className="min-w-[6rem]">LW ID</th>}
+                        <th className="min-w-[3.5rem]"></th>
                       </tr>
                     </thead>
                     <tbody>
@@ -815,122 +815,161 @@ function Dashboard({ authUser, onLogout }) {
                               </td>
                             )}
                             {visibleColumns.lwStatus && (
-                              <td className="whitespace-nowrap max-w-[10rem]">
+                              <td className="overflow-hidden">
                                 {mission.lionwheel?.syncError ? (
                                   <span className="inline-flex items-center px-2 py-0.5 rounded-lg text-xs font-medium bg-red-100 text-red-800 border border-red-200">
                                     Sync failed
                                   </span>
-                                ) : mission.lionwheel?.taskStatusFetchError ? (
-                                  <span
-                                    title={mission.lionwheel.taskStatusFetchError}
-                                    className="inline-flex items-center px-2 py-0.5 rounded-lg text-xs font-medium bg-amber-100 text-amber-900 border border-amber-200 max-w-[9rem] truncate cursor-help"
-                                  >
-                                    LW status unavailable
-                                  </span>
-                                ) : mission.lionwheel?.taskStatusLabel ? (
-                                  <span
-                                    title={typeof mission.lionwheel.taskStatus === 'number' ? `Code ${mission.lionwheel.taskStatus}` : undefined}
-                                    className={`inline-flex items-center px-2 py-0.5 rounded-lg text-xs font-medium ${lwStatusBadgeClasses(mission.lionwheel.taskStatus)}`}
-                                  >
-                                    {mission.lionwheel.taskStatusLabel}
-                                  </span>
-                                ) : mission.lionwheel?.taskId ? (
-                                  <span className="text-xs text-slate-400">Pending…</span>
-                                ) : (
-                                  <span className="text-slate-300 text-sm">—</span>
-                                )}
+                                ) : (() => {
+                                  const lw = mission.lionwheel;
+                                  const code =
+                                    lw && typeof lw.taskStatus === 'number' && Number.isFinite(lw.taskStatus)
+                                      ? lw.taskStatus
+                                      : null;
+                                  const label =
+                                    lw?.taskStatusLabel && String(lw.taskStatusLabel).trim()
+                                      ? String(lw.taskStatusLabel).trim()
+                                      : null;
+                                  const hasStoredStatus = code != null || (label != null && label !== '—');
+
+                                  if (hasStoredStatus) {
+                                    const badgeClass =
+                                      code != null ? lwStatusBadgeClasses(code) : 'bg-slate-100 text-slate-600 border border-slate-200';
+                                    const titleBits = [];
+                                    if (code != null) titleBits.push(`Code ${code}`);
+                                    if (lw?.taskStatusFetchError)
+                                      titleBits.push(`Last API refresh: ${lw.taskStatusFetchError}`);
+                                    return (
+                                      <span
+                                        title={titleBits.join(' · ') || undefined}
+                                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs font-medium max-w-[11rem] ${badgeClass} ${lw?.taskStatusFetchError ? 'ring-1 ring-amber-300/80' : ''}`}
+                                      >
+                                        <span className="truncate">{label ?? `Code ${code}`}</span>
+                                      </span>
+                                    );
+                                  }
+
+                                  if (lw?.taskStatusFetchError) {
+                                    return (
+                                      <span
+                                        title={lw.taskStatusFetchError}
+                                        className="inline-flex items-center px-2 py-0.5 rounded-lg text-xs font-medium bg-amber-100 text-amber-900 border border-amber-200 max-w-[9rem] truncate cursor-help"
+                                      >
+                                        LW status unavailable
+                                      </span>
+                                    );
+                                  }
+
+                                  if (lw?.taskId) {
+                                    return <span className="text-xs text-slate-400">Pending…</span>;
+                                  }
+
+                                  return <span className="text-slate-300 text-sm">—</span>;
+                                })()}
                               </td>
                             )}
                             {visibleColumns.trackingId && (
                               <td className="max-w-[9rem]">
-                                {mission.type === 'pickup' ? (() => {
-                                  const ids = (mission.deliveries?.length > 0 ? mission.deliveries : [mission])
-                                    .flatMap((d) => (d.boxTrackingIds ?? []).filter(Boolean));
-                                  return ids.length > 0 ? (
-                                    <div className="flex flex-col gap-0.5">
-                                      {ids.map((tid, i) => (
-                                        <span key={i} className="font-mono text-xs text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded truncate block" title={tid}>
-                                          {tid}
-                                        </span>
-                                      ))}
-                                    </div>
-                                  ) : (
-                                    <span className="text-slate-300 text-sm">—</span>
-                                  );
-                                })() : (
-                                  <span className="text-slate-300 text-sm">—</span>
-                                )}
+                                {(() => {
+                                  const ids = mission.type === 'pickup'
+                                    ? (mission.deliveries?.length > 0 ? mission.deliveries : [mission])
+                                        .flatMap((d) => (d.boxTrackingIds ?? []).filter(Boolean))
+                                    : [];
+                                  if (ids.length > 0) {
+                                    return (
+                                      <div className="flex flex-col gap-0.5">
+                                        {ids.map((tid, i) => (
+                                          <span key={i} className="font-mono text-xs text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded truncate block" title={tid}>
+                                            {tid}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    );
+                                  }
+                                  const lwPid = mission.lionwheel?.publicId && String(mission.lionwheel.publicId).trim();
+                                  if (lwPid) {
+                                    return (
+                                      <span
+                                        className="font-mono text-xs text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded truncate block"
+                                        title="LionWheel public ID"
+                                      >
+                                        {lwPid}
+                                      </span>
+                                    );
+                                  }
+                                  return <span className="text-slate-300 text-sm">—</span>;
+                                })()}
                               </td>
                             )}
                             {visibleColumns.sender && (
-                              <td className="w-48 max-w-[12rem]">
-                                <p className="text-sm font-semibold text-slate-700 truncate">{mission.fullName || '—'}</p>
-                                <p className="text-xs text-slate-400 truncate mt-0.5">{mission.customerPhone || ''}</p>
+                              <td className="overflow-hidden">
+                                <p className="text-xs font-semibold text-slate-700 truncate">{mission.fullName || '—'}</p>
+                                <p className="text-xs text-slate-400 truncate">{mission.customerPhone || ''}</p>
                               </td>
                             )}
                             {visibleColumns.pickupAddr && (
-                              <td className="w-64 max-w-[16rem]">
+                              <td className="overflow-hidden">
                                 {mission.address?.lat ? (
-                                  <span className="inline-flex items-center gap-1.5 text-sm text-slate-600 w-full overflow-hidden">
-                                    <MapPin className="w-3.5 h-3.5 text-green-500 shrink-0" />
+                                  <span className="inline-flex items-center gap-1 text-xs text-slate-600 w-full overflow-hidden">
+                                    <MapPin className="w-3 h-3 text-green-500 shrink-0" />
                                     <span className="truncate">{mission.address.displayAddress || '—'}</span>
                                   </span>
                                 ) : (
                                   <span className="badge-pill bg-amber-100 text-amber-700">
-                                    <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                                    <AlertTriangle className="w-3 h-3 shrink-0" />
                                     Missing
                                   </span>
                                 )}
                               </td>
                             )}
                             {visibleColumns.shipTo && (
-                              <td className="w-28 max-w-[7rem]">
+                              <td>
                                 {mission.shippingDestination ? (
-                                  <span className="text-sm font-medium text-slate-700 whitespace-nowrap">
+                                  <span className="text-xs font-medium text-slate-700 truncate block">
                                     {shippingDestinationLabel(mission.shippingDestination)}
                                   </span>
                                 ) : mission.type === 'empty_box' ? (
-                                  <span className="text-xs text-amber-600" title="Not set on order">—</span>
+                                  <span className="text-xs text-amber-600">—</span>
                                 ) : (
-                                  <span className="text-slate-300 text-sm">—</span>
+                                  <span className="text-slate-300 text-xs">—</span>
                                 )}
                               </td>
                             )}
                             {visibleColumns.receiver && (
-                              <td className="w-48 max-w-[12rem]">
+                              <td className="overflow-hidden">
                                 {mission.type === 'pickup' ? (
                                   mission.receiverName || mission.receiverPhone ? (
                                     <>
-                                      <p className="text-sm font-semibold text-slate-700 truncate">{mission.receiverName || '—'}</p>
-                                      <p className="text-xs text-slate-400 truncate mt-0.5">{mission.receiverPhone || ''}</p>
+                                      <p className="text-xs font-semibold text-slate-700 truncate">{mission.receiverName || '—'}</p>
+                                      <p className="text-xs text-slate-400 truncate">{mission.receiverPhone || ''}</p>
                                     </>
                                   ) : (
                                     <span className="badge-pill bg-amber-100 text-amber-700">
-                                      <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                                      <AlertTriangle className="w-3 h-3 shrink-0" />
                                       Missing
                                     </span>
                                   )
                                 ) : (
-                                  <span className="text-slate-300 text-sm">—</span>
+                                  <span className="text-slate-300 text-xs">—</span>
                                 )}
                               </td>
                             )}
                             {visibleColumns.deliveryAddr && (
-                              <td className="w-64 max-w-[16rem]">
+                              <td className="overflow-hidden">
                                 {mission.type === 'pickup' ? (
                                   mission.receiverAddress?.lat ? (
-                                    <span className="inline-flex items-center gap-1.5 text-sm text-slate-600 w-full overflow-hidden">
-                                      <MapPin className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+                                    <span className="inline-flex items-center gap-1 text-xs text-slate-600 w-full overflow-hidden">
+                                      <MapPin className="w-3 h-3 text-indigo-500 shrink-0" />
                                       <span className="truncate">{mission.receiverAddress.displayAddress || '—'}</span>
                                     </span>
                                   ) : (
                                     <span className="badge-pill bg-amber-100 text-amber-700">
-                                      <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                                      <AlertTriangle className="w-3 h-3 shrink-0" />
                                       Missing
                                     </span>
                                   )
                                 ) : (
-                                  <span className="text-slate-300 text-sm">—</span>
+                                  <span className="text-slate-300 text-xs">—</span>
                                 )}
                               </td>
                             )}
@@ -958,7 +997,7 @@ function Dashboard({ authUser, onLogout }) {
                               </td>
                             )}
                             {visibleColumns.source && (
-                              <td className="text-sm text-slate-500 whitespace-nowrap font-medium">{CREATED_BY_LABELS[mission.createdBy] || mission.createdBy}</td>
+                              <td className="text-xs text-slate-500 font-medium truncate">{CREATED_BY_LABELS[mission.createdBy] || mission.createdBy}</td>
                             )}
                             {visibleColumns.affiliate && (
                               <td>
@@ -973,9 +1012,9 @@ function Dashboard({ authUser, onLogout }) {
                               </td>
                             )}
                             {visibleColumns.date && (
-                              <td className="text-sm text-slate-500 whitespace-nowrap">
+                              <td className="text-xs text-slate-500 whitespace-nowrap">
                                 {mission.createdAt
-                                  ? new Date(mission.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+                                  ? new Date(mission.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: '2-digit' })
                                   : '—'}
                               </td>
                             )}
@@ -1044,7 +1083,7 @@ function Dashboard({ authUser, onLogout }) {
                       })}
                     </tbody>
                   </table>
-                </TableHorizontalScroll>
+                </div>
               )}
             </section>
           </>

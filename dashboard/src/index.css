@@ -195,16 +195,16 @@
   }
 
   .table-header th {
-    @apply px-5 py-3.5 text-[11px] font-bold text-slate-500 uppercase tracking-widest whitespace-nowrap;
-    letter-spacing: 0.08em;
+    @apply px-2 py-2.5 text-[10px] font-bold text-slate-500 uppercase tracking-widest whitespace-nowrap;
+    letter-spacing: 0.06em;
   }
 
   .table-header th:first-child {
-    @apply pl-6;
+    @apply pl-3;
   }
 
   .table-header th:last-child {
-    @apply pr-6;
+    @apply pr-3;
   }
 
   .table-row {
@@ -226,15 +226,15 @@
   }
 
   .table-row td {
-    @apply px-5 py-4 text-sm text-slate-600;
+    @apply px-2 py-2 text-xs text-slate-600;
   }
 
   .table-row td:first-child {
-    @apply pl-6;
+    @apply pl-3;
   }
 
   .table-row td:last-child {
-    @apply pr-6;
+    @apply pr-3;
   }
 
   .table-row.row-warning {
@@ -261,11 +261,11 @@
   }
 
   .table-id {
-    @apply font-mono font-bold text-sm inline-block;
+    @apply font-mono font-bold text-xs inline-block truncate max-w-full;
     color: #4f46e5;
     background: linear-gradient(135deg, #eef2ff 0%, #e0e7ff 100%);
-    padding: 0.2rem 0.6rem;
-    border-radius: 0.5rem;
+    padding: 0.15rem 0.4rem;
+    border-radius: 0.4rem;
   }
 
   .table-placeholder {
