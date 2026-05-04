@@ -464,7 +464,7 @@ export async function fetchLionWheelTaskShow(taskId, destination, options = {}) 
 
 /**
  * JSON body for POST /api/v1/tasks/create for an empty_box mission.
- * company_id is resolved from shippingDestination (india / thailand).
+ * company_id is resolved from LionWheel region (mission.country or legacy shippingDestination).
  */
 export function buildLionWheelCreatePayloadForEmptyBox(mission) {
   const addr = mission.address || {};
@@ -475,7 +475,8 @@ export function buildLionWheelCreatePayloadForEmptyBox(mission) {
   const phone = String(mission.customerPhone || '').trim();
   const destination_number = houseNumber || '—';
 
-  const creds = getLionWheelCredentials(mission.shippingDestination);
+  const dest = lionWheelDestinationFromMission(mission);
+  const creds = getLionWheelCredentials(dest);
   const boxes = (mission.boxSelection?.large || 0) + (mission.boxSelection?.small || 0);
 
   const payload = {
@@ -532,7 +533,7 @@ export async function createLionWheelTaskForEmptyBoxMission(mission) {
       error: 'Missing required mission fields for LionWheel (city, street, name, phone)',
     };
   }
-  return sendLionWheelCreatePayload(payload, mission.shippingDestination);
+  return sendLionWheelCreatePayload(payload, lionWheelDestinationFromMission(mission));
 }
 
 /**

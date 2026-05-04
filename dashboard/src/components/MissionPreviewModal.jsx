@@ -4,7 +4,7 @@ import { API_BASE } from '../config';
 import CollapsibleParcelContent from './CollapsibleParcelContent';
 import { formatIls, sumAllDeliveriesContentsIls, sumBoxContentsIls } from '../parcelContentUtils';
 import { maxPickupLinksForEmptyBox } from '../pickerSlots';
-import { shippingDestinationLabel } from '../shippingDestinations';
+import { shippingDestinationLabel, missionLwRegionId } from '../shippingDestinations';
 
 const TYPE_LABELS = { pickup: 'Pickup', empty_box: 'Empty Box' };
 const STATUS_LABELS = {
@@ -140,15 +140,15 @@ export default function MissionPreviewModal({
             <PreviewRow label="Phone" value={mission.customerPhone} />
           </PreviewSection>
 
-          {!isPickup && mission.type === 'empty_box' && !mission.shippingDestination && (
+          {!isPickup && mission.type === 'empty_box' && !missionLwRegionId(mission) && (
             <div className="text-sm text-amber-700 bg-amber-50/80 border border-amber-100 rounded-xl px-3 py-2">
               Ship to not selected — ask customer or set in edit
             </div>
           )}
 
-          {mission.shippingDestination && !isPickup && (
+          {missionLwRegionId(mission) && !isPickup && (
             <PreviewSection icon={Globe} title="Ship to (after packing)">
-              <PreviewRow label="Country" value={shippingDestinationLabel(mission.shippingDestination)} />
+              <PreviewRow label="Country" value={shippingDestinationLabel(missionLwRegionId(mission))} />
             </PreviewSection>
           )}
 

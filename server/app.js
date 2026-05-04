@@ -54,7 +54,7 @@ function resolveDefaultPickupContainerId(containersList, bodyCountry) {
   return legacy ? legacy.id : null;
 }
 
-/** auth_users.country (India / Thailand) → mission.shippingDestination id */
+/** auth_users.country (India / Thailand) → same ids as LionWheel region (stored on mission.country for empty_box). */
 function userAuthCountryToShippingDestId(country) {
   if (country == null || String(country).trim() === '') return null;
   const s = String(country).trim().toLowerCase();
@@ -64,7 +64,7 @@ function userAuthCountryToShippingDestId(country) {
 }
 
 /**
- * empty_box: visible when shippingDestination matches the user’s country (customer site sends india/thailand).
+ * empty_box: visible when LionWheel region (country or legacy shippingDestination) matches the user’s country.
  * pickup: visible when container is in the user’s country (containerId in set).
  */
 function missionVisibleForUserCountry(m, userCountry, containerIdsForUser) {
@@ -72,7 +72,7 @@ function missionVisibleForUserCountry(m, userCountry, containerIdsForUser) {
   const wantDest = userAuthCountryToShippingDestId(userCountry);
   if (m.type === 'empty_box') {
     if (!wantDest) return false;
-    return m.shippingDestination === wantDest;
+    return lionWheelDestinationFromMission(m) === wantDest;
   }
   if (m.type === 'pickup') {
     if (!m.containerId) return false;
@@ -182,14 +182,9 @@ function normalizeShippingDestination(missionType, raw) {
   return VALID_SHIPPING_DESTINATIONS.has(s) ? s : null;
 }
 
-/** Pickup: LionWheel account key — derive from dashboard auth country (same as empty_box ship-to). */
-function shippingDestinationForPickup(body) {
-  return userAuthCountryToShippingDestId(body.country);
-}
-
 /**
- * Pickup often has no body.country (e.g. admin user). Then infer india/thailand from linked empty_box
- * or from the pickup container’s country so LionWheel API keys resolve correctly.
+ * Pickup: shippingDestination is always null in DB. For LionWheel only: infer india/thailand from
+ * mission.country, linked empty_box, or pickup container when those fields are set.
  */
 async function pickupLionWheelDestinationFallback(mission, missionsList) {
   if (mission.type !== 'pickup') return null;
@@ -559,6 +554,11 @@ app.post('/api/missions', async (req, res) => {
     const validTypes = ['empty_box', 'pickup'];
     const missionType = validTypes.includes(body.type) ? body.type : 'pickup';
     const { affiliateName, discountAmount } = affiliateFieldsForMissionType(missionType, body);
+    const emptyBoxLwRegion =
+      missionType === 'empty_box'
+        ? normalizeShippingDestination(missionType, body.shippingDestination) ||
+          userAuthCountryToShippingDestId(body.country)
+        : null;
     let pickupContainerId = null;
     if (missionType === 'pickup') {
       if (Object.prototype.hasOwnProperty.call(body, 'containerId')) {
@@ -594,18 +594,12 @@ app.post('/api/missions', async (req, res) => {
       discountAmount,
       linkedEmptyBoxMissionId: body.linkedEmptyBoxMissionId || null,
       containerId: missionType === 'pickup' ? pickupContainerId : null,
-      country: body.country ?? null,
-      shippingDestination:
+      country:
         missionType === 'empty_box'
-          ? normalizeShippingDestination(missionType, body.shippingDestination)
-          : missionType === 'pickup'
-            ? shippingDestinationForPickup(body)
-            : null,
+          ? emptyBoxLwRegion ?? body.country ?? null
+          : body.country ?? null,
+      shippingDestination: null,
     };
-    if (newMission.type === 'pickup' && !lionWheelDestinationFromMission(newMission)) {
-      const fb = await pickupLionWheelDestinationFallback(newMission, missions);
-      if (fb) newMission.shippingDestination = fb;
-    }
     missions.unshift(newMission);
     await writeMissions(missions);
 
@@ -613,9 +607,14 @@ app.post('/api/missions', async (req, res) => {
     const shouldSyncLionWheel = missionType === 'empty_box' || missionType === 'pickup';
     if (shouldSyncLionWheel) {
       try {
+        let missionForLw = newMission;
+        if (missionType === 'pickup' && !lionWheelDestinationFromMission(newMission)) {
+          const fb = await pickupLionWheelDestinationFallback(newMission, missions);
+          if (fb) missionForLw = { ...newMission, shippingDestination: fb };
+        }
         const lw = missionType === 'empty_box'
-          ? await createLionWheelTaskForEmptyBoxMission(newMission)
-          : await createLionWheelTaskForPickupMission(newMission);
+          ? await createLionWheelTaskForEmptyBoxMission(missionForLw)
+          : await createLionWheelTaskForPickupMission(missionForLw);
         if (!lw.skipped) {
           const lionwheel = lw.ok
             ? {
@@ -1324,9 +1323,15 @@ app.patch('/api/missions/:id', async (req, res) => {
     if (merged.type === 'pickup') {
       merged.shippingDestination = null;
     } else if (merged.type === 'empty_box') {
-      merged.shippingDestination = Object.prototype.hasOwnProperty.call(updates, 'shippingDestination')
-        ? normalizeShippingDestination('empty_box', updates.shippingDestination)
-        : normalizeShippingDestination('empty_box', merged.shippingDestination);
+      merged.shippingDestination = null;
+      if (Object.prototype.hasOwnProperty.call(updates, 'country')) {
+        const normC = userAuthCountryToShippingDestId(updates.country);
+        merged.country = normC ?? updates.country ?? null;
+      }
+      if (Object.prototype.hasOwnProperty.call(updates, 'shippingDestination')) {
+        const norm = normalizeShippingDestination('empty_box', updates.shippingDestination);
+        if (norm != null) merged.country = norm;
+      }
     }
     if (merged.type !== 'pickup') {
       merged.affiliateName = null;
@@ -1366,7 +1371,7 @@ app.post('/api/missions/:id/send-to-lionwheel', requireAuth, async (req, res) =>
     const missions = await readMissions();
     const idx = missions.findIndex((m) => m.id === req.params.id);
     if (idx === -1) return res.status(404).json({ error: 'Mission not found' });
-    let mission = missions[idx];
+    const mission = missions[idx];
 
     await assertMissionAccessForCountryUser(mission, req.user);
 
@@ -1377,20 +1382,17 @@ app.post('/api/missions/:id/send-to-lionwheel', requireAuth, async (req, res) =>
       return res.status(409).json({ error: 'Mission already sent to LionWheel', taskId: mission.lionwheel.taskId });
     }
 
-    if (!lionWheelDestinationFromMission(mission)) {
+    let missionForLw = mission;
+    if (mission.type === 'pickup' && !lionWheelDestinationFromMission(mission)) {
       const fb = await pickupLionWheelDestinationFallback(mission, missions);
-      if (fb) {
-        mission = { ...mission, shippingDestination: fb };
-        missions[idx] = mission;
-        await updateMissionsData(mission.id, mission);
-      }
+      if (fb) missionForLw = { ...mission, shippingDestination: fb };
     }
 
     let lw;
     try {
       lw = mission.type === 'empty_box'
         ? await createLionWheelTaskForEmptyBoxMission(mission)
-        : await createLionWheelTaskForPickupMission(mission);
+        : await createLionWheelTaskForPickupMission(missionForLw);
     } catch (e) {
       const lionwheel = { syncError: e.message || String(e), syncAttemptedAt: new Date().toISOString() };
       const updated = { ...mission, lionwheel };

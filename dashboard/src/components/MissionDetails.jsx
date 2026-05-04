@@ -7,7 +7,7 @@ import { maxPickupLinksForEmptyBox } from '../pickerSlots';
 import EmptyBoxMissionPickerModal from './EmptyBoxMissionPickerModal';
 import CollapsibleParcelContent from './CollapsibleParcelContent';
 import PickupMissionPickerModal from './PickupMissionPickerModal';
-import { SHIPPING_DESTINATIONS } from '../shippingDestinations';
+import { SHIPPING_DESTINATIONS, missionLwRegionId } from '../shippingDestinations';
 import { formatIls, sumAllDeliveriesContentsIls, valueIlsForTypeLabel } from '../parcelContentUtils';
 
 const TYPE_OPTIONS = [
@@ -546,7 +546,9 @@ export default function MissionDetails({ mission, onSave, onClose, onDelete, onO
         body: JSON.stringify(payload),
       });
       if (!res.ok) throw new Error('Save error');
-      onSave?.(await res.json());
+      const saved = await res.json();
+      setEdit({ ...saved, bringBoxes: saved.bringBoxes === true });
+      onSave?.(saved);
     } catch (e) {
       setError(e.message || 'Error');
     } finally {
@@ -657,7 +659,7 @@ export default function MissionDetails({ mission, onSave, onClose, onDelete, onO
           </h4>
           <p className="text-xs text-slate-500">Destination country for the customer&apos;s packed shipment</p>
           <select
-            value={edit.shippingDestination || ''}
+            value={missionLwRegionId(edit) || ''}
             onChange={(e) => update('shippingDestination', e.target.value || null)}
             className="select-field"
           >

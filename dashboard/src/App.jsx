@@ -44,7 +44,7 @@ import MakeWebhookInboundPanel from './components/MakeWebhookInboundPanel';
 import TableHorizontalScroll from './components/TableHorizontalScroll';
 import LoginPage from './components/LoginPage';
 import { API_BASE } from './config';
-import { shippingDestinationLabel } from './shippingDestinations';
+import { shippingDestinationLabel, missionLwRegionId } from './shippingDestinations';
 
 const TYPE_LABELS = {
   pickup: 'Pickup',
@@ -937,9 +937,9 @@ function Dashboard({ authUser, onLogout }) {
                             )}
                             {visibleColumns.shipTo && (
                               <td>
-                                {mission.shippingDestination ? (
+                                {missionLwRegionId(mission) ? (
                                   <span className="text-xs font-medium text-slate-700 truncate block">
-                                    {shippingDestinationLabel(mission.shippingDestination)}
+                                    {shippingDestinationLabel(missionLwRegionId(mission))}
                                   </span>
                                 ) : mission.type === 'empty_box' ? (
                                   <span className="text-xs text-amber-600">—</span>
