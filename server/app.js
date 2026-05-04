@@ -192,6 +192,7 @@ pool.query(`ALTER TABLE auth_users ADD COLUMN IF NOT EXISTS country VARCHAR(50)`
 app.use(cors({
   origin: (origin, cb) => {
     const allowed = [
+      'https://manager-isa.vercel.app',
       'https://isa-psi-six.vercel.app',
       'https://isa-32uqdb92z-ofekgab123s-projects.vercel.app',
       'https://isa-git-main-ofekgab123s-projects.vercel.app',

@@ -73,7 +73,7 @@ export default function MakeWebhookInboundPanel() {
               </code>{' '}
               (e.g.{' '}
               <code className="text-xs bg-slate-100 px-1.5 py-0.5 rounded font-mono text-indigo-800">
-                https://isa.vercel.app/api/webhooks/lionwheel-task
+                https://manager-isa.vercel.app/api/webhooks/lionwheel-task
               </code>
               ) or{' '}
               <code className="text-xs bg-slate-100 px-1.5 py-0.5 rounded font-mono text-indigo-800">

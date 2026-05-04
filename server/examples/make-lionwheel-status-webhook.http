@@ -13,6 +13,7 @@
 #     אופציונלי במקום Bearer: X-Manager-Isa-Webhook-Secret: … (אם Make/Proxy מקלקלים Authorization)
 #
 # פורט ברירת מחדל מקומית: 3002 (ראה server/index.js).
+# Production: https://manager-isa.vercel.app/api/webhooks/lionwheel-task
 
 @baseUrl = http://localhost:3002
 @secret = lionnwheelhttp12313ff
