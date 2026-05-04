@@ -30,6 +30,15 @@ export function getLionWheelCredentials(destination) {
   return null;
 }
 
+/**
+ * Billing/affiliate fields live only on our stored mission — omit from anything we send to LionWheel.
+ */
+function missionWithoutBillingForLionWheel(mission) {
+  if (!mission || typeof mission !== 'object') return mission;
+  const { discountAmount: _discountAmount, affiliateName: _affiliateName, ...rest } = mission;
+  return rest;
+}
+
 function formatPickupAtDdMmYyyy(d = new Date()) {
   const dd = String(d.getDate()).padStart(2, '0');
   const mm = String(d.getMonth() + 1).padStart(2, '0');
@@ -221,14 +230,23 @@ function lionWheelErrorMessage(status, data, rawText) {
   return (rawText && String(rawText).trim()) || `HTTP ${status}`;
 }
 
-/**
- * india / thailand key for LionWheel credentials from a stored mission.
- */
-export function lionWheelDestinationFromMission(mission) {
-  const raw = mission?.shippingDestination ?? mission?.country;
+/** @param {unknown} raw */
+function lionWheelRegionIdFromField(raw) {
   if (raw == null || String(raw).trim() === '') return null;
   const s = String(raw).trim().toLowerCase();
   return s === 'india' || s === 'thailand' ? s : null;
+}
+
+/**
+ * LionWheel has two API accounts (india | thailand). Stored missions keep shippingDestination null;
+ * region is on mission.country for empty_box. Pickup may pass a resolved shippingDestination in-memory only.
+ */
+export function lionWheelDestinationFromMission(mission) {
+  if (!mission) return null;
+  return (
+    lionWheelRegionIdFromField(mission.shippingDestination) ??
+    lionWheelRegionIdFromField(mission.country)
+  );
 }
 
 /** Real API returns status as string enum (e.g. ASSIGNED); README lists numeric codes. */
@@ -467,33 +485,34 @@ export async function fetchLionWheelTaskShow(taskId, destination, options = {}) 
  * company_id is resolved from LionWheel region (mission.country or legacy shippingDestination).
  */
 export function buildLionWheelCreatePayloadForEmptyBox(mission) {
-  const addr = mission.address || {};
+  const m = missionWithoutBillingForLionWheel(mission);
+  const addr = m.address || {};
   const city = String(addr.city || '').trim();
   const street = String(addr.street || '').trim();
   const houseNumber = String(addr.houseNumber || '').trim();
-  const recipient = recipientNameFromMission(mission);
-  const phone = String(mission.customerPhone || '').trim();
+  const recipient = recipientNameFromMission(m);
+  const phone = String(m.customerPhone || '').trim();
   const destination_number = houseNumber || '—';
 
-  const dest = lionWheelDestinationFromMission(mission);
+  const dest = lionWheelDestinationFromMission(m);
   const creds = getLionWheelCredentials(dest);
-  const boxes = (mission.boxSelection?.large || 0) + (mission.boxSelection?.small || 0);
+  const boxes = (m.boxSelection?.large || 0) + (m.boxSelection?.small || 0);
 
   const payload = {
     pickup_at: formatPickupAtDdMmYyyy(),
-    original_order_id: mission.id,
+    original_order_id: m.id,
     destination_city: city,
     destination_street: street,
     destination_number,
     destination_recipient_name: recipient,
     destination_phone: phone,
-    notes: buildEmptyBoxNotes(mission),
+    notes: buildEmptyBoxNotes(m),
   };
 
   if (creds?.companyId) payload.company_id = creds.companyId;
   if (boxes > 0) payload.packages_quantity = boxes;
 
-  const lineItems = lineItemsFromBoxSelection(mission.boxSelection);
+  const lineItems = lineItemsFromBoxSelection(m.boxSelection);
   if (lineItems) payload.line_items = lineItems;
 
   const apt = addr.apartment != null && String(addr.apartment).trim() !== '' ? String(addr.apartment).trim() : '';
@@ -542,27 +561,28 @@ export async function createLionWheelTaskForEmptyBoxMission(mission) {
  * same structure as empty_box missions.
  */
 export async function createLionWheelTaskForPickupMission(mission) {
-  const addr = mission.address || {};
+  const m = missionWithoutBillingForLionWheel(mission);
+  const addr = m.address || {};
   const city = String(addr.city || '').trim();
   const street = String(addr.street || '').trim();
   const houseNumber = String(addr.houseNumber || '').trim();
-  const recipient = recipientNameFromMission(mission);
-  const phone = String(mission.customerPhone || '').trim();
+  const recipient = recipientNameFromMission(m);
+  const phone = String(m.customerPhone || '').trim();
 
   if (!city || !street || !recipient || !phone) {
     return { ok: false, status: 400, error: 'Missing pickup mission fields for LionWheel (address city/street, name, phone)' };
   }
 
-  const pickupBoxes = mission.pickupBoxCount ?? 0;
-  const emptyBoxes = mission.bringBoxes
-    ? (mission.boxSelection?.large || 0) + (mission.boxSelection?.small || 0)
+  const pickupBoxes = m.pickupBoxCount ?? 0;
+  const emptyBoxes = m.bringBoxes
+    ? (m.boxSelection?.large || 0) + (m.boxSelection?.small || 0)
     : 0;
-  const destination = mission.shippingDestination || mission.country;
+  const destination = lionWheelDestinationFromMission(m);
   const creds = getLionWheelCredentials(destination);
 
   const payload = {
     pickup_at: formatPickupAtDdMmYyyy(),
-    original_order_id: mission.id,
+    original_order_id: m.id,
     destination_city: city,
     destination_street: street,
     destination_number: houseNumber || '—',
@@ -572,14 +592,14 @@ export async function createLionWheelTaskForPickupMission(mission) {
       type: 'pickup',
       boxes: pickupBoxes,
       emptyBoxes,
-      notes: mission.notes,
+      notes: m.notes,
     }),
   };
 
   if (creds?.companyId) payload.company_id = creds.companyId;
   if (pickupBoxes > 0) payload.packages_quantity = pickupBoxes;
 
-  const lineItems = lineItemsForPickupMission(mission);
+  const lineItems = lineItemsForPickupMission(m);
   if (lineItems) payload.line_items = lineItems;
 
   const apt = addr.apartment != null && String(addr.apartment).trim() !== '' ? String(addr.apartment).trim() : '';

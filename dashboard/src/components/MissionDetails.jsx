@@ -660,7 +660,7 @@ export default function MissionDetails({ mission, onSave, onClose, onDelete, onO
           <p className="text-xs text-slate-500">Destination country for the customer&apos;s packed shipment</p>
           <select
             value={missionLwRegionId(edit) || ''}
-            onChange={(e) => update('shippingDestination', e.target.value || null)}
+            onChange={(e) => update('country', e.target.value || null)}
             className="select-field"
           >
             <option value="">— Not set —</option>

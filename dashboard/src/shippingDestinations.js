@@ -9,7 +9,7 @@ export function shippingDestinationLabel(id) {
   return SHIPPING_DESTINATIONS.find((d) => d.id === id)?.label || String(id);
 }
 
-/** india | thailand | null — LionWheel region from mission (shippingDestination legacy or country). */
+/** india | thailand | null — Ship to / LionWheel region (shippingDestination mirrors country once saved). */
 export function missionLwRegionId(mission) {
   if (!mission) return null;
   const raw = mission.shippingDestination ?? mission.country;

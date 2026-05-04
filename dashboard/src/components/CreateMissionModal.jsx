@@ -386,7 +386,7 @@ export default function CreateMissionModal({ isOpen, onClose, onCreated, authCou
           discountAmount: missionType === 'pickup' && viaAffiliate && selectedAffiliate ? selectedAffiliate.discountAmount : null,
           ...(missionType === 'pickup' && authCountry ? { country: authCountry } : {}),
           ...(missionType === 'empty_box' && effectiveEmptyBoxShippingDestination
-            ? { shippingDestination: effectiveEmptyBoxShippingDestination }
+            ? { country: effectiveEmptyBoxShippingDestination }
             : {}),
           notes: notes.trim() || undefined,
         }),
