@@ -123,6 +123,9 @@ function useMissions() {
 
   useEffect(() => {
     fetchMissions();
+    /** Pick up DB changes (e.g. LionWheel webhooks) without full page refresh. No lionwheelSync — avoids hammering LW API. */
+    const interval = setInterval(() => fetchMissions({ silent: true }), 5000);
+    return () => clearInterval(interval);
   }, []);
 
   return {
@@ -870,35 +873,23 @@ function Dashboard({ authUser, onLogout }) {
                             )}
                             {visibleColumns.trackingId && (
                               <td className="max-w-[9rem]">
-                                {(() => {
-                                  const ids = mission.type === 'pickup'
-                                    ? (mission.deliveries?.length > 0 ? mission.deliveries : [mission])
-                                        .flatMap((d) => (d.boxTrackingIds ?? []).filter(Boolean))
-                                    : [];
-                                  if (ids.length > 0) {
-                                    return (
-                                      <div className="flex flex-col gap-0.5">
-                                        {ids.map((tid, i) => (
-                                          <span key={i} className="font-mono text-xs text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded truncate block" title={tid}>
-                                            {tid}
-                                          </span>
-                                        ))}
-                                      </div>
-                                    );
-                                  }
-                                  const lwPid = mission.lionwheel?.publicId && String(mission.lionwheel.publicId).trim();
-                                  if (lwPid) {
-                                    return (
-                                      <span
-                                        className="font-mono text-xs text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded truncate block"
-                                        title="LionWheel public ID"
-                                      >
-                                        {lwPid}
-                                      </span>
-                                    );
-                                  }
-                                  return <span className="text-slate-300 text-sm">—</span>;
-                                })()}
+                                {mission.type === 'pickup' ? (() => {
+                                  const ids = (mission.deliveries?.length > 0 ? mission.deliveries : [mission])
+                                    .flatMap((d) => (d.boxTrackingIds ?? []).filter(Boolean));
+                                  return ids.length > 0 ? (
+                                    <div className="flex flex-col gap-0.5">
+                                      {ids.map((tid, i) => (
+                                        <span key={i} className="font-mono text-xs text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded truncate block" title={tid}>
+                                          {tid}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  ) : (
+                                    <span className="text-slate-300 text-sm">—</span>
+                                  );
+                                })() : (
+                                  <span className="text-slate-300 text-sm">—</span>
+                                )}
                               </td>
                             )}
                             {visibleColumns.sender && (
