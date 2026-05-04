@@ -155,9 +155,18 @@ export function buildLionWheelPayloadFromRequest(body) {
  * @param {string} destination — 'thailand' | 'india' — selects which API key to use
  */
 export async function sendLionWheelCreatePayload(payload, destination) {
-  const creds = getLionWheelCredentials(destination);
+  const destNorm = String(destination ?? '').trim().toLowerCase();
+  if (destNorm !== 'india' && destNorm !== 'thailand') {
+    const got =
+      destination == null || String(destination).trim() === '' ? '(none)' : String(destination).trim();
+    return {
+      skipped: true,
+      reason: `Missing or invalid LionWheel destination (india|thailand); got: ${got}`,
+    };
+  }
+  const creds = getLionWheelCredentials(destNorm);
   if (!creds) {
-    return { skipped: true, reason: `No LionWheel credentials for destination: ${destination || '(none)'}` };
+    return { skipped: true, reason: `No LionWheel credentials for destination: ${destNorm}` };
   }
   const { key } = creds;
 

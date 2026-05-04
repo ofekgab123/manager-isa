@@ -187,6 +187,33 @@ function shippingDestinationForPickup(body) {
   return userAuthCountryToShippingDestId(body.country);
 }
 
+/**
+ * Pickup often has no body.country (e.g. admin user). Then infer india/thailand from linked empty_box
+ * or from the pickup container’s country so LionWheel API keys resolve correctly.
+ */
+async function pickupLionWheelDestinationFallback(mission, missionsList) {
+  if (mission.type !== 'pickup') return null;
+  if (lionWheelDestinationFromMission(mission)) return null;
+  if (mission.linkedEmptyBoxMissionId) {
+    const eb = missionsList.find(
+      (m) => m.id === mission.linkedEmptyBoxMissionId && m.type === 'empty_box',
+    );
+    if (eb) {
+      const d = lionWheelDestinationFromMission({
+        shippingDestination: eb.shippingDestination,
+        country: eb.country,
+      });
+      if (d) return d;
+    }
+  }
+  if (mission.containerId) {
+    const containersList = await readContainers();
+    const c = containersList.find((x) => x.id === mission.containerId);
+    return userAuthCountryToShippingDestId(c?.country);
+  }
+  return null;
+}
+
 // DB migration: add country column to auth_users if it doesn't exist
 pool.query(`ALTER TABLE auth_users ADD COLUMN IF NOT EXISTS country VARCHAR(50)`).catch(() => {});
 app.use(cors({
@@ -575,6 +602,10 @@ app.post('/api/missions', async (req, res) => {
             ? shippingDestinationForPickup(body)
             : null,
     };
+    if (newMission.type === 'pickup' && !lionWheelDestinationFromMission(newMission)) {
+      const fb = await pickupLionWheelDestinationFallback(newMission, missions);
+      if (fb) newMission.shippingDestination = fb;
+    }
     missions.unshift(newMission);
     await writeMissions(missions);
 
@@ -1335,7 +1366,7 @@ app.post('/api/missions/:id/send-to-lionwheel', requireAuth, async (req, res) =>
     const missions = await readMissions();
     const idx = missions.findIndex((m) => m.id === req.params.id);
     if (idx === -1) return res.status(404).json({ error: 'Mission not found' });
-    const mission = missions[idx];
+    let mission = missions[idx];
 
     await assertMissionAccessForCountryUser(mission, req.user);
 
@@ -1344,6 +1375,15 @@ app.post('/api/missions/:id/send-to-lionwheel', requireAuth, async (req, res) =>
     }
     if (mission.lionwheel?.taskId) {
       return res.status(409).json({ error: 'Mission already sent to LionWheel', taskId: mission.lionwheel.taskId });
+    }
+
+    if (!lionWheelDestinationFromMission(mission)) {
+      const fb = await pickupLionWheelDestinationFallback(mission, missions);
+      if (fb) {
+        mission = { ...mission, shippingDestination: fb };
+        missions[idx] = mission;
+        await updateMissionsData(mission.id, mission);
+      }
     }
 
     let lw;
