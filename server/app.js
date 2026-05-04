@@ -150,18 +150,6 @@ async function enrichMissionsWithLionWheelStatuses(missions, { force = false } =
   if (dirty) await writeMissions(missions);
 }
 
-/** Full LW refresh for every mission with taskId + resolvable destination (startup / dashboard reload). */
-export async function runStartupLionWheelSync() {
-  try {
-    const missions = await readMissions();
-    await enrichMissionsWithLionWheelStatuses(missions, { force: true });
-    const n = missions.filter((m) => m.lionwheel?.taskId && lionWheelDestinationFromMission(m)).length;
-    console.log(`[lionwheel] startup sync finished (${n} mission(s) with LW task id)`);
-  } catch (err) {
-    console.error('[lionwheel] startup sync failed:', err.message || err);
-  }
-}
-
 /** Customer empty-box flow: eventual ship-to (India / Thailand) — same ids as isa-express-web */
 const VALID_SHIPPING_DESTINATIONS = new Set(['india', 'thailand']);
 

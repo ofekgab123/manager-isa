@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   Package,
   Box,
@@ -24,6 +24,7 @@ import {
   LogOut,
   ShieldCheck,
   Webhook,
+  CloudDownload,
 } from 'lucide-react';
 import CreateMissionModal from './components/CreateMissionModal';
 import EmptyBoxMissionPickerModal from './components/EmptyBoxMissionPickerModal';
@@ -92,44 +93,46 @@ function ColLabel({ label, colKey, vis, toggle }) {
   );
 }
 
-function useMissions(onNewMissions) {
+function useMissions() {
   const [missions, setMissions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const knownIdsRef = useRef(new Set());
+  const [lionWheelSyncing, setLionWheelSyncing] = useState(false);
 
   const fetchMissions = async (opts = {}) => {
-    const isPoll = opts.isPoll === true;
     const silent = opts.silent === true;
-    if (!isPoll && !silent) setLoading(true);
+    const lionwheelSync = opts.lionwheelSync === true;
+
+    if (lionwheelSync) setLionWheelSyncing(true);
+    else if (!silent) setLoading(true);
     setError(null);
     try {
-      const qs = !isPoll ? '?lionwheelSync=1' : '';
+      const qs = lionwheelSync ? '?lionwheelSync=1' : '';
       const res = await fetch(`${API_BASE}/missions${qs}`);
       if (!res.ok) throw new Error('Failed to fetch');
       const data = await res.json();
-      if (isPoll && onNewMissions && knownIdsRef.current.size > 0) {
-        const newOnes = data.filter((m) => !knownIdsRef.current.has(m.id));
-        if (newOnes.length > 0) onNewMissions(newOnes);
-      }
-      knownIdsRef.current = new Set(data.map((m) => m.id));
       setMissions(data);
     } catch (e) {
       setError(e.message);
       setMissions([]);
     } finally {
-      if (!isPoll && !silent) setLoading(false);
+      if (lionwheelSync) setLionWheelSyncing(false);
+      else if (!silent) setLoading(false);
     }
   };
 
   useEffect(() => {
     fetchMissions();
-    const interval = setInterval(() => fetchMissions({ isPoll: true }), 5000);
-    return () => clearInterval(interval);
   }, []);
 
-  /* Silent by default: keeps the table visible (no "Loading missions…" flash). */
-  return { missions, loading, error, refetch: () => fetchMissions({ silent: true }) };
+  return {
+    missions,
+    loading,
+    error,
+    lionWheelSyncing,
+    refetch: () => fetchMissions({ silent: true }),
+    syncLionWheel: () => fetchMissions({ silent: true, lionwheelSync: true }),
+  };
 }
 
 function useMissionStats() {
@@ -214,23 +217,9 @@ export default function App() {
 
 function Dashboard({ authUser, onLogout }) {
   const [activeTab, setActiveTab] = useState('missions');
-  const [newMissionAlert, setNewMissionAlert] = useState(null);
   const affiliates = useAffiliates();
 
-  const handleNewMissions = (newOnes) => {
-    const fromCustomer = newOnes.filter((m) => m.createdBy === 'customer');
-    if (fromCustomer.length > 0) {
-      setNewMissionAlert({ count: fromCustomer.length });
-      if ('Notification' in window && Notification.permission === 'granted') {
-        new Notification('New mission!', {
-          body: `${fromCustomer.length} new missions from customers`,
-          icon: '/favicon.ico',
-        });
-      }
-    }
-  };
-
-  const { missions, loading, error, refetch } = useMissions(handleNewMissions);
+  const { missions, loading, error, refetch, syncLionWheel, lionWheelSyncing } = useMissions();
   const { stats, loading: statsLoading, refetch: refetchStats } = useMissionStats();
 
   const [listRefreshing, setListRefreshing] = useState(false);
@@ -384,25 +373,6 @@ function Dashboard({ authUser, onLogout }) {
         </div>
       )}
 
-      {newMissionAlert && (
-        <div className="sticky top-0 z-50 shadow-lg animate-slide-up"
-             style={{ background: 'linear-gradient(135deg, #b45309 0%, #d97706 50%, #f59e0b 100%)' }}>
-          <div className="px-5 py-3.5 flex items-center justify-between gap-4">
-            <span className="text-white font-semibold text-sm flex items-center gap-2">
-              <span className="bg-white/20 rounded-full p-1"><Package className="w-4 h-4" /></span>
-              {newMissionAlert.count} new mission{newMissionAlert.count > 1 ? 's' : ''} from customers!
-            </span>
-            <button
-              onClick={() => setNewMissionAlert(null)}
-              className="px-4 py-1.5 bg-white/20 hover:bg-white/30 rounded-xl font-semibold text-white text-sm transition-all duration-200"
-            >
-              Close
-            </button>
-          </div>
-        </div>
-      )}
-
-      <header className="gradient-header text-white px-5 py-5 shadow-xl">
         <div className="mx-auto flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div className="flex items-center gap-5">
             <img src="/isa-logo.png" alt="ISA Express" className="h-12 sm:h-14 w-auto object-contain brightness-0 invert drop-shadow-lg" />
@@ -424,11 +394,21 @@ function Dashboard({ authUser, onLogout }) {
                 <button
                   type="button"
                   onClick={() => { handleHeaderRefresh(); }}
-                  disabled={loading || listRefreshing}
+                  disabled={loading || listRefreshing || lionWheelSyncing}
                   className="btn-secondary !bg-white/10 !border-white/20 !text-white hover:!bg-white/20 disabled:opacity-50"
                 >
                   <RefreshCw className={`w-4 h-4 ${listRefreshing ? 'animate-spin' : ''}`} />
                   Refresh
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { syncLionWheel(); }}
+                  disabled={loading || listRefreshing || lionWheelSyncing}
+                  className="btn-secondary !bg-white/10 !border-white/20 !text-white hover:!bg-white/20 disabled:opacity-50"
+                  title="Pull latest LionWheel task status from API for all missions with a task ID"
+                >
+                  <CloudDownload className={`w-4 h-4 ${lionWheelSyncing ? 'animate-spin' : ''}`} />
+                  Sync LionWheel
                 </button>
               </>
             )}
