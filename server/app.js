@@ -182,6 +182,15 @@ function normalizeShippingDestination(missionType, raw) {
   return VALID_SHIPPING_DESTINATIONS.has(s) ? s : null;
 }
 
+/** India / Thailand from customer POST: `country` and/or legacy `shippingDestination` — same for empty_box and pickup. */
+function lwRegionFromCustomerBody(country, shippingDestination) {
+  return (
+    userAuthCountryToShippingDestId(country) ||
+    userAuthCountryToShippingDestId(shippingDestination) ||
+    normalizeShippingDestination('empty_box', shippingDestination)
+  );
+}
+
 /**
  * Pickup: shippingDestination is always null in DB. For LionWheel only: infer india/thailand from
  * mission.country, linked empty_box, or pickup container when those fields are set.
@@ -554,11 +563,10 @@ app.post('/api/missions', async (req, res) => {
     const validTypes = ['empty_box', 'pickup'];
     const missionType = validTypes.includes(body.type) ? body.type : 'pickup';
     const { affiliateName, discountAmount } = affiliateFieldsForMissionType(missionType, body);
-    /** empty_box: LionWheel region on mission.country (india|thailand only). shippingDestination is always null in DB. */
-    const emptyBoxLwRegion =
-      missionType === 'empty_box'
-        ? userAuthCountryToShippingDestId(body.country) ||
-          normalizeShippingDestination(missionType, body.shippingDestination)
+    /** empty_box & pickup: LionWheel / UI region on mission.country (india|thailand). shippingDestination always null in DB. */
+    const lwRegionFromBody =
+      missionType === 'empty_box' || missionType === 'pickup'
+        ? lwRegionFromCustomerBody(body.country, body.shippingDestination)
         : null;
     let pickupContainerId = null;
     if (missionType === 'pickup') {
@@ -596,8 +604,8 @@ app.post('/api/missions', async (req, res) => {
       linkedEmptyBoxMissionId: body.linkedEmptyBoxMissionId || null,
       containerId: missionType === 'pickup' ? pickupContainerId : null,
       country:
-        missionType === 'empty_box'
-          ? emptyBoxLwRegion ?? body.country ?? null
+        missionType === 'empty_box' || missionType === 'pickup'
+          ? lwRegionFromBody ?? body.country ?? null
           : body.country ?? null,
       shippingDestination: null,
     };
