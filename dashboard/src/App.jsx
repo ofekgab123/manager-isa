@@ -373,6 +373,8 @@ function Dashboard({ authUser, onLogout }) {
         </div>
       )}
 
+      <header className="sticky top-0 z-40 shadow-lg" style={{ background: 'linear-gradient(135deg, #3730a3 0%, #4f46e5 50%, #6366f1 100%)' }}>
+        <div className="px-5 py-3.5 text-white">
         <div className="mx-auto flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div className="flex items-center gap-5">
             <img src="/isa-logo.png" alt="ISA Express" className="h-12 sm:h-14 w-auto object-contain brightness-0 invert drop-shadow-lg" />
@@ -432,6 +434,7 @@ function Dashboard({ authUser, onLogout }) {
               </button>
             </div>
           </div>
+        </div>
         </div>
       </header>
 

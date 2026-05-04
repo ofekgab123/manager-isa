@@ -168,6 +168,15 @@
     box-shadow: var(--shadow-elevated);
     transform: translateY(-2px);
   }
+  .stat-card-sm {
+    @apply bg-white rounded-xl p-3 border border-slate-100 relative overflow-hidden;
+    box-shadow: var(--shadow-card);
+    transition: all 0.2s ease;
+  }
+  .stat-card-sm:hover {
+    box-shadow: var(--shadow-elevated);
+    transform: translateY(-1px);
+  }
 
   .table-wrap {
     @apply bg-white rounded-2xl border border-slate-100 overflow-hidden;
