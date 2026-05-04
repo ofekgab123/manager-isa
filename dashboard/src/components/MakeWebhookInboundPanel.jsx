@@ -71,11 +71,17 @@ export default function MakeWebhookInboundPanel() {
               <code className="text-xs bg-slate-100 px-1.5 py-0.5 rounded font-mono text-indigo-800">
                 /api/webhooks/lionwheel-task
               </code>{' '}
-              or{' '}
+              (e.g.{' '}
+              <code className="text-xs bg-slate-100 px-1.5 py-0.5 rounded font-mono text-indigo-800">
+                https://isa.vercel.app/api/webhooks/lionwheel-task
+              </code>
+              ) or{' '}
               <code className="text-xs bg-slate-100 px-1.5 py-0.5 rounded font-mono text-indigo-800">
                 /api/webhooks/make-lionwheel-status
               </code>{' '}
-              are logged here (secrets redacted). Polls every few seconds while this tab is open.
+              hit this same app; the log shows the UTF-8 body as received (plus headers), with auth and{' '}
+              <code className="text-[11px] bg-slate-100 px-1 rounded font-mono">secret</code>{' '}
+              fields redacted. Polls every few seconds while this tab is open.
             </p>
           </div>
         </div>
@@ -160,8 +166,16 @@ export default function MakeWebhookInboundPanel() {
                         {JSON.stringify(row.headers || {}, null, 2)}
                       </pre>
                     </div>
+                    {(row.bodyAsReceivedText != null && row.bodyAsReceivedText !== '') ? (
+                      <div>
+                        <div className="font-semibold text-slate-600 mb-1 text-xs">Body (as received, UTF-8)</div>
+                        <pre className="text-[11px] leading-relaxed text-slate-800 whitespace-pre-wrap break-all bg-white rounded-lg border border-slate-100 p-3 font-mono overflow-x-auto max-h-64 overflow-y-auto">
+                          {row.bodyAsReceivedText}
+                        </pre>
+                      </div>
+                    ) : null}
                     <div>
-                      <div className="font-semibold text-slate-600 mb-1 text-xs">Body (JSON)</div>
+                      <div className="font-semibold text-slate-600 mb-1 text-xs">Body (parsed JSON)</div>
                       <pre className="text-[11px] leading-relaxed text-slate-800 whitespace-pre-wrap break-all bg-white rounded-lg border border-slate-100 p-3 font-mono overflow-x-auto max-h-64 overflow-y-auto">
                         {JSON.stringify(row.body ?? null, null, 2)}
                       </pre>

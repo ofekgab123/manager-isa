@@ -208,7 +208,32 @@ app.use(cors({
   methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Manager-Isa-Webhook-Secret', 'X-Webhook-Secret'],
 }));
-app.use(express.json());
+
+const WEBHOOK_JSON_SNAPSHOT_PATHS = new Set([
+  '/api/webhooks/lionwheel-task',
+  '/api/webhooks/make-lionwheel-status',
+  '/api/webhooks/make-inspect',
+]);
+
+function isWebhookJsonSnapshotRoute(req) {
+  const candidates = [
+    req.path,
+    req.originalUrl?.split('?')[0],
+    req.url?.split('?')[0],
+  ].filter(Boolean);
+  return candidates.some((p) => WEBHOOK_JSON_SNAPSHOT_PATHS.has(p));
+}
+
+app.use(express.json({
+  verify: (req, res, buf, encoding) => {
+    if (req.method !== 'POST' || !isWebhookJsonSnapshotRoute(req)) return;
+    try {
+      req.webhookRawBodyUtf8 = buf.toString(encoding || 'utf8');
+    } catch {
+      req.webhookRawBodyUtf8 = buf.toString('utf8');
+    }
+  },
+}));
 
 // ─── Auth middleware ───────────────────────────────────────────────────────────
 
@@ -759,7 +784,8 @@ app.get('/api/track/:id', async (req, res) => {
 
 /**
  * LionWheel / Make → distilled taskId + status → update mission.lionwheel in DB.
- * Native payload: { "task": { "id": 24309382, "status": "ACTIVE", "order_id": "MSN-…" }, … }
+ * Native payload: `{ task: { id, status, order_id, … } }` or root `{ id, status }`.
+ * On 200: JSON includes `id` (task id) and `status` (0–10) for Make / clients.
  * Auth: Authorization: Bearer <MAKE_LIONWHEEL_WEBHOOK_SECRET> or X-Manager-Isa-Webhook-Secret: <same value>
  *
  * @param {{ lastWebhookSource: string }} opts
@@ -835,6 +861,8 @@ async function handleLionWheelTaskStatusWebhook(req, res, opts) {
     };
     return res.json({
       ok: true,
+      id: fields.taskId,
+      status: fields.taskStatusNum,
       missionId: merged.id,
       taskStatus: fields.taskStatusNum,
       taskStatusLabel: lionWheelTaskStatusLabel(fields.taskStatusNum),

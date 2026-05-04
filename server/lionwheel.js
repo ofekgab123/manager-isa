@@ -309,6 +309,7 @@ function extractTaskStatusFromShowPayload(data) {
 
 /**
  * Normalize Make.com / LionWheel webhook JSON → task id + numeric status for mission merge.
+ * Supports root-level `id` / `status` (e.g. `{ id: 123, status: "ACTIVE" }`) when `task` is absent.
  */
 export function extractLionWheelWebhookFields(body) {
   const b = body && typeof body === 'object' ? body : {};
@@ -319,7 +320,8 @@ export function extractLionWheelWebhookFields(body) {
     b.taskId ??
     nested.task_id ??
     nested.id ??
-    nested.task?.id;
+    nested.task?.id ??
+    b.id;
 
   const tid =
     typeof taskIdRaw === 'number' && Number.isFinite(taskIdRaw)

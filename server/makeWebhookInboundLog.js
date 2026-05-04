@@ -33,7 +33,21 @@ function sanitizeBody(body) {
   return o;
 }
 
+const WEBHOOK_RAW_BODY_MAX_CHARS = 500_000;
+
+/** Redact common secret patterns in the raw UTF-8 body string (for inspector display only). */
+function redactRawWebhookBodyText(str) {
+  if (typeof str !== 'string' || str.length === 0) return null;
+  let s = str.length > WEBHOOK_RAW_BODY_MAX_CHARS
+    ? `${str.slice(0, WEBHOOK_RAW_BODY_MAX_CHARS)}\n… [truncated]`
+    : str;
+  s = s.replace(/"secret"\s*:\s*"[^"]*"/gi, '"secret":"[redacted]"');
+  s = s.replace(/"secret"\s*:\s*[^\s,}\]]+/gi, '"secret":[redacted]');
+  return s;
+}
+
 export function snapshotMakeWebhookRequest(req) {
+  const rawUtf8 = req.webhookRawBodyUtf8;
   return {
     ip: req.ip || req.socket?.remoteAddress || null,
     forwardedFor: req.headers['x-forwarded-for'] || null,
@@ -42,7 +56,9 @@ export function snapshotMakeWebhookRequest(req) {
     originalUrl: req.originalUrl,
     query: { ...(req.query || {}) },
     headers: sanitizeHeaders(req.headers),
+    contentType: req.headers['content-type'] != null ? String(req.headers['content-type']) : null,
     body: sanitizeBody(req.body),
+    bodyAsReceivedText: rawUtf8 != null ? redactRawWebhookBodyText(rawUtf8) : null,
   };
 }
 
