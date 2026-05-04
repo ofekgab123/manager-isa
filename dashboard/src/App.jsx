@@ -23,7 +23,6 @@ import {
   List,
   LogOut,
   ShieldCheck,
-  Webhook,
   CloudDownload,
   Send,
 } from 'lucide-react';
@@ -40,7 +39,6 @@ import StatisticsPanel from './components/StatisticsPanel';
 import PackagesPanel from './components/PackagesPanel';
 import ContainersPanel from './components/ContainersPanel';
 import ParcelContentTypesPanel from './components/ParcelContentTypesPanel';
-import MakeWebhookInboundPanel from './components/MakeWebhookInboundPanel';
 import TableHorizontalScroll from './components/TableHorizontalScroll';
 import LoginPage from './components/LoginPage';
 import { API_BASE } from './config';
@@ -522,17 +520,6 @@ function Dashboard({ authUser, onLogout }) {
               Users
             </button>
           )}
-          {authUser.isAdmin && (
-            <button
-              onClick={() => setActiveTab('webhook-log')}
-              className={`flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-xl transition-all duration-200 whitespace-nowrap ${
-                activeTab === 'webhook-log' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-600 hover:text-slate-800 hover:bg-white/60'
-              }`}
-            >
-              <Webhook className="w-4 h-4" />
-              Webhook log
-            </button>
-          )}
           <button
             onClick={() => setActiveTab('statistics')}
             className={`flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-xl transition-all duration-200 whitespace-nowrap ${
@@ -560,7 +547,6 @@ function Dashboard({ authUser, onLogout }) {
         {activeTab === 'affiliates' && <AffiliatesPanel missions={missions} />}
         {activeTab === 'customers' && <CustomersPanel />}
         {activeTab === 'users' && authUser.isAdmin && <UsersPanel />}
-        {activeTab === 'webhook-log' && authUser.isAdmin && <MakeWebhookInboundPanel />}
         {activeTab === 'statistics' && (
           <StatisticsPanel
             missions={missions}
