@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { MapPin, User, Save, Trash2, AlertTriangle, Copy, Video, Image, X, Tag, Link2, Info, Plus, Globe } from 'lucide-react';
+import { MapPin, User, Save, Trash2, AlertTriangle, Copy, Video, Image, X, Tag, Link2, Info, Plus, Globe, Truck } from 'lucide-react';
 import AddressPicker from './AddressPicker';
 import PhoneInput from './PhoneInput';
 import { API_BASE } from '../config';
@@ -430,7 +430,15 @@ function AffiliatePickerModal({ isOpen, onClose, onSelect }) {
   );
 }
 
-export default function MissionDetails({ mission, onSave, onClose, onDelete, onOpenPreview }) {
+export default function MissionDetails({
+  mission,
+  onSave,
+  onClose,
+  onDelete,
+  onOpenPreview,
+  onSendToLionWheel,
+  sendingLwMissionId,
+}) {
   const [edit, setEdit] = useState({ ...mission, bringBoxes: mission.bringBoxes === true });
   const [saving, setSaving]   = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -444,6 +452,17 @@ export default function MissionDetails({ mission, onSave, onClose, onDelete, onO
   const [pickupPickerDataKey, setPickupPickerDataKey] = useState(0);
   const [linkingPickup, setLinkingPickup] = useState(false);
   const [parcelContentTypes, setParcelContentTypes] = useState([]);
+
+  useEffect(() => {
+    setEdit({ ...mission, bringBoxes: mission.bringBoxes === true });
+  }, [mission.id]);
+
+  useEffect(() => {
+    if (!mission?.id) return;
+    setEdit((prev) =>
+      prev.id === mission.id ? { ...prev, lionwheel: mission.lionwheel } : prev,
+    );
+  }, [mission?.lionwheel, mission?.id]);
 
   const fetchParcelContentTypes = useCallback(async () => {
     try {
@@ -513,6 +532,12 @@ export default function MissionDetails({ mission, onSave, onClose, onDelete, onO
         ? edit.deliveries.some((d) => !d.address?.lat)
         : !edit.receiverAddress?.lat)
     : !edit.address?.lat;
+
+  const showSendToLionWheel =
+    onSendToLionWheel &&
+    edit.createdBy === 'customer' &&
+    (edit.type === 'pickup' || edit.type === 'empty_box') &&
+    !edit.lionwheel?.taskId;
 
   const update = (path, value) => {
     if (path.includes('.')) {
@@ -970,7 +995,19 @@ export default function MissionDetails({ mission, onSave, onClose, onDelete, onO
 
       {error && <p className="text-red-500 text-sm">{error}</p>}
 
-      <div className="flex gap-3 pt-2">
+      <div className="flex flex-wrap gap-3 pt-2 items-center">
+        {showSendToLionWheel && (
+          <button
+            type="button"
+            onClick={() => onSendToLionWheel(edit)}
+            disabled={saving || sendingLwMissionId === edit.id}
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl font-semibold text-sm bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 shadow-sm"
+            title="שלח ל-LionWheel"
+          >
+            <Truck className={`w-4 h-4 ${sendingLwMissionId === edit.id ? 'animate-pulse' : ''}`} />
+            Send to LionWheel
+          </button>
+        )}
         <button
           onClick={handleSave}
           disabled={saving}

@@ -620,7 +620,9 @@ app.post('/api/missions', async (req, res) => {
     await writeMissions(missions);
 
     let missionToReturn = newMission;
-    const shouldSyncLionWheel = missionType === 'empty_box' || missionType === 'pickup';
+    /** Customer-created missions: store only; manager sends via POST /api/missions/:id/send-to-lionwheel */
+    const shouldSyncLionWheel =
+      (missionType === 'empty_box' || missionType === 'pickup') && newMission.createdBy !== 'customer';
     if (shouldSyncLionWheel) {
       try {
         const lw =

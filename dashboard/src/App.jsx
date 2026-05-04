@@ -24,7 +24,6 @@ import {
   LogOut,
   ShieldCheck,
   CloudDownload,
-  Send,
 } from 'lucide-react';
 import CreateMissionModal from './components/CreateMissionModal';
 import EmptyBoxMissionPickerModal from './components/EmptyBoxMissionPickerModal';
@@ -353,8 +352,11 @@ function Dashboard({ authUser, onLogout }) {
       const data = await res.json();
       if (!res.ok) {
         alert(`LionWheel error: ${data.error || res.status}`);
+      } else if (data.mission && editingMission?.id === mission.id) {
+        setEditingMission(data.mission);
       }
       refetch();
+      refetchStats();
     } catch (e) {
       alert(`Error: ${e.message}`);
     } finally {
@@ -1062,12 +1064,13 @@ function Dashboard({ authUser, onLogout }) {
                                 )}
                                 {mission.createdBy === 'customer' && !mission.lionwheel?.taskId && (
                                   <button
+                                    type="button"
                                     onClick={() => handleSendToLionWheel(mission)}
                                     disabled={sendingLwId === mission.id}
-                                    className="action-btn text-indigo-400 hover:bg-indigo-50 hover:text-indigo-600 disabled:opacity-50"
-                                    title="Send to LionWheel"
+                                    className="action-btn text-indigo-500 hover:bg-indigo-50 hover:text-indigo-700 disabled:opacity-50 ring-1 ring-indigo-200/80"
+                                    title="שלח ל-LionWheel"
                                   >
-                                    <Send className={`w-4 h-4 ${sendingLwId === mission.id ? 'animate-pulse' : ''}`} />
+                                    <Truck className={`w-4 h-4 ${sendingLwId === mission.id ? 'animate-pulse' : ''}`} />
                                   </button>
                                 )}
                                 <button
@@ -1122,6 +1125,8 @@ function Dashboard({ authUser, onLogout }) {
                 onClose={() => setEditingMission(null)}
                 onDelete={() => { refetch(); refetchStats(); setEditingMission(null); }}
                 onOpenPreview={setPreviewMission}
+                onSendToLionWheel={handleSendToLionWheel}
+                sendingLwMissionId={sendingLwId}
               />
             </div>
           </div>
