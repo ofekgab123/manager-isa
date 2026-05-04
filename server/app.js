@@ -865,13 +865,23 @@ async function handleLionWheelTaskStatusWebhook(req, res, opts) {
       idx = missions.findIndex((m) => m.id === fields.missionIdHint);
     }
     if (idx === -1) {
+      /** 200 so Make/Zapier-style queues stop retrying; mission may be missing on this env or test task. */
       outcome = {
-        httpStatus: 404,
+        httpStatus: 200,
         phase: 'mission',
-        message: 'Mission not found for task_id / mission id',
+        message: 'Mission not found — webhook acknowledged, no DB update',
         parsed: fields,
+        skipped: true,
       };
-      return res.status(404).json({ error: 'Mission not found for task_id / mission id' });
+      return res.status(200).json({
+        ok: true,
+        acknowledged: true,
+        skipped: 'mission_not_found',
+        parsed: fields,
+        taskId: fields.taskId,
+        status: fields.taskStatusNum,
+        taskStatusLabel: lionWheelTaskStatusLabel(fields.taskStatusNum),
+      });
     }
 
     const merged = {
