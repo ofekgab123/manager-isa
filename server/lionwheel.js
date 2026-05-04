@@ -39,6 +39,14 @@ function missionWithoutBillingForLionWheel(mission) {
   return rest;
 }
 
+/** LionWheel HTTP body is built from this snapshot: no shippingDestination (use country / in-memory pickup fallback only on the full mission for routing). */
+function missionForLionWheelPayloadBuild(mission) {
+  const b = missionWithoutBillingForLionWheel(mission);
+  if (!b || typeof b !== 'object') return b;
+  const { shippingDestination: _sd, ...rest } = b;
+  return rest;
+}
+
 function formatPickupAtDdMmYyyy(d = new Date()) {
   const dd = String(d.getDate()).padStart(2, '0');
   const mm = String(d.getMonth() + 1).padStart(2, '0');
@@ -238,8 +246,7 @@ function lionWheelRegionIdFromField(raw) {
 }
 
 /**
- * LionWheel has two API accounts (india | thailand). Stored missions keep shippingDestination null;
- * region is on mission.country for empty_box. Pickup may pass a resolved shippingDestination in-memory only.
+ * LionWheel has two API accounts (india | thailand). Region lives on mission.country; shippingDestination is null for storage and must not appear on LW payloads.
  */
 export function lionWheelDestinationFromMission(mission) {
   if (!mission) return null;
@@ -482,10 +489,11 @@ export async function fetchLionWheelTaskShow(taskId, destination, options = {}) 
 
 /**
  * JSON body for POST /api/v1/tasks/create for an empty_box mission.
- * company_id is resolved from LionWheel region (mission.country or legacy shippingDestination).
+ * company_id and API key are chosen from destination (see lionWheelDestinationFromMission); shippingDestination is never sent to LionWheel.
  */
 export function buildLionWheelCreatePayloadForEmptyBox(mission) {
-  const m = missionWithoutBillingForLionWheel(mission);
+  const dest = lionWheelDestinationFromMission(mission);
+  const m = missionForLionWheelPayloadBuild(mission);
   const addr = m.address || {};
   const city = String(addr.city || '').trim();
   const street = String(addr.street || '').trim();
@@ -494,7 +502,6 @@ export function buildLionWheelCreatePayloadForEmptyBox(mission) {
   const phone = String(m.customerPhone || '').trim();
   const destination_number = houseNumber || '—';
 
-  const dest = lionWheelDestinationFromMission(m);
   const creds = getLionWheelCredentials(dest);
   const boxes = (m.boxSelection?.large || 0) + (m.boxSelection?.small || 0);
 
@@ -561,7 +568,8 @@ export async function createLionWheelTaskForEmptyBoxMission(mission) {
  * same structure as empty_box missions.
  */
 export async function createLionWheelTaskForPickupMission(mission) {
-  const m = missionWithoutBillingForLionWheel(mission);
+  const destination = lionWheelDestinationFromMission(mission);
+  const m = missionForLionWheelPayloadBuild(mission);
   const addr = m.address || {};
   const city = String(addr.city || '').trim();
   const street = String(addr.street || '').trim();
@@ -577,7 +585,6 @@ export async function createLionWheelTaskForPickupMission(mission) {
   const emptyBoxes = m.bringBoxes
     ? (m.boxSelection?.large || 0) + (m.boxSelection?.small || 0)
     : 0;
-  const destination = lionWheelDestinationFromMission(m);
   const creds = getLionWheelCredentials(destination);
 
   const payload = {

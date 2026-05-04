@@ -554,7 +554,7 @@ app.post('/api/missions', async (req, res) => {
     const validTypes = ['empty_box', 'pickup'];
     const missionType = validTypes.includes(body.type) ? body.type : 'pickup';
     const { affiliateName, discountAmount } = affiliateFieldsForMissionType(missionType, body);
-    /** empty_box: LionWheel region = india|thailand. Stored on country + shippingDestination (same value) so Ship to shows in UI; LW uses lionWheelDestinationFromMission. */
+    /** empty_box: LionWheel region on mission.country (india|thailand only). shippingDestination is always null in DB. */
     const emptyBoxLwRegion =
       missionType === 'empty_box'
         ? userAuthCountryToShippingDestId(body.country) ||
@@ -599,7 +599,7 @@ app.post('/api/missions', async (req, res) => {
         missionType === 'empty_box'
           ? emptyBoxLwRegion ?? body.country ?? null
           : body.country ?? null,
-      shippingDestination: missionType === 'empty_box' ? emptyBoxLwRegion : null,
+      shippingDestination: null,
     };
 
     let missionForLw = newMission;
@@ -607,21 +607,18 @@ app.post('/api/missions', async (req, res) => {
       const fb = await pickupLionWheelDestinationFallback(newMission, missions);
       if (fb) missionForLw = { ...newMission, shippingDestination: fb };
     }
-    const resolvedLwDest = lionWheelDestinationFromMission(missionForLw);
-    const missionStored =
-      resolvedLwDest != null ? { ...newMission, shippingDestination: resolvedLwDest } : newMission;
 
-    missions.unshift(missionStored);
+    missions.unshift(newMission);
     await writeMissions(missions);
 
-    let missionToReturn = missionStored;
+    let missionToReturn = newMission;
     const shouldSyncLionWheel = missionType === 'empty_box' || missionType === 'pickup';
     if (shouldSyncLionWheel) {
       try {
         const lw =
           missionType === 'empty_box'
-            ? await createLionWheelTaskForEmptyBoxMission(missionStored)
-            : await createLionWheelTaskForPickupMission(missionStored);
+            ? await createLionWheelTaskForEmptyBoxMission(newMission)
+            : await createLionWheelTaskForPickupMission(missionForLw);
         if (!lw.skipped) {
           const lionwheel = lw.ok
             ? {
@@ -638,8 +635,8 @@ app.post('/api/missions', async (req, res) => {
                 syncHttpStatus: lw.status,
                 syncAttemptedAt: new Date().toISOString(),
               };
-          missionToReturn = { ...missionStored, lionwheel };
-          const i = missions.findIndex((m) => m.id === missionStored.id);
+          missionToReturn = { ...newMission, lionwheel };
+          const i = missions.findIndex((m) => m.id === newMission.id);
           if (i !== -1) missions[i] = missionToReturn;
           await writeMissions(missions);
         }
@@ -648,8 +645,8 @@ app.post('/api/missions', async (req, res) => {
           syncError: e.message || String(e),
           syncAttemptedAt: new Date().toISOString(),
         };
-        missionToReturn = { ...missionStored, lionwheel };
-        const i = missions.findIndex((m) => m.id === missionStored.id);
+        missionToReturn = { ...newMission, lionwheel };
+        const i = missions.findIndex((m) => m.id === newMission.id);
         if (i !== -1) missions[i] = missionToReturn;
         await writeMissions(missions);
       }
@@ -1341,12 +1338,8 @@ app.patch('/api/missions/:id', async (req, res) => {
       const lwReg =
         userAuthCountryToShippingDestId(merged.country) ||
         normalizeShippingDestination('empty_box', merged.shippingDestination);
-      if (lwReg) {
-        merged.country = lwReg;
-        merged.shippingDestination = lwReg;
-      } else {
-        merged.shippingDestination = null;
-      }
+      if (lwReg) merged.country = lwReg;
+      merged.shippingDestination = null;
     }
     if (merged.type !== 'pickup') {
       merged.affiliateName = null;
@@ -1451,12 +1444,8 @@ app.post('/api/missions/:id/send-to-lionwheel', requireAuth, async (req, res) =>
           syncAttemptedAt: new Date().toISOString(),
         };
 
-    const persistShipTo = lionWheelDestinationFromMission(
-      mission.type === 'pickup' ? missionForLw : mission,
-    );
     const updated = {
       ...mission,
-      ...(persistShipTo ? { shippingDestination: persistShipTo } : {}),
       lionwheel,
     };
     missions[idx] = updated;
