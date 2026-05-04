@@ -9,6 +9,7 @@ function sanitizeHeaders(headers) {
     'authorization',
     'x-make-webhook-secret',
     'x-webhook-secret',
+    'x-manager-isa-webhook-secret',
   ]);
   const out = {};
   for (const [k, v] of Object.entries(headers || {})) {

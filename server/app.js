@@ -25,6 +25,19 @@ const MAKE_WEBHOOK_INSPECT_SECRET = (process.env.MAKE_WEBHOOK_INSPECT_SECRET || 
 /** Shared with isa-express-web (VITE_MANAGER_SERVICE_KEY). Bearer value must match. Legacy: VITE_CUSTOMER_SITE_API_KEY in server .env. */
 const SERVICE_KEY = (process.env.MANAGER_SERVICE_KEY || process.env.VITE_CUSTOMER_SITE_API_KEY || '').trim();
 
+/** Webhook auth: Authorization Bearer, or plain secret in X-Manager-Isa-Webhook-Secret / X-Webhook-Secret (helps Make / proxies). */
+function lionWheelWebhookProvidedSecret(req) {
+  const auth = req.headers.authorization?.replace(/^Bearer\s+/i, '').trim();
+  if (auth) return auth;
+  const pick = (name) => {
+    const v = req.headers[name];
+    if (typeof v === 'string' && v.trim()) return v.trim();
+    if (Array.isArray(v) && v[0]) return String(v[0]).trim();
+    return '';
+  };
+  return pick('x-manager-isa-webhook-secret') || pick('x-webhook-secret');
+}
+
 const app = express();
 
 function resolveDefaultPickupContainerId(containersList, bodyCountry) {
@@ -106,7 +119,8 @@ async function enrichMissionsWithLionWheelStatuses(missions, { force = false } =
     candidates = candidates.slice(0, LW_STATUS_REFRESH_CAP);
   }
 
-  let dirty = false;
+  /** Row-level writes only — full-table writeMissions() races with LionWheel webhooks and can wipe their updates. */
+  const changedMissionIds = new Set();
   const batch = 6;
   for (let i = 0; i < candidates.length; i += batch) {
     await Promise.all(
@@ -130,7 +144,7 @@ async function enrichMissionsWithLionWheelStatuses(missions, { force = false } =
               taskStatusFetchError: msg,
             },
           };
-          dirty = true;
+          changedMissionIds.add(missions[idx].id);
           return;
         }
         missions[idx] = {
@@ -143,11 +157,19 @@ async function enrichMissionsWithLionWheelStatuses(missions, { force = false } =
             taskStatusFetchError: undefined,
           },
         };
-        dirty = true;
+        changedMissionIds.add(missions[idx].id);
       }),
     );
   }
-  if (dirty) await writeMissions(missions);
+  if (changedMissionIds.size > 0) {
+    await Promise.all(
+      [...changedMissionIds].map((mid) => {
+        const row = missions.find((x) => x.id === mid);
+        if (!row) return Promise.resolve();
+        return updateMissionsData(mid, row);
+      }),
+    );
+  }
 }
 
 /** Customer empty-box flow: eventual ship-to (India / Thailand) — same ids as isa-express-web */
@@ -184,7 +206,7 @@ app.use(cors({
     }
   },
   methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Manager-Isa-Webhook-Secret', 'X-Webhook-Secret'],
 }));
 app.use(express.json());
 
@@ -738,7 +760,7 @@ app.get('/api/track/:id', async (req, res) => {
 /**
  * LionWheel / Make → distilled taskId + status → update mission.lionwheel in DB.
  * Native payload: { "task": { "id": 24309382, "status": "ACTIVE", "order_id": "MSN-…" }, … }
- * Auth: Authorization: Bearer <MAKE_LIONWHEEL_WEBHOOK_SECRET>
+ * Auth: Authorization: Bearer <MAKE_LIONWHEEL_WEBHOOK_SECRET> or X-Manager-Isa-Webhook-Secret: <same value>
  *
  * @param {{ lastWebhookSource: string }} opts
  */
@@ -753,8 +775,8 @@ async function handleLionWheelTaskStatusWebhook(req, res, opts) {
       outcome = { httpStatus: 503, phase: 'config', message: 'MAKE_LIONWHEEL_WEBHOOK_SECRET is not configured on server' };
       return res.status(503).json({ error: outcome.message });
     }
-    const bearer = req.headers.authorization?.replace(/^Bearer\s+/i, '').trim();
-    if (!bearer || bearer !== MAKE_LIONWHEEL_WEBHOOK_SECRET) {
+    const provided = lionWheelWebhookProvidedSecret(req);
+    if (!provided || provided !== MAKE_LIONWHEEL_WEBHOOK_SECRET) {
       outcome = { httpStatus: 401, phase: 'auth', message: 'Unauthorized' };
       return res.status(401).json({ error: 'Unauthorized' });
     }
@@ -826,6 +848,11 @@ async function handleLionWheelTaskStatusWebhook(req, res, opts) {
   }
 }
 
+/** בלי אימות — לבדוק ש-Vercel מגיע ל-Express (אם אתה מקבל JSON הזה, הניתוב תקין). */
+app.get('/api/webhooks/ping', (req, res) => {
+  res.json({ ok: true, service: 'manager-isa', path: '/api/webhooks/ping' });
+});
+
 /** מממש שני נתיבי webhook; מעדיף lionwheel-task לגוף מלא מ-LionWheel. */
 app.post('/api/webhooks/make-lionwheel-status', (req, res) =>
   handleLionWheelTaskStatusWebhook(req, res, { lastWebhookSource: 'make-lionwheel-status' }),
@@ -851,8 +878,8 @@ app.post('/api/webhooks/make-inspect', async (req, res) => {
     if (!MAKE_WEBHOOK_INSPECT_SECRET) {
       return res.status(503).json({ error: 'MAKE_WEBHOOK_INSPECT_SECRET / MAKE_LIONWHEEL_WEBHOOK_SECRET not configured' });
     }
-    const bearer = req.headers.authorization?.replace(/^Bearer\s+/i, '').trim();
-    if (!bearer || bearer !== MAKE_WEBHOOK_INSPECT_SECRET) {
+    const provided = lionWheelWebhookProvidedSecret(req);
+    if (!provided || provided !== MAKE_WEBHOOK_INSPECT_SECRET) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
@@ -1177,6 +1204,8 @@ app.get('/api/missions', async (req, res) => {
       req.query.lionwheelSync === 'true' ||
       req.query.lionwheelSync === '';
     await enrichMissionsWithLionWheelStatuses(missions, { force: forceLw });
+    /** Re-read so LionWheel webhooks that landed during enrich are visible (per-row updates avoid clobbering them). */
+    missions = await readMissions();
     missions = await filterMissionsForCountryUser(missions, req.user);
     const { status, type, createdBy, customerPhone, affiliate, linkedEmptyBoxMissionId, containerId } = req.query;
     let filtered = missions;
@@ -1266,6 +1295,66 @@ app.patch('/api/missions/:id', async (req, res) => {
   } catch (err) {
     if (err.message === 'FORBIDDEN_MISSION') return res.status(404).json({ error: 'Mission not found' });
     if (err.message === 'Mission not found') return res.status(404).json({ error: 'Mission not found' });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── POST /api/missions/:id/send-to-lionwheel — manually send a customer mission to LionWheel ───
+
+app.post('/api/missions/:id/send-to-lionwheel', requireAuth, async (req, res) => {
+  try {
+    const missions = await readMissions();
+    const idx = missions.findIndex((m) => m.id === req.params.id);
+    if (idx === -1) return res.status(404).json({ error: 'Mission not found' });
+    const mission = missions[idx];
+
+    if (!['pickup', 'empty_box'].includes(mission.type)) {
+      return res.status(400).json({ error: 'Mission type must be pickup or empty_box' });
+    }
+    if (mission.lionwheel?.taskId) {
+      return res.status(409).json({ error: 'Mission already sent to LionWheel', taskId: mission.lionwheel.taskId });
+    }
+
+    let lw;
+    try {
+      lw = mission.type === 'empty_box'
+        ? await createLionWheelTaskForEmptyBoxMission(mission)
+        : await createLionWheelTaskForPickupMission(mission);
+    } catch (e) {
+      const lionwheel = { syncError: e.message || String(e), syncAttemptedAt: new Date().toISOString() };
+      missions[idx] = { ...mission, lionwheel };
+      await updateMissionsData(missions[idx].id, missions[idx]);
+      return res.status(502).json({ error: e.message, mission: missions[idx] });
+    }
+
+    const lionwheel = lw.ok
+      ? {
+          taskId: lw.taskId,
+          publicId: lw.publicId,
+          trackingLink: lw.trackingLink,
+          barcode: lw.barcode,
+          label: lw.label,
+          destinationRegionStr: lw.destinationRegionStr,
+          syncedAt: new Date().toISOString(),
+        }
+      : {
+          syncError: lw.error,
+          syncHttpStatus: lw.status,
+          syncAttemptedAt: new Date().toISOString(),
+        };
+
+    missions[idx] = { ...mission, lionwheel };
+    await updateMissionsData(missions[idx].id, missions[idx]);
+
+    if (lw.skipped) {
+      return res.status(503).json({ error: 'LionWheel credentials not configured', detail: lw.reason, mission: missions[idx] });
+    }
+    if (!lw.ok) {
+      return res.status(502).json({ error: lw.error, lionwheel_status: lw.status, mission: missions[idx] });
+    }
+
+    return res.json({ success: true, mission: missions[idx] });
+  } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });

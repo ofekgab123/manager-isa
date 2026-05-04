@@ -10,6 +10,7 @@
 # Headers:
 #     Content-Type: application/json
 #     Authorization: Bearer … (ברירת מחדל בשרת — .env: MAKE_LIONWHEEL_WEBHOOK_SECRET)
+#     אופציונלי במקום Bearer: X-Manager-Isa-Webhook-Secret: … (אם Make/Proxy מקלקלים Authorization)
 #
 # פורט ברירת מחדל מקומית: 3002 (ראה server/index.js).
 

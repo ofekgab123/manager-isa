@@ -25,6 +25,7 @@ import {
   ShieldCheck,
   Webhook,
   CloudDownload,
+  Send,
 } from 'lucide-react';
 import CreateMissionModal from './components/CreateMissionModal';
 import EmptyBoxMissionPickerModal from './components/EmptyBoxMissionPickerModal';
@@ -301,6 +302,7 @@ function Dashboard({ authUser, onLogout }) {
   const [completingMission, setCompletingMission] = useState(null);
   const [showCreateMission, setShowCreateMission] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
+  const [sendingLwId, setSendingLwId] = useState(null);
 
   const activeFilterCount = [filterType, filterLwStatus, filterCreatedBy, filterMissingAddress, filterName, filterPhone, filterReceiverName, filterReceiverPhone, filterPickupAddr, filterDeliveryAddr, filterDateFrom, filterBoxType, filterAffiliate].filter(Boolean).length;
 
@@ -339,6 +341,26 @@ function Dashboard({ authUser, onLogout }) {
       refetchStats();
     } finally {
       setDeletingId(null);
+    }
+  };
+
+  const handleSendToLionWheel = async (mission) => {
+    if (!window.confirm(`Send mission ${mission.id} to LionWheel?`)) return;
+    setSendingLwId(mission.id);
+    try {
+      const res = await fetch(`${API_BASE}/missions/${mission.id}/send-to-lionwheel`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(`LionWheel error: ${data.error || res.status}`);
+      }
+      refetch();
+    } catch (e) {
+      alert(`Error: ${e.message}`);
+    } finally {
+      setSendingLwId(null);
     }
   };
 
@@ -1050,6 +1072,16 @@ function Dashboard({ authUser, onLogout }) {
                                     title={mission.receiverAddress?.lat ? 'Delivery details complete' : 'Complete delivery details'}
                                   >
                                     <Truck className="w-4 h-4" />
+                                  </button>
+                                )}
+                                {mission.createdBy === 'customer' && !mission.lionwheel?.taskId && (
+                                  <button
+                                    onClick={() => handleSendToLionWheel(mission)}
+                                    disabled={sendingLwId === mission.id}
+                                    className="action-btn text-indigo-400 hover:bg-indigo-50 hover:text-indigo-600 disabled:opacity-50"
+                                    title="Send to LionWheel"
+                                  >
+                                    <Send className={`w-4 h-4 ${sendingLwId === mission.id ? 'animate-pulse' : ''}`} />
                                   </button>
                                 )}
                                 <button
