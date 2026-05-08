@@ -209,15 +209,30 @@ export async function sendLionWheelCreatePayload(payload, destination) {
     return { ok: false, status: res.status, error: lionWheelErrorMessage(res.status, data, rawText) };
   }
 
+  const taskIdNum = extractTaskIdFromLionWheelCreateResponse(data);
+
   return {
     ok: true,
-    taskId: data?.task_id,
-    publicId: data?.public_id ?? null,
-    destinationRegionStr: data?.destination_region_str ?? null,
-    label: data?.label ?? null,
-    barcode: data?.barcode ?? null,
-    trackingLink: data?.tracking_link ?? null,
+    taskId: taskIdNum,
+    publicId: data?.public_id ?? data?.task?.public_id ?? null,
+    destinationRegionStr: data?.destination_region_str ?? data?.task?.destination_region_str ?? null,
+    label: data?.label ?? data?.task?.label ?? null,
+    barcode: data?.barcode ?? data?.task?.barcode ?? null,
+    trackingLink: data?.tracking_link ?? data?.task?.tracking_link ?? null,
   };
+}
+
+/** LionWheel docs: root `task_id`; some gateways nest under `task`. */
+function extractTaskIdFromLionWheelCreateResponse(data) {
+  if (data == null || typeof data !== 'object') return undefined;
+  const raw =
+    data.task_id ??
+    data.taskId ??
+    data.task?.id ??
+    data.task?.task_id;
+  if (typeof raw === 'number' && Number.isFinite(raw)) return raw;
+  const n = parseInt(String(raw ?? '').replace(/\s/g, ''), 10);
+  return Number.isFinite(n) ? n : undefined;
 }
 
 
@@ -283,6 +298,9 @@ export function lionWheelApiStatusToNum(raw) {
   const n = parseInt(raw, 10);
   return Number.isFinite(n) ? n : NaN;
 }
+
+/** LionWheel `tasks/show` numeric status when the task is completed (README / API). */
+export const LIONWHEEL_TASK_STATUS_COMPLETED = 3;
 
 /** LionWheel task status → label (tasks/show response per README). */
 export function lionWheelTaskStatusLabel(status) {

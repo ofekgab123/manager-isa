@@ -190,12 +190,12 @@
   }
 
   .table-header {
-    background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
-    border-bottom: 2px solid #e2e8f0;
+    background: linear-gradient(180deg, #e2e8f0 0%, #cbd5e1 100%);
+    border-bottom: 2px solid #94a3b8;
   }
 
   .table-header th {
-    @apply px-2 py-2.5 text-[10px] font-bold text-slate-500 uppercase tracking-widest whitespace-nowrap;
+    @apply px-2 py-2.5 text-[10px] font-bold text-slate-800 uppercase tracking-widest whitespace-nowrap;
     letter-spacing: 0.06em;
   }
 

@@ -11,7 +11,7 @@ function normalizeAuthCountryKey(country) {
   if (country == null || String(country).trim() === '') return null;
   const k = String(country).trim().toLowerCase();
   if (k === 'india') return 'india';
-  if (k === 'thailand') return 'thailand';
+  if (k === 'thailand' || k === 'th') return 'thailand';
   return null;
 }
 

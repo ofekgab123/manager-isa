@@ -3,7 +3,7 @@ import { X, Package, Truck, MapPin, User, Home, CheckCircle, ChevronRight, Chevr
 import AddressPicker from './AddressPicker';
 import PhoneInput from './PhoneInput';
 import { authCountryToShippingDestination } from '../authCountryUtils';
-import { SHIPPING_DESTINATIONS, shippingDestinationLabel } from '../shippingDestinations';
+import { SHIPPING_DESTINATIONS, shippingDestinationLabel, missionLwRegionId } from '../shippingDestinations';
 import { geocodeAddress } from '../utils/geocode';
 import { API_BASE } from '../config';
 import EmptyBoxMissionPickerModal from './EmptyBoxMissionPickerModal';
@@ -244,6 +244,10 @@ export default function CreateMissionModal({ isOpen, onClose, onCreated, authCou
     fetch(`${API_BASE}/users`).then((r) => r.json()).then(setAllUsers).catch(() => {});
   }, [isOpen]);
 
+  useEffect(() => {
+    if (missionType !== 'pickup') setAffiliatePickerOpen(false);
+  }, [missionType]);
+
   // Close dropdown when clicking outside
   useEffect(() => {
     const handler = (e) => {
@@ -283,6 +287,8 @@ export default function CreateMissionModal({ isOpen, onClose, onCreated, authCou
         senderHouseNumber: u.address.houseNumber || p.senderHouseNumber,
       }));
     }
+    const fromProfile = authCountryToShippingDestination(u.country);
+    setManualShippingDestination(fromProfile ?? '');
     setUserSuggestions([]);
     setActiveField(null);
   };
@@ -403,6 +409,7 @@ export default function CreateMissionModal({ isOpen, onClose, onCreated, authCou
           fullName: form.fullName.trim(),
           phone:    form.israeliPhone.trim(),
           address,
+          ...(effectiveLwRegion ? { country: effectiveLwRegion } : {}),
         }),
       }).catch(() => {});
       onCreated?.(mission);
@@ -954,15 +961,19 @@ export default function CreateMissionModal({ isOpen, onClose, onCreated, authCou
               senderFloor: m.address?.floor || p.senderFloor,
             }));
             if (m.address?.lat) setMapAddress(m.address);
+            const reg = missionLwRegionId(m);
+            setManualShippingDestination(reg ?? '');
           }
         }}
       />
 
-      <AffiliatePickerModal
-        isOpen={affiliatePickerOpen}
-        onClose={() => setAffiliatePickerOpen(false)}
-        onSelect={(a) => { setSelectedAffiliate(a); setAffiliatePickerOpen(false); }}
-      />
+      {missionType === 'pickup' && (
+        <AffiliatePickerModal
+          isOpen={affiliatePickerOpen}
+          onClose={() => setAffiliatePickerOpen(false)}
+          onSelect={(a) => { setSelectedAffiliate(a); setAffiliatePickerOpen(false); }}
+        />
+      )}
     </>
   );
 }

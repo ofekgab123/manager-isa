@@ -8,6 +8,7 @@ import {
   BarChart2, Calendar, RefreshCw, Activity,
 } from 'lucide-react';
 import { API_BASE } from '../config';
+import { isAffiliatePickupCompletedInLionWheel } from '../lionwheelStatus';
 
 const STATUS_LABELS = {
   received: 'Received',
@@ -217,7 +218,7 @@ export default function StatisticsPanel({ missions = [], affiliates = [], onRefr
   const byAffiliate = useMemo(() => {
     const counts = {};
     filtered.forEach((m) => {
-      if (m.affiliateName && m.type === 'pickup') counts[m.affiliateName] = (counts[m.affiliateName] || 0) + 1;
+      if (isAffiliatePickupCompletedInLionWheel(m)) counts[m.affiliateName] = (counts[m.affiliateName] || 0) + 1;
     });
     return Object.entries(counts)
       .map(([k, v]) => ({ name: k, missions: v }))
@@ -256,7 +257,7 @@ export default function StatisticsPanel({ missions = [], affiliates = [], onRefr
   );
 
   const affiliateOrderCount = useMemo(
-    () => filtered.filter((m) => m.affiliateName && m.type === 'pickup').length,
+    () => filtered.filter(isAffiliatePickupCompletedInLionWheel).length,
     [filtered],
   );
 

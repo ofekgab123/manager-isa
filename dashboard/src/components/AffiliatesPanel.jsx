@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { API_BASE } from '../config';
+import { isAffiliatePickupCompletedInLionWheel } from '../lionwheelStatus';
 
 const SITE_URL = import.meta.env.VITE_SITE_URL || 'https://isa-psi-six.vercel.app';
 
@@ -222,7 +223,7 @@ function CustomerOrdersTable({ orders }) {
     <div className="overflow-x-auto">
       <table className="w-full text-center text-sm table-fixed">
         <thead>
-          <tr className="table-header bg-slate-100/80">
+          <tr className="table-header">
             <th>ID</th>
             <th>Type</th>
             <th>Discount</th>
@@ -555,7 +556,7 @@ export default function AffiliatesPanel({ missions = [] }) {
     }
   };
 
-  const totalOrders = missions.filter((m) => m.affiliateName && m.type === 'pickup').length;
+  const totalOrders = missions.filter(isAffiliatePickupCompletedInLionWheel).length;
 
   const filteredAffiliates = affiliates.filter((a) => {
     if (!search.trim()) return true;
@@ -659,7 +660,7 @@ export default function AffiliatesPanel({ missions = [] }) {
                 {filteredAffiliates.map((affiliate) => {
                   const trackingLink = `${SITE_URL}/?ref=${affiliate.slug}`;
                   const affiliateOrders = missions.filter(
-                    (m) => m.affiliateName === affiliate.name && m.type === 'pickup',
+                    (m) => m.affiliateName === affiliate.name && isAffiliatePickupCompletedInLionWheel(m),
                   );
                   const missionKeys = new Set(affiliateOrders.map(getCustomerKey));
                   const importedKeys = new Set(

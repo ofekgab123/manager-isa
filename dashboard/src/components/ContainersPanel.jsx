@@ -35,18 +35,18 @@ function defaultContainerForCountry(containers, country) {
 }
 
 const CONTAINER_STATUS_LABELS = {
-  open: 'Open',
-  closed: 'Closed',
-  in_transit: 'In transit',
-  completed: 'Completed',
+  in_storage_tlv: 'In storage TLV',
+  in_transit: 'In transit — estimated arrival in 60 days',
+  in_customs_clearance: 'In customs clearance',
+  door_to_door_in_progress: 'Door-to-door delivery in progress',
 };
 
 function containerStatusBadgeClass(status) {
-  const s = status || 'open';
-  if (s === 'open') return 'bg-emerald-100 text-emerald-800';
-  if (s === 'closed') return 'bg-amber-100 text-amber-800';
+  const s = status || 'in_storage_tlv';
+  if (s === 'in_storage_tlv') return 'bg-slate-100 text-slate-800';
   if (s === 'in_transit') return 'bg-indigo-100 text-indigo-800';
-  if (s === 'completed') return 'bg-slate-200 text-slate-800';
+  if (s === 'in_customs_clearance') return 'bg-amber-100 text-amber-800';
+  if (s === 'door_to_door_in_progress') return 'bg-emerald-100 text-emerald-800';
   return 'bg-slate-100 text-slate-700';
 }
 
@@ -786,7 +786,7 @@ function ContainerFormModal({ container, onSave, onClose, containers = [] }) {
   const [form, setForm] = useState({
     name: container?.name || '',
     country: container?.country || '',
-    status: container?.status || 'open',
+    status: container?.status || 'in_storage_tlv',
     estimatedArrivalLocal: isoToDatetimeLocal(container?.estimatedArrivalAt),
     isDefault: Boolean(container?.isDefault),
     maxPackages: container?.maxPackages ?? 220,
@@ -866,7 +866,7 @@ function ContainerFormModal({ container, onSave, onClose, containers = [] }) {
       const payload = {
         name: form.name.trim() || null,
         country: form.country.trim() || null,
-        status: form.status || 'open',
+        status: form.status || 'in_storage_tlv',
         estimatedArrivalAt: datetimeLocalToIso(form.estimatedArrivalLocal),
         isDefault: form.isDefault,
         maxPackages,
@@ -955,7 +955,7 @@ function ContainerFormModal({ container, onSave, onClose, containers = [] }) {
             </label>
             <select
               name="status"
-              value={form.status || 'open'}
+              value={form.status || 'in_storage_tlv'}
               onChange={handleChange}
               className="input-field"
             >
@@ -1302,7 +1302,7 @@ export default function ContainersPanel() {
       const createdAt = c.createdAt
         ? new Date(c.createdAt).toLocaleString('he-IL', { dateStyle: 'short', timeStyle: 'short' })
         : '';
-      const st = c.status || 'open';
+      const st = c.status || 'in_storage_tlv';
       const statusLabel = CONTAINER_STATUS_LABELS[st] || st;
       const arrival =
         c.estimatedArrivalAt && !Number.isNaN(new Date(c.estimatedArrivalAt).getTime())
@@ -1532,7 +1532,7 @@ export default function ContainersPanel() {
                       <span
                         className={`badge-pill font-medium ${containerStatusBadgeClass(c.status)}`}
                       >
-                        {CONTAINER_STATUS_LABELS[c.status || 'open'] || c.status || '—'}
+                        {CONTAINER_STATUS_LABELS[c.status || 'in_storage_tlv'] || c.status || '—'}
                       </span>
                     </td>
                     <td className="text-sm text-slate-700 whitespace-nowrap">

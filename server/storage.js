@@ -113,10 +113,62 @@ function containersDefaultNeedsNormalize(containers) {
   return false;
 }
 
+/** Must match server/app.js CONTAINER_STATUSES + legacy keys from older UI. */
+const CONTAINER_STATUS_IDS = [
+  'in_storage_tlv',
+  'in_transit',
+  'in_customs_clearance',
+  'door_to_door_in_progress',
+];
+const LEGACY_CONTAINER_STATUS = {
+  open: 'in_storage_tlv',
+  closed: 'in_transit',
+  completed: 'door_to_door_in_progress',
+};
+
+function migrateContainerStatus(status) {
+  if (status == null || String(status).trim() === '') return 'in_storage_tlv';
+  const s = String(status).trim();
+  if (CONTAINER_STATUS_IDS.includes(s)) return s;
+  return LEGACY_CONTAINER_STATUS[s] ?? 'in_storage_tlv';
+}
+
+/** Ensure `statusTimestamps[status]` exists (backfill from createdAt) for tracking UI. */
+function migrateContainerStatusTimestamps(c) {
+  const status = c.status || 'in_storage_tlv';
+  const prev = c.statusTimestamps;
+  const validPrev = prev && typeof prev === 'object' && !Array.isArray(prev) ? { ...prev } : null;
+  let dirty = validPrev == null;
+  const ts = validPrev ?? {};
+  if (!ts[status] && c.createdAt) {
+    ts[status] = c.createdAt;
+    dirty = true;
+  }
+  if (dirty) return { record: { ...c, statusTimestamps: ts }, dirty: true };
+  return { record: c, dirty: false };
+}
+
 export async function readContainers() {
   const raw = await readTable('containers');
-  if (!containersDefaultNeedsNormalize(raw)) return raw;
-  const normalized = normalizeContainersDefault(raw);
+  if (!Array.isArray(raw)) return raw;
+
+  let list = raw.map((c) => {
+    const status = migrateContainerStatus(c.status);
+    return { ...c, status };
+  });
+  const statusDirty = raw.some((c) => migrateContainerStatus(c.status) !== c.status);
+
+  let tsDirty = false;
+  list = list.map((c) => {
+    const { record, dirty } = migrateContainerStatusTimestamps(c);
+    if (dirty) tsDirty = true;
+    return record;
+  });
+
+  const defNeeds = containersDefaultNeedsNormalize(list);
+  if (!statusDirty && !defNeeds && !tsDirty) return list;
+
+  const normalized = normalizeContainersDefault(list);
   await writeTable('containers', normalized);
   return normalized;
 }

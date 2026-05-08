@@ -506,6 +506,10 @@ export default function MissionDetails({
 
   const isPickup = edit.type === 'pickup';
 
+  useEffect(() => {
+    if (!isPickup) setAffiliatePickerOpen(false);
+  }, [isPickup]);
+
   const normalizedDeliveriesForUi = useMemo(() => {
     if (!isPickup) return [];
     if (edit.deliveries?.length > 0) return edit.deliveries;
@@ -1047,14 +1051,16 @@ export default function MissionDetails({
         </div>
       )}
 
-      <AffiliatePickerModal
-        isOpen={affiliatePickerOpen}
-        onClose={() => setAffiliatePickerOpen(false)}
-        onSelect={(a) => {
-          setEdit((p) => ({ ...p, affiliateName: a.name, discountAmount: a.discountAmount }));
-          setAffiliatePickerOpen(false);
-        }}
-      />
+      {isPickup && (
+        <AffiliatePickerModal
+          isOpen={affiliatePickerOpen}
+          onClose={() => setAffiliatePickerOpen(false)}
+          onSelect={(a) => {
+            setEdit((p) => ({ ...p, affiliateName: a.name, discountAmount: a.discountAmount }));
+            setAffiliatePickerOpen(false);
+          }}
+        />
+      )}
 
       <EmptyBoxMissionPickerModal
         isOpen={emptyBoxMissionPickerOpen}

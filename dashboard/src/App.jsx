@@ -272,7 +272,7 @@ function Dashboard({ authUser, onLogout }) {
   const [visibleColumns, setVisibleColumns] = useState({
     type: true, sender: true, pickupAddr: true, shipTo: true,
     receiver: true, deliveryAddr: true, boxes: true, source: true, date: true, affiliate: true,
-    senderPhone: true, receiverPhone: true, missingInfo: true, trackingId: true, lwTaskId: false, lwStatus: true,
+    senderPhone: true, receiverPhone: true, missingInfo: true, trackingId: true, lwTaskId: true, lwStatus: true,
   });
   const [sectionVisible, setSectionVisible] = useState({ sender: true, receiver: true });
   const toggleSection = (key) => {
