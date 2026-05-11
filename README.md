@@ -1,50 +1,51 @@
-# Manager ISA - מערכת ניהול הזמנות
+# Manager ISA — Order management system
 
-מערכת ניהול מרכזית לכל ההזמנות של ISA Express.
+Central management system for all ISA Express orders.
 
-## הרצה
+## Running locally
 
-### 1. הפעלת השרת (API)
+### 1. API server
 
 ```bash
-cd manager-isa/server
+cd server
 npm install
 npm run dev
 ```
 
-השרת רץ על `http://localhost:3002`
+The API runs at `http://localhost:3002`
 
-### 2. הפעלת הדשבורד
+### 2. Dashboard
 
 ```bash
-cd manager-isa/dashboard
+cd dashboard
 npm install
 npm run dev
 ```
 
-הדשבורד רץ על `http://localhost:5174`
+The dashboard runs at `http://localhost:5174`
 
-### 3. הפעלת האתר הראשי
+### 3. API + dashboard together
+
+From the repository root (if you ended in `dashboard`, run `cd ..` first):
 
 ```bash
-cd ..
 npm run dev
 ```
 
-האתר הראשי שולח ומקבל הזמנות מהשרת של Manager ISA.
+This runs the API and the dashboard concurrently (see the root `package.json` `dev` script).
 
 ## API
 
-| Method | Endpoint | תיאור |
-|--------|----------|------|
-| GET | `/api/orders` | כל ההזמנות (תמיכה ב-query: status, type, createdBy) |
-| GET | `/api/orders/stats` | פילוחים וסטטיסטיקות |
-| GET | `/api/orders/:id` | הזמנה בודדת |
-| POST | `/api/orders` | יצירת הזמנה |
-| PATCH | `/api/orders/:id` | עדכון הזמנה |
-| DELETE | `/api/orders/:id` | מחיקת הזמנה |
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/orders` | All orders (query params: `status`, `type`, `createdBy`) |
+| GET | `/api/orders/stats` | Breakdowns and statistics |
+| GET | `/api/orders/:id` | Single order |
+| POST | `/api/orders` | Create order |
+| PATCH | `/api/orders/:id` | Update order |
+| DELETE | `/api/orders/:id` | Delete order |
 
-## מבנה נתונים - הזמנה
+## Order object shape
 
 ```json
 {
@@ -61,8 +62,3 @@ npm run dev
   "createdBy": "customer | customer_service"
 }
 ```
-# manager-isa
-# manager-isa
-# mangaer-isa
-# mangaer-isa
-# mangaer-isa
