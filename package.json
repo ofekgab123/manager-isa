@@ -11,9 +11,12 @@
   "scripts": {
     "server": "cd server && npm run dev",
     "dashboard": "cd dashboard && npm run dev",
-    "dev": "npm run server & npm run dashboard",
+    "dev": "concurrently -n API,WEB -c cyan,magenta \"npm run server\" \"npm run dashboard\"",
     "dev:full": "npm run build && node run-local.js",
     "install:all": "cd server && npm install && cd ../dashboard && npm install",
     "build": "cd dashboard && npm run build"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
   }
 }
