@@ -3,10 +3,6 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "db:init": "node --env-file-if-exists=.env scripts/init-db.mjs",
-    "db:ping": "node --env-file-if-exists=.env scripts/db-ping.mjs",
-    "db:migrate": "node --env-file-if-exists=.env migrate-data.js",
-    "db:sync-neon": "node --env-file-if-exists=.env scripts/sync-neon-to-supabase.mjs",
     "start": "node index.js",
     "dev": "node --env-file=.env --watch index.js",
     "mock-webhook": "node scripts/sendMockMissionWebhook.mjs"
