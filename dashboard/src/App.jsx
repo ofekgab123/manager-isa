@@ -299,7 +299,6 @@ function Dashboard({ authUser, onLogout }) {
   const [completingMission, setCompletingMission] = useState(null);
   const [showCreateMission, setShowCreateMission] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
-  const [sendingLwId, setSendingLwId] = useState(null);
 
   const activeFilterCount = [filterType, filterLwStatus, filterCreatedBy, filterMissingAddress, filterName, filterPhone, filterReceiverName, filterReceiverPhone, filterPickupAddr, filterDeliveryAddr, filterDateFrom, filterBoxType, filterAffiliate].filter(Boolean).length;
 
@@ -338,29 +337,6 @@ function Dashboard({ authUser, onLogout }) {
       refetchStats();
     } finally {
       setDeletingId(null);
-    }
-  };
-
-  const handleSendToLionWheel = async (mission) => {
-    if (!window.confirm(`Send mission ${mission.id} to LionWheel?`)) return;
-    setSendingLwId(mission.id);
-    try {
-      const res = await fetch(`${API_BASE}/missions/${mission.id}/send-to-lionwheel`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        alert(`LionWheel error: ${data.error || res.status}`);
-      } else if (data.mission && editingMission?.id === mission.id) {
-        setEditingMission(data.mission);
-      }
-      refetch();
-      refetchStats();
-    } catch (e) {
-      alert(`Error: ${e.message}`);
-    } finally {
-      setSendingLwId(null);
     }
   };
 
@@ -1062,17 +1038,6 @@ function Dashboard({ authUser, onLogout }) {
                                     <Truck className="w-4 h-4" />
                                   </button>
                                 )}
-                                {mission.createdBy === 'customer' && !mission.lionwheel?.taskId && (
-                                  <button
-                                    type="button"
-                                    onClick={() => handleSendToLionWheel(mission)}
-                                    disabled={sendingLwId === mission.id}
-                                    className="action-btn text-indigo-500 hover:bg-indigo-50 hover:text-indigo-700 disabled:opacity-50 ring-1 ring-indigo-200/80"
-                                    title="שלח ל-LionWheel"
-                                  >
-                                    <Truck className={`w-4 h-4 ${sendingLwId === mission.id ? 'animate-pulse' : ''}`} />
-                                  </button>
-                                )}
                                 <button
                                   onClick={() => setEditingMission(mission)}
                                   className="action-btn text-slate-400 hover:bg-slate-100 hover:text-slate-700"
@@ -1125,8 +1090,6 @@ function Dashboard({ authUser, onLogout }) {
                 onClose={() => setEditingMission(null)}
                 onDelete={() => { refetch(); refetchStats(); setEditingMission(null); }}
                 onOpenPreview={setPreviewMission}
-                onSendToLionWheel={handleSendToLionWheel}
-                sendingLwMissionId={sendingLwId}
               />
             </div>
           </div>
