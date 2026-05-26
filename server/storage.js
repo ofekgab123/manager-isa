@@ -51,6 +51,14 @@ export async function writeMissions(missions) {
   return writeTable('missions', missions);
 }
 
+/** Single-row insert — avoids DELETE + re-insert of the entire table on create. */
+export async function insertMissionData(id, data) {
+  await pool.query(
+    `INSERT INTO missions (id, data) VALUES ($1, $2::jsonb)`,
+    [id, data]
+  );
+}
+
 /** Single-row update — avoids DELETE + re-insert of the entire table (very slow for large mission lists). */
 export async function updateMissionsData(id, data) {
   const { rowCount } = await pool.query(

@@ -2,6 +2,8 @@ import { useState, useEffect, useRef } from 'react';
 import { X, Package, Truck, MapPin, User, Home, CheckCircle, ChevronRight, ChevronLeft, ClipboardList, Box, Plus, Minus } from 'lucide-react';
 import AddressPicker from './AddressPicker';
 import PhoneInput from './PhoneInput';
+import { authCountryToShippingDestination } from '../authCountryUtils';
+import { SHIPPING_DESTINATIONS, shippingDestinationLabel } from '../shippingDestinations';
 import { geocodeAddress } from '../utils/geocode';
 import { API_BASE } from '../config';
 
@@ -172,7 +174,7 @@ function AddressBlock({ mapAddr, form, prefix, onMap, onClear }) {
 }
 
 /* ─── Main component ─────────────────────────────────────────── */
-export default function CreateOrderModal({ isOpen, onClose, onCreated }) {
+export default function CreateOrderModal({ isOpen, onClose, onCreated, authCountry = null }) {
   const [orderType, setOrderType] = useState(null); // null | 'pickup' | 'empty_box'
   const [step, setStep] = useState(1);
   const [submitting, setSubmitting] = useState(false);
@@ -197,6 +199,13 @@ export default function CreateOrderModal({ isOpen, onClose, onCreated }) {
   const [createMission, setCreateMission] = useState(false);
   const [missionLargeBoxes, setMissionLargeBoxes] = useState('');
   const [missionSmallBoxes, setMissionSmallBoxes] = useState('');
+  /** When logged-in user has no india/thailand on profile (e.g. admin), pick region manually. */
+  const [manualShippingDestination, setManualShippingDestination] = useState('');
+
+  const impliedShippingDestination = authCountryToShippingDestination(authCountry);
+  const effectiveLwRegion =
+    impliedShippingDestination ||
+    (manualShippingDestination === 'india' || manualShippingDestination === 'thailand' ? manualShippingDestination : null);
 
   /* ─── User autocomplete ──────────────────────────────── */
   const [allUsers, setAllUsers] = useState([]);
@@ -307,6 +316,7 @@ export default function CreateOrderModal({ isOpen, onClose, onCreated }) {
     if (step === 1) return pickupForm.fullName.trim() && pickupForm.israeliPhone.trim();
     if (step === 2) return !!senderMapAddress;
     if (step === 3) {
+      if (!effectiveLwRegion) return false;
       if (orderType === 'pickup') return true;
       return boxCounts.large + boxCounts.small > 0;
     }
@@ -332,6 +342,10 @@ export default function CreateOrderModal({ isOpen, onClose, onCreated }) {
   };
 
   const submitPickup = async () => {
+    if (!effectiveLwRegion) {
+      setError('Choose ship-to: India or Thailand');
+      return;
+    }
     setSubmitting(true); setError('');
     try {
       const [sC, rC] = await Promise.all([
@@ -353,6 +367,7 @@ export default function CreateOrderModal({ isOpen, onClose, onCreated }) {
           receiverName: pickupForm.receiverName || undefined,
           receiverPhone: pickupForm.receiverPhone || undefined,
           receiverAddress: (pickupForm.receiverName || receiverMapAddress) ? receiverAddr : undefined,
+          country: effectiveLwRegion,
         }),
       });
       if (!res.ok) throw new Error('Save error');
@@ -391,6 +406,7 @@ export default function CreateOrderModal({ isOpen, onClose, onCreated }) {
           fullName: pickupForm.fullName.trim(),
           phone:    pickupForm.israeliPhone.trim(),
           address:  senderAddr,
+          country:  effectiveLwRegion,
         }),
       }).catch(() => {});
       onCreated?.(order);
@@ -405,6 +421,7 @@ export default function CreateOrderModal({ isOpen, onClose, onCreated }) {
     setSenderMapAddress(null); setReceiverMapAddress(null); setAddressMapOpenFor(null);
     setBoxCounts({ large: 0, small: 0 });
     setCreateMission(false); setMissionLargeBoxes(''); setMissionSmallBoxes('');
+    setManualShippingDestination('');
     setUserSuggestions([]); setActiveField(null);
     onClose();
   };
@@ -519,6 +536,29 @@ export default function CreateOrderModal({ isOpen, onClose, onCreated }) {
 
                   {step === 3 && (
                     <div className="space-y-4">
+                      {!impliedShippingDestination && (
+                        <div className="rounded-xl border border-indigo-200 bg-indigo-50/50 p-4 space-y-2">
+                          <h3 className="text-base font-bold text-slate-800">
+                            {orderType === 'empty_box' ? 'Ship boxes to' : 'Ship to / LionWheel'}
+                          </h3>
+                          <p className="text-sm text-slate-600">
+                            {orderType === 'empty_box'
+                              ? 'Required — choose where boxes ship (LionWheel destination).'
+                              : 'Required — choose India or Thailand for LionWheel routing.'}
+                          </p>
+                          <select
+                            value={manualShippingDestination}
+                            onChange={(e) => setManualShippingDestination(e.target.value)}
+                            className={inputCls}
+                            required
+                          >
+                            <option value="">India or Thailand…</option>
+                            {SHIPPING_DESTINATIONS.map((d) => (
+                              <option key={d.id} value={d.id}>{d.label}</option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
                       <div className="flex items-center gap-2 flex-wrap">
                         <h3 className="font-semibold text-slate-800 text-base mb-1">Box Selection</h3>
                         {orderType === 'pickup' && (
@@ -607,6 +647,9 @@ export default function CreateOrderModal({ isOpen, onClose, onCreated }) {
                         <SummaryRow label="Name" value={pickupForm.fullName} />
                         <SummaryRow label="Phone" value={pickupForm.israeliPhone} />
                         <SummaryRow label="Pickup address" value={senderMapAddress?.displayAddress || [pickupForm.senderStreet, pickupForm.senderHouseNumber, pickupForm.senderCity].filter(Boolean).join(', ')} />
+                        {effectiveLwRegion && (
+                          <SummaryRow label="Ship to" value={shippingDestinationLabel(effectiveLwRegion)} />
+                        )}
                       </div>
                       {(pickupForm.receiverName || pickupForm.receiverPhone || receiverMapAddress) && (
                         <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2">

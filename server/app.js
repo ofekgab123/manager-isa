@@ -3,7 +3,7 @@ import cors from 'cors';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import pool from './db.js';
-import { readOrders, writeOrders, readAffiliates, writeAffiliates, readMissions, writeMissions, updateMissionsData, deleteMissionsById, readUsers, writeUsers, readReceivers, writeReceivers, readContainers, writeContainers, readParcelContentTypes, writeParcelContentTypes, containerCountryKey } from './storage.js';
+import { readOrders, writeOrders, readAffiliates, writeAffiliates, readMissions, writeMissions, insertMissionData, updateMissionsData, deleteMissionsById, readUsers, writeUsers, readReceivers, writeReceivers, readContainers, writeContainers, readParcelContentTypes, writeParcelContentTypes, containerCountryKey } from './storage.js';
 import { israeliMobileKey } from './phoneKey.js';
 import {
   createLionWheelTaskForEmptyBoxMission,
@@ -698,8 +698,7 @@ app.post('/api/missions', async (req, res) => {
       if (fb) missionForLw = { ...newMission, shippingDestination: fb };
     }
 
-    missions.unshift(newMission);
-    await writeMissions(missions);
+    await insertMissionData(newMission.id, newMission);
 
     let missionToReturn = newMission;
     /** empty_box & pickup: always attempt LionWheel on create (customer forms included). Retry via POST /api/missions/:id/send-to-lionwheel if needed. */
@@ -727,9 +726,7 @@ app.post('/api/missions', async (req, res) => {
                 syncAttemptedAt: new Date().toISOString(),
               };
           missionToReturn = { ...newMission, lionwheel };
-          const i = missions.findIndex((m) => m.id === newMission.id);
-          if (i !== -1) missions[i] = missionToReturn;
-          await writeMissions(missions);
+          await updateMissionsData(newMission.id, missionToReturn);
         }
       } catch (e) {
         const lionwheel = {
@@ -737,9 +734,7 @@ app.post('/api/missions', async (req, res) => {
           syncAttemptedAt: new Date().toISOString(),
         };
         missionToReturn = { ...newMission, lionwheel };
-        const i = missions.findIndex((m) => m.id === newMission.id);
-        if (i !== -1) missions[i] = missionToReturn;
-        await writeMissions(missions);
+        await updateMissionsData(newMission.id, missionToReturn);
       }
     }
 
