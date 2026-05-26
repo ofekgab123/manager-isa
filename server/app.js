@@ -779,8 +779,6 @@ app.post('/api/lionwheel/create', requireAuth, async (req, res) => {
     if (!type || !['pickup', 'empty'].includes(type)) missing.push('type (pickup|empty)');
     if (!destination || !['thailand', 'india'].includes(String(destination).toLowerCase())) missing.push('destination (thailand|india)');
     if (!city) missing.push('city');
-    if (!street) missing.push('street');
-    if (!number) missing.push('number');
     if (!name) missing.push('name');
     if (!phone) missing.push('phone');
     if (missing.length) {

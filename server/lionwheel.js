@@ -54,6 +54,17 @@ function formatPickupAtDdMmYyyy(d = new Date()) {
   return `${dd}/${mm}/${yyyy}`;
 }
 
+/** LionWheel accepts em dash when street or house number is unknown. */
+function lwDestinationStreet(street) {
+  const s = String(street ?? '').trim();
+  return s || '—';
+}
+
+function lwDestinationNumber(houseNumber) {
+  const s = String(houseNumber ?? '').trim();
+  return s || '—';
+}
+
 function recipientNameFromMission(mission) {
   const first = String(mission.firstName || '').trim();
   const last = String(mission.lastName || '').trim();
@@ -153,8 +164,8 @@ export function buildLionWheelPayloadFromRequest(body) {
     pickup_at: formatPickupAtDdMmYyyy(),
     original_order_id: String(orderId),
     destination_city: String(city || '').trim(),
-    destination_street: String(street || '').trim(),
-    destination_number: String(houseNumber || '').trim() || '—',
+    destination_street: lwDestinationStreet(street),
+    destination_number: lwDestinationNumber(houseNumber),
     destination_recipient_name: String(name || '').trim(),
     destination_phone: String(phone || '').trim(),
     notes: buildNotesFromRequest({ type, boxes, emptyBoxes }),
@@ -514,11 +525,10 @@ export function buildLionWheelCreatePayloadForEmptyBox(mission) {
   const m = missionForLionWheelPayloadBuild(mission);
   const addr = m.address || {};
   const city = String(addr.city || '').trim();
-  const street = String(addr.street || '').trim();
-  const houseNumber = String(addr.houseNumber || '').trim();
+  const street = lwDestinationStreet(addr.street);
+  const destination_number = lwDestinationNumber(addr.houseNumber);
   const recipient = recipientNameFromMission(m);
   const phone = String(m.customerPhone || '').trim();
-  const destination_number = houseNumber || '—';
 
   const creds = getLionWheelCredentials(dest);
   const boxes = (m.boxSelection?.large || 0) + (m.boxSelection?.small || 0);
@@ -567,14 +577,13 @@ export async function createLionWheelTaskForEmptyBoxMission(mission) {
   const payload = buildLionWheelCreatePayloadForEmptyBox(mission);
   if (
     !payload.destination_city ||
-    !payload.destination_street ||
     !payload.destination_recipient_name ||
     !payload.destination_phone
   ) {
     return {
       ok: false,
       status: 400,
-      error: 'Missing required mission fields for LionWheel (city, street, name, phone)',
+      error: 'Missing required mission fields for LionWheel (city, name, phone)',
     };
   }
   return sendLionWheelCreatePayload(payload, lionWheelDestinationFromMission(mission));
@@ -590,13 +599,12 @@ export async function createLionWheelTaskForPickupMission(mission) {
   const m = missionForLionWheelPayloadBuild(mission);
   const addr = m.address || {};
   const city = String(addr.city || '').trim();
-  const street = String(addr.street || '').trim();
-  const houseNumber = String(addr.houseNumber || '').trim();
+  const street = lwDestinationStreet(addr.street);
   const recipient = recipientNameFromMission(m);
   const phone = String(m.customerPhone || '').trim();
 
-  if (!city || !street || !recipient || !phone) {
-    return { ok: false, status: 400, error: 'Missing pickup mission fields for LionWheel (address city/street, name, phone)' };
+  if (!city || !recipient || !phone) {
+    return { ok: false, status: 400, error: 'Missing pickup mission fields for LionWheel (city, name, phone)' };
   }
 
   const pickupBoxes = m.pickupBoxCount ?? 0;
@@ -610,7 +618,7 @@ export async function createLionWheelTaskForPickupMission(mission) {
     original_order_id: m.id,
     destination_city: city,
     destination_street: street,
-    destination_number: houseNumber || '—',
+    destination_number: lwDestinationNumber(addr.houseNumber),
     destination_recipient_name: recipient,
     destination_phone: phone,
     notes: buildNotesFromRequest({
