@@ -89,11 +89,13 @@ export async function writeReceivers(receivers) {
   return writeTable('receivers', receivers);
 }
 
-/** Normalize country string for default-container grouping (empty = no country). */
+/** Normalize country for container grouping / default lookup (India, thailand, TH → india | thailand). */
 export function containerCountryKey(country) {
-  if (country == null) return '';
-  const s = String(country).trim();
-  return s;
+  if (country == null || String(country).trim() === '') return '';
+  const s = String(country).trim().toLowerCase();
+  if (s === 'india') return 'india';
+  if (s === 'thailand' || s === 'th') return 'thailand';
+  return String(country).trim();
 }
 
 /** At most one container per country may have isDefault true; first in array order keeps it. */

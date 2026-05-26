@@ -51,10 +51,8 @@ function lionWheelWebhookProvidedSecret(req) {
 const app = express();
 
 function resolveDefaultPickupContainerId(containersList, bodyCountry) {
-  const hasCountry =
-    bodyCountry !== undefined && bodyCountry !== null && String(bodyCountry).trim() !== '';
-  if (hasCountry) {
-    const key = String(bodyCountry).trim();
+  const key = containerCountryKey(bodyCountry);
+  if (key) {
     const def = containersList.find(
       (c) => c.isDefault && containerCountryKey(c.country) === key,
     );
@@ -85,8 +83,9 @@ function missionVisibleForUserCountry(m, userCountry, containerIdsForUser) {
     return lionWheelDestinationFromMission(m) === wantDest;
   }
   if (m.type === 'pickup') {
-    if (!m.containerId) return false;
-    return containerIdsForUser.has(m.containerId);
+    if (m.containerId && containerIdsForUser.has(m.containerId)) return true;
+    if (!wantDest) return false;
+    return lionWheelDestinationFromMission(m) === wantDest;
   }
   return false;
 }
@@ -94,14 +93,20 @@ function missionVisibleForUserCountry(m, userCountry, containerIdsForUser) {
 async function filterMissionsForCountryUser(missions, user) {
   if (!user?.country || user.isAdmin) return missions;
   const containers = await readContainers();
-  const ids = new Set(containers.filter((c) => c.country === user.country).map((c) => c.id));
+  const userCountryKey = containerCountryKey(user.country);
+  const ids = new Set(
+    containers.filter((c) => containerCountryKey(c.country) === userCountryKey).map((c) => c.id),
+  );
   return missions.filter((m) => missionVisibleForUserCountry(m, user.country, ids));
 }
 
 async function assertMissionAccessForCountryUser(mission, user) {
   if (!user?.country || user.isAdmin) return;
   const containers = await readContainers();
-  const ids = new Set(containers.filter((c) => c.country === user.country).map((c) => c.id));
+  const userCountryKey = containerCountryKey(user.country);
+  const ids = new Set(
+    containers.filter((c) => containerCountryKey(c.country) === userCountryKey).map((c) => c.id),
+  );
   if (!missionVisibleForUserCountry(mission, user.country, ids)) {
     throw new Error('FORBIDDEN_MISSION');
   }

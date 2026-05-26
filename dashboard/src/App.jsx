@@ -35,7 +35,6 @@ import AffiliatesPanel from './components/AffiliatesPanel';
 import CustomersPanel from './components/CustomersPanel';
 import UsersPanel from './components/UsersPanel';
 import StatisticsPanel from './components/StatisticsPanel';
-import PackagesPanel from './components/PackagesPanel';
 import ContainersPanel from './components/ContainersPanel';
 import ParcelContentTypesPanel from './components/ParcelContentTypesPanel';
 import TableHorizontalScroll from './components/TableHorizontalScroll';
@@ -452,15 +451,6 @@ function Dashboard({ authUser, onLogout }) {
             Missions
           </button>
           <button
-            onClick={() => setActiveTab('packages')}
-            className={`flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-xl transition-all duration-200 whitespace-nowrap ${
-              activeTab === 'packages' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-600 hover:text-slate-800 hover:bg-white/60'
-            }`}
-          >
-            <Package className="w-4 h-4" />
-            Packages
-          </button>
-          <button
             onClick={() => setActiveTab('containers')}
             className={`flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-xl transition-all duration-200 whitespace-nowrap ${
               activeTab === 'containers' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-600 hover:text-slate-800 hover:bg-white/60'
@@ -520,7 +510,6 @@ function Dashboard({ authUser, onLogout }) {
       </div>
 
       <main className="px-2 py-4 sm:px-4 sm:py-5">
-        {activeTab === 'packages' && <PackagesPanel authCountry={authUser.country} />}
         {activeTab === 'containers' && <ContainersPanel />}
         {activeTab === 'affiliates' && <AffiliatesPanel missions={missions} />}
         {activeTab === 'customers' && <CustomersPanel />}
