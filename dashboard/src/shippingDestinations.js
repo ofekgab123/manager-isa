@@ -17,3 +17,19 @@ export function missionLwRegionId(mission) {
   const s = String(raw).trim().toLowerCase();
   return s === 'india' || s === 'thailand' ? s : null;
 }
+
+export const PAYMENT_LOCATIONS = [
+  { id: 'israel', label: 'Israel' },
+  { id: 'thailand', label: 'Thailand' },
+];
+
+export function paymentLocationLabel(id) {
+  if (id == null || id === '') return '';
+  return PAYMENT_LOCATIONS.find((p) => p.id === id)?.label || String(id);
+}
+
+export function isMissingThailandPayment(mission) {
+  return mission?.type === 'pickup'
+    && missionLwRegionId(mission) === 'thailand'
+    && !mission.paymentLocation;
+}

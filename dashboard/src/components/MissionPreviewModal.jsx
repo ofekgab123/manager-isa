@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
-import { X, User, MapPin, Package, Truck, Tag, FileText, Link2, Info, Plus, Globe } from 'lucide-react';
+import { X, User, MapPin, Package, Truck, Tag, FileText, Link2, Info, Plus, Globe, AlertTriangle } from 'lucide-react';
 import { API_BASE } from '../config';
 import CollapsibleParcelContent from './CollapsibleParcelContent';
+import { AddressVerificationImagePreview } from './AddressVerificationImage';
 import { formatIls, sumAllDeliveriesContentsIls, sumBoxContentsIls } from '../parcelContentUtils';
 import { maxPickupLinksForEmptyBox } from '../pickerSlots';
-import { shippingDestinationLabel, missionLwRegionId } from '../shippingDestinations';
+import { shippingDestinationLabel, missionLwRegionId, paymentLocationLabel } from '../shippingDestinations';
 
 const TYPE_LABELS = { pickup: 'Pickup', empty_box: 'Empty Box' };
 const STATUS_LABELS = {
@@ -298,6 +299,19 @@ export default function MissionPreviewModal({
             </PreviewSection>
           )}
 
+          {isPickup && missionLwRegionId(mission) === 'thailand' && (
+            <PreviewSection icon={Globe} title="Payment">
+              {mission.paymentLocation ? (
+                <PreviewRow label="Payment location" value={paymentLocationLabel(mission.paymentLocation)} />
+              ) : (
+                <p className="text-sm text-amber-700 flex items-center gap-1.5">
+                  <AlertTriangle className="w-4 h-4 shrink-0" />
+                  Payment location not set
+                </p>
+              )}
+            </PreviewSection>
+          )}
+
           {/* Box selection (empty boxes to bring) */}
           {((mission.boxSelection?.large || 0) + (mission.boxSelection?.small || 0)) > 0 && (
             <PreviewSection icon={Package} title="Boxes to Bring">
@@ -314,6 +328,7 @@ export default function MissionPreviewModal({
                   <PreviewRow label="Name" value={mission.receiverName} />
                   <PreviewRow label="Phone" value={mission.receiverPhone} />
                   <PreviewRow label="Address" value={receiverAddr?.displayAddress} />
+                  <AddressVerificationImagePreview imageUrl={receiverAddr?.imageUrl} />
                 </>
               )}
               {hasDeliveries && (
@@ -323,15 +338,27 @@ export default function MissionPreviewModal({
                       <p className="label mb-1">Delivery {i + 1}</p>
                       <PreviewRow label="Name" value={d.receiverName} />
                       <PreviewRow label="Phone" value={d.receiverPhone} />
+                      {missionLwRegionId(mission) === 'thailand' && (
+                        <PreviewRow label="Phone 2" value={d.receiverPhone2} />
+                      )}
                       <PreviewRow label="Address" value={d.address?.displayAddress} />
+                      <AddressVerificationImagePreview imageUrl={d.address?.imageUrl} />
                       {d.boxCount != null && <PreviewRow label="Boxes" value={d.boxCount} />}
-                      {(d.boxWeights?.length > 0 || d.boxTrackingIds?.length > 0) && (
+                      {(d.boxWeights?.length > 0 || d.boxTrackingIds?.length > 0 || d.boxThailandRefs?.length > 0) && (
                         <div className="flex flex-wrap gap-1.5 mt-1">
-                          {Array.from({ length: Math.max(d.boxWeights?.length || 0, d.boxTrackingIds?.length || 0) }, (_, j) => {
+                          {Array.from({
+                            length: Math.max(
+                              d.boxWeights?.length || 0,
+                              d.boxTrackingIds?.length || 0,
+                              d.boxThailandRefs?.length || 0
+                            ),
+                          }, (_, j) => {
                             const w = d.boxWeights?.[j];
                             const tid = (d.boxTrackingIds?.[j] || '').trim();
+                            const thRef = (d.boxThailandRefs?.[j] || '').trim();
                             const parts = [];
                             if (tid) parts.push(tid);
+                            if (thRef) parts.push(`ID2: ${thRef}`);
                             if (w) parts.push(`${w} kg`);
                             if (parts.length === 0) return null;
                             return (

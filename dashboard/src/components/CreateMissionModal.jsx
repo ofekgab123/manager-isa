@@ -69,7 +69,7 @@ function Field({ label, required, children }) {
 const inputCls  = 'input-field';
 const readonlyCls = 'input-field bg-slate-50 text-slate-500 cursor-default';
 
-function AddressBlock({ mapAddr, form, onMap, onClear }) {
+function AddressBlock({ mapAddr, form, onMap, onClear, onFieldChange }) {
   const city   = form.senderCity        || '';
   const street = form.senderStreet      || '';
   const house  = form.senderHouseNumber || '';
@@ -101,8 +101,8 @@ function AddressBlock({ mapAddr, form, onMap, onClear }) {
         <Field label="City"><input className={mapAddr ? inputCls : readonlyCls} readOnly={!mapAddr} value={city}   onChange={() => {}} placeholder="From map" /></Field>
         <Field label="Street"><input className={mapAddr ? inputCls : readonlyCls} readOnly={!mapAddr} value={street} onChange={() => {}} placeholder="From map" /></Field>
         <Field label="House no."><input className={mapAddr ? inputCls : readonlyCls} readOnly={!mapAddr} value={house}  onChange={() => {}} placeholder="From map" /></Field>
-        <Field label="Apartment"><input className={inputCls} value={apt}   onChange={() => {}} placeholder="3" /></Field>
-        <Field label="Floor"><input className={inputCls}     value={floor} onChange={() => {}} placeholder="2" /></Field>
+        <Field label="Apartment"><input className={inputCls} name="senderApartment" value={apt} onChange={onFieldChange} placeholder="3" /></Field>
+        <Field label="Floor"><input className={inputCls} name="senderFloor" value={floor} onChange={onFieldChange} placeholder="2" /></Field>
       </div>
     </div>
   );
@@ -672,7 +672,8 @@ export default function CreateMissionModal({ isOpen, onClose, onCreated, authCou
                       mapAddr={mapAddress}
                       form={form}
                       onMap={() => setMapOpen(true)}
-                      onClear={() => { setMapAddress(null); setForm((p) => ({ ...p, senderCity: '', senderStreet: '', senderHouseNumber: '' })); }}
+                      onClear={() => { setMapAddress(null); setForm((p) => ({ ...p, senderCity: '', senderStreet: '', senderHouseNumber: '', senderApartment: '', senderFloor: '' })); }}
+                      onFieldChange={handleChange}
                     />
                   </div>
                 )}

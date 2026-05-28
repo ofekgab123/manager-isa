@@ -5,11 +5,30 @@ import PhoneInput from './PhoneInput';
 import { authCountryToDefaultPhoneCode } from '../authCountryUtils';
 import EmptyBoxMissionPickerModal from './EmptyBoxMissionPickerModal';
 import CollapsibleParcelContent from './CollapsibleParcelContent';
+import { AddressVerificationImageField } from './AddressVerificationImage';
 import { API_BASE } from '../config';
 import { formatIls, sumAllDeliveriesContentsIls, valueIlsForTypeLabel } from '../parcelContentUtils';
+import { missionLwRegionId, PAYMENT_LOCATIONS } from '../shippingDestinations';
+
+function resizeStringArray(prev, length) {
+  return Array.from({ length }, (_, i) =>
+    prev?.[i] !== undefined && prev[i] !== '' ? String(prev[i]) : ''
+  );
+}
 
 /* ─── Single delivery row ────────────────────────────────────── */
-function DeliveryRow({ row, idx, totalPickup, otherAssigned, onChange, onDelete, canDelete, parcelContentTypes, receiverDefaultCode = '+972' }) {
+function DeliveryRow({
+  row,
+  idx,
+  totalPickup,
+  otherAssigned,
+  onChange,
+  onDelete,
+  canDelete,
+  parcelContentTypes,
+  receiverDefaultCode = '+972',
+  isThailand = false,
+}) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const lookupTimeoutRef = useRef(null);
   const maxForRow = totalPickup - otherAssigned;
@@ -86,6 +105,21 @@ function DeliveryRow({ row, idx, totalPickup, otherAssigned, onChange, onDelete,
         </div>
       </div>
 
+      {isThailand && (
+        <div>
+          <label className="label">
+            Receiver phone 2
+            <span className="text-slate-400 font-normal ml-1">(optional)</span>
+          </label>
+          <PhoneInput
+            defaultCode={receiverDefaultCode}
+            value={row.receiverPhone2 || ''}
+            onChange={(v) => onChange({ ...row, receiverPhone2: v })}
+            placeholder="501234567"
+          />
+        </div>
+      )}
+
       <div>
         <label className="label">Delivery address</label>
         <button
@@ -104,7 +138,7 @@ function DeliveryRow({ row, idx, totalPickup, otherAssigned, onChange, onDelete,
         <AddressPicker
           isOpen={pickerOpen}
           onClose={() => setPickerOpen(false)}
-          onSelect={(a) => { onChange({ ...row, address: a }); setPickerOpen(false); }}
+          onSelect={(a) => { onChange({ ...row, address: { ...(row.address || {}), ...a } }); setPickerOpen(false); }}
           initialPosition={row.address?.lat ? [row.address.lat, row.address.lng] : undefined}
         />
         {row.address?.lat != null && (
@@ -124,6 +158,22 @@ function DeliveryRow({ row, idx, totalPickup, otherAssigned, onChange, onDelete,
             </button>
           </div>
         )}
+        <AddressVerificationImageField
+          className="mt-2"
+          imageUrl={row.address?.imageUrl}
+          onImageUrlChange={(url) =>
+            onChange({
+              ...row,
+              address: url
+                ? { ...(row.address || {}), imageUrl: url }
+                : (() => {
+                    const next = { ...(row.address || {}) };
+                    delete next.imageUrl;
+                    return Object.keys(next).length ? next : null;
+                  })(),
+            })
+          }
+        />
       </div>
 
       <div>
@@ -138,12 +188,11 @@ function DeliveryRow({ row, idx, totalPickup, otherAssigned, onChange, onDelete,
           value={row.boxCount}
           onChange={(e) => {
             const val = Math.min(maxForRow, Math.max(1, parseInt(e.target.value) || 1));
-            const prevWeights = row.boxWeights ?? [];
-            const prevIds = row.boxTrackingIds ?? [];
-            const boxWeights = Array.from({ length: val }, (_, i) => (prevWeights[i] !== undefined && prevWeights[i] !== '') ? prevWeights[i] : '');
-            const boxTrackingIds = Array.from({ length: val }, (_, i) => (prevIds[i] !== undefined && prevIds[i] !== '') ? prevIds[i] : '');
+            const boxWeights = resizeStringArray(row.boxWeights, val);
+            const boxTrackingIds = resizeStringArray(row.boxTrackingIds, val);
+            const boxThailandRefs = resizeStringArray(row.boxThailandRefs, val);
             const boxContents = ensureBoxContents(val);
-            onChange({ ...row, boxCount: val, boxWeights, boxTrackingIds, boxContents });
+            onChange({ ...row, boxCount: val, boxWeights, boxTrackingIds, boxThailandRefs, boxContents });
           }}
           className="input-field"
         />
@@ -186,6 +235,22 @@ function DeliveryRow({ row, idx, totalPickup, otherAssigned, onChange, onDelete,
                       <span className="text-[10px] text-slate-400">Tracking ID</span>
                     </div>
                   </div>
+                  {isThailand && (
+                    <div>
+                      <input
+                        type="text"
+                        value={(row.boxThailandRefs ?? [])[i] ?? ''}
+                        onChange={(e) => {
+                          const next = [...(row.boxThailandRefs ?? [])];
+                          next[i] = e.target.value;
+                          onChange({ ...row, boxThailandRefs: next });
+                        }}
+                        placeholder="Tracking ID 2 (optional)"
+                        className="input-field !py-1.5"
+                      />
+                      <span className="text-[10px] text-slate-400">Tracking ID 2 (optional)</span>
+                    </div>
+                  )}
                   {/* Parcel content per box */}
                   <div className="mt-2 pt-2 border-t border-slate-200">
                     <CollapsibleParcelContent
@@ -310,10 +375,13 @@ export default function CompleteDeliveryModal({ isOpen, mission, onClose, onSave
         const boxTrackingIds = d.boxTrackingIds && Array.isArray(d.boxTrackingIds)
           ? d.boxTrackingIds.map(String)
           : Array.from({ length: count }, () => '');
+        const boxThailandRefs = d.boxThailandRefs && Array.isArray(d.boxThailandRefs)
+          ? d.boxThailandRefs.map(String)
+          : Array.from({ length: count }, () => '');
         const boxContents = d.boxContents && Array.isArray(d.boxContents)
           ? d.boxContents.map((bc) => Array.isArray(bc) ? bc.map((it) => ({ description: it.description || '', qty: it.qty ?? 1, price: it.price ?? 0 })) : [])
           : Array.from({ length: count }, () => []);
-        return { ...d, boxWeights, boxTrackingIds, boxContents };
+        return { ...d, boxWeights, boxTrackingIds, boxThailandRefs, boxContents };
       });
     }
     const w = mission.pickupBoxWeights;
@@ -324,10 +392,12 @@ export default function CompleteDeliveryModal({ isOpen, mission, onClose, onSave
       id: mission?.id ? `PKG-${(mission.id || '').replace(/^MSN-/, '')}-0` : `PKG-${Date.now()}`,
       receiverName:  mission.receiverName  || '',
       receiverPhone: mission.receiverPhone || '',
+      receiverPhone2: mission.receiverPhone2 || '',
       address:       mission.receiverAddress || null,
       boxCount:      initialBoxCount,
       boxWeights:    initialWeights,
       boxTrackingIds: initialTrackingIds,
+      boxThailandRefs: Array.from({ length: initialBoxCount }, () => ''),
       boxContents:   initialBoxContents,
     }];
   });
@@ -340,6 +410,7 @@ export default function CompleteDeliveryModal({ isOpen, mission, onClose, onSave
   const [containerId, setContainerId] = useState(mission.containerId ?? null);
   const [containers, setContainers] = useState([]);
   const [parcelContentTypes, setParcelContentTypes] = useState([]);
+  const [paymentLocation, setPaymentLocation] = useState(mission.paymentLocation ?? null);
 
   const fetchContainers = useCallback(async () => {
     try {
@@ -385,6 +456,12 @@ export default function CompleteDeliveryModal({ isOpen, mission, onClose, onSave
     }
   }, [isOpen, mission.linkedEmptyBoxMissionId]);
 
+  useEffect(() => {
+    if (isOpen) {
+      setPaymentLocation(mission.paymentLocation ?? null);
+    }
+  }, [isOpen, mission.paymentLocation]);
+
   const deliveriesContentTotal = useMemo(
     () => sumAllDeliveriesContentsIls(deliveries),
     [deliveries]
@@ -392,20 +469,25 @@ export default function CompleteDeliveryModal({ isOpen, mission, onClose, onSave
 
   if (!isOpen) return null;
 
+  const isThailand = missionLwRegionId(mission) === 'thailand';
+
   const totalAssigned = deliveries.reduce((s, d) => s + (d.boxCount || 0), 0);
   const remaining     = pickupBoxCount - totalAssigned;
-  const overLimit     = totalAssigned > pickupBoxCount;
-  const allSet        = totalAssigned === pickupBoxCount;
+  const overLimit       = totalAssigned > pickupBoxCount;
+  const allSet          = totalAssigned === pickupBoxCount;
+  const missingPayment  = isThailand && !paymentLocation;
+  const deliveryComplete = !overLimit && allSet && !missingPayment;
 
   const handlePickupBoxCountChange = (val) => {
     const n = Math.max(1, val);
     setPickupBoxCount(n);
     if (deliveries.length === 1) {
       const prev = deliveries[0];
-      const boxWeights = Array.from({ length: n }, (_, i) => (prev.boxWeights?.[i] !== undefined && prev.boxWeights[i] !== '') ? prev.boxWeights[i] : '');
-      const boxTrackingIds = Array.from({ length: n }, (_, i) => (prev.boxTrackingIds?.[i] !== undefined && prev.boxTrackingIds[i] !== '') ? prev.boxTrackingIds[i] : '');
+      const boxWeights = resizeStringArray(prev.boxWeights, n);
+      const boxTrackingIds = resizeStringArray(prev.boxTrackingIds, n);
+      const boxThailandRefs = resizeStringArray(prev.boxThailandRefs, n);
       const boxContents = Array.from({ length: n }, (_, i) => Array.isArray(prev.boxContents?.[i]) ? prev.boxContents[i] : []);
-      setDeliveries([{ ...prev, boxCount: n, boxWeights, boxTrackingIds, boxContents }]);
+      setDeliveries([{ ...prev, boxCount: n, boxWeights, boxTrackingIds, boxThailandRefs, boxContents }]);
     }
   };
 
@@ -420,10 +502,12 @@ export default function CompleteDeliveryModal({ isOpen, mission, onClose, onSave
         id: mission?.id ? `PKG-${(mission.id || '').replace(/^MSN-/, '')}-${prev.length}` : `PKG-${Date.now()}`,
         receiverName: '',
         receiverPhone: '',
+        receiverPhone2: '',
         address: null,
         boxCount: remaining,
         boxWeights: Array.from({ length: remaining }, () => ''),
         boxTrackingIds: Array.from({ length: remaining }, () => ''),
+        boxThailandRefs: Array.from({ length: remaining }, () => ''),
         boxContents: Array.from({ length: remaining }, () => []),
       },
     ]);
@@ -466,9 +550,11 @@ export default function CompleteDeliveryModal({ isOpen, mission, onClose, onSave
           deliveries: normalizedDeliveries,
           linkedEmptyBoxMissionId,
           containerId: containerId || null,
+          paymentLocation: isThailand ? paymentLocation : null,
           // keep first delivery as the primary receiver for backwards compat
           receiverName:    normalizedDeliveries[0]?.receiverName  || '',
           receiverPhone:   normalizedDeliveries[0]?.receiverPhone || '',
+          receiverPhone2:  isThailand ? (normalizedDeliveries[0]?.receiverPhone2 || '') : null,
           receiverAddress: normalizedDeliveries[0]?.address       || null,
         }),
       });
@@ -641,18 +727,53 @@ export default function CompleteDeliveryModal({ isOpen, mission, onClose, onSave
             </div>
           )}
 
+          {isThailand && (
+            <div>
+              <label className="label">Payment location</label>
+              <div className="flex gap-2">
+                {PAYMENT_LOCATIONS.map(({ id, label }) => (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => setPaymentLocation(id)}
+                    className={`flex-1 py-2.5 rounded-xl text-sm font-semibold border-2 transition-all duration-200 ${
+                      paymentLocation === id
+                        ? 'bg-indigo-600 border-indigo-600 text-white shadow-md shadow-indigo-200'
+                        : 'border-slate-200 text-slate-500 hover:border-indigo-300'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Box assignment counter */}
           <div className={`flex items-center justify-between px-4 py-3 rounded-xl text-sm font-medium border ${
             overLimit
               ? 'bg-red-50 text-red-700 border-red-200'
-              : allSet
+              : deliveryComplete
                 ? 'bg-green-50 text-green-700 border-green-200'
                 : 'bg-amber-50 text-amber-700 border-amber-200'
           }`}>
             <span>Boxes assigned: <strong>{totalAssigned}</strong> / <strong>{pickupBoxCount}</strong></span>
-            {overLimit  && <span className="flex items-center gap-1 text-xs"><AlertTriangle className="w-3.5 h-3.5" /> Exceeds total</span>}
-            {allSet     && <CheckCircle className="w-4 h-4" />}
-            {!overLimit && !allSet && <span className="text-xs">{remaining} remaining</span>}
+            <div className="flex items-center gap-2">
+              {overLimit && (
+                <span className="flex items-center gap-1 text-xs">
+                  <AlertTriangle className="w-3.5 h-3.5" /> Exceeds total
+                </span>
+              )}
+              {missingPayment && (
+                <span className="flex items-center gap-1 text-xs">
+                  <AlertTriangle className="w-3.5 h-3.5" /> Payment location required
+                </span>
+              )}
+              {!overLimit && !allSet && (
+                <span className="text-xs">{remaining} remaining</span>
+              )}
+              {deliveryComplete && <CheckCircle className="w-4 h-4" />}
+            </div>
           </div>
 
           {/* Delivery rows */}
@@ -671,6 +792,7 @@ export default function CompleteDeliveryModal({ isOpen, mission, onClose, onSave
                   canDelete={deliveries.length > 1}
                   parcelContentTypes={parcelContentTypes}
                   receiverDefaultCode={receiverDefaultCode}
+                  isThailand={isThailand}
                 />
               );
             })}
@@ -678,7 +800,7 @@ export default function CompleteDeliveryModal({ isOpen, mission, onClose, onSave
 
           <div className="flex justify-end px-1">
             <span className="text-sm font-semibold text-slate-800">
-              סה״כ תוכן: {formatIls(deliveriesContentTotal)}
+              Total parcel: {formatIls(deliveriesContentTotal)}
             </span>
           </div>
 
@@ -719,7 +841,7 @@ export default function CompleteDeliveryModal({ isOpen, mission, onClose, onSave
           <button
             type="button"
             onClick={handleSave}
-            disabled={saving || overLimit}
+            disabled={saving || overLimit || missingPayment}
             className="btn-success flex-1"
           >
             <CheckCircle className="w-4 h-4" />

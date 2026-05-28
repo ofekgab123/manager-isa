@@ -40,7 +40,7 @@ import ParcelContentTypesPanel from './components/ParcelContentTypesPanel';
 import TableHorizontalScroll from './components/TableHorizontalScroll';
 import LoginPage from './components/LoginPage';
 import { API_BASE } from './config';
-import { shippingDestinationLabel, missionLwRegionId } from './shippingDestinations';
+import { shippingDestinationLabel, missionLwRegionId, isMissingThailandPayment } from './shippingDestinations';
 
 const TYPE_LABELS = {
   pickup: 'Pickup',
@@ -158,6 +158,7 @@ function useMissionStats() {
 }
 
 const isMissingAddress = (m) => m.type === 'pickup' ? !m.receiverAddress?.lat : !m.address?.lat;
+const needsDeliveryDetails = (m) => isMissingAddress(m) || isMissingThailandPayment(m);
 
 function useAffiliates() {
   const [affiliates, setAffiliates] = useState([]);
@@ -764,10 +765,11 @@ function Dashboard({ authUser, onLogout }) {
                     <tbody>
                       {filtered.map((mission) => {
                         const missingAddr = isMissingAddress(mission);
+                        const missingDeliveryDetails = needsDeliveryDetails(mission);
                         return (
                           <tr
                             key={mission.id}
-                            className={`table-row ${missingAddr ? 'row-warning' : ''}`}
+                            className={`table-row ${missingDeliveryDetails ? 'row-warning' : ''}`}
                           >
                             <td className="whitespace-nowrap">
                               <span className="table-id">{mission.id}</span>
@@ -1018,11 +1020,17 @@ function Dashboard({ authUser, onLogout }) {
                                   <button
                                     onClick={() => setCompletingMission(mission)}
                                     className={`action-btn ${
-                                      mission.receiverAddress?.lat
-                                        ? 'text-emerald-500 hover:text-emerald-700 hover:bg-emerald-50'
-                                        : 'text-red-400 hover:text-red-600 hover:bg-red-50'
+                                      needsDeliveryDetails(mission)
+                                        ? 'text-red-400 hover:text-red-600 hover:bg-red-50'
+                                        : 'text-emerald-500 hover:text-emerald-700 hover:bg-emerald-50'
                                     }`}
-                                    title={mission.receiverAddress?.lat ? 'Delivery details complete' : 'Complete delivery details'}
+                                    title={
+                                      needsDeliveryDetails(mission)
+                                        ? (isMissingThailandPayment(mission) && mission.receiverAddress?.lat
+                                            ? 'Select payment location'
+                                            : 'Complete delivery details')
+                                        : 'Delivery details complete'
+                                    }
                                   >
                                     <Truck className="w-4 h-4" />
                                   </button>

@@ -134,7 +134,7 @@ function SummaryRow({ label, value }) {
   );
 }
 
-function AddressBlock({ mapAddr, form, prefix, onMap, onClear }) {
+function AddressBlock({ mapAddr, form, prefix, onMap, onClear, onFieldChange }) {
   const city   = form[`${prefix}City`]   || form.city        || '';
   const street = form[`${prefix}Street`] || form.streetName  || '';
   const house  = form[`${prefix}HouseNumber`] || form.houseNumber || '';
@@ -166,8 +166,8 @@ function AddressBlock({ mapAddr, form, prefix, onMap, onClear }) {
         <Field label="City"><input className={mapAddr ? inputCls : readonlyCls} readOnly={!mapAddr} value={city} onChange={() => {}} placeholder="From address" /></Field>
         <Field label="Street"><input className={mapAddr ? inputCls : readonlyCls} readOnly={!mapAddr} value={street} onChange={() => {}} placeholder="From address" /></Field>
         <Field label="House no."><input className={mapAddr ? inputCls : readonlyCls} readOnly={!mapAddr} value={house} onChange={() => {}} placeholder="From address" /></Field>
-        <Field label="Apartment"><input className={inputCls} value={apt} onChange={() => {}} placeholder="3" /></Field>
-        <Field label="Floor"><input className={inputCls} value={floor} onChange={() => {}} placeholder="2" /></Field>
+        <Field label="Apartment"><input className={inputCls} name={`${prefix}Apartment`} value={apt} onChange={onFieldChange} placeholder="3" /></Field>
+        <Field label="Floor"><input className={inputCls} name={`${prefix}Floor`} value={floor} onChange={onFieldChange} placeholder="2" /></Field>
       </div>
     </div>
   );
@@ -529,7 +529,8 @@ export default function CreateOrderModal({ isOpen, onClose, onCreated, authCount
                         form={{ senderCity: pickupForm.senderCity, senderStreet: pickupForm.senderStreet, senderHouseNumber: pickupForm.senderHouseNumber, senderApartment: pickupForm.senderApartment, senderFloor: pickupForm.senderFloor }}
                         prefix="sender"
                         onMap={() => setAddressMapOpenFor('sender')}
-                        onClear={() => { setSenderMapAddress(null); setPickupForm((p) => ({ ...p, senderCity: '', senderStreet: '', senderHouseNumber: '' })); }}
+                        onClear={() => { setSenderMapAddress(null); setPickupForm((p) => ({ ...p, senderCity: '', senderStreet: '', senderHouseNumber: '', senderApartment: '', senderFloor: '' })); }}
+                        onFieldChange={handlePickupChange}
                       />
                     </div>
                   )}
@@ -634,7 +635,8 @@ export default function CreateOrderModal({ isOpen, onClose, onCreated, authCount
                         form={{ receiverCity: pickupForm.receiverCity, receiverStreet: pickupForm.receiverStreet, receiverHouseNumber: pickupForm.receiverHouseNumber, receiverApartment: pickupForm.receiverApartment, receiverFloor: pickupForm.receiverFloor }}
                         prefix="receiver"
                         onMap={() => setAddressMapOpenFor('receiver')}
-                        onClear={() => { setReceiverMapAddress(null); setPickupForm((p) => ({ ...p, receiverCity: '', receiverStreet: '', receiverHouseNumber: '' })); }}
+                        onClear={() => { setReceiverMapAddress(null); setPickupForm((p) => ({ ...p, receiverCity: '', receiverStreet: '', receiverHouseNumber: '', receiverApartment: '', receiverFloor: '' })); }}
+                        onFieldChange={handlePickupChange}
                       />
                     </div>
                   )}
