@@ -3,7 +3,7 @@ import cors from 'cors';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import pool from './db.js';
-import { readOrders, writeOrders, readAffiliates, writeAffiliates, readMissions, writeMissions, insertMissionData, updateMissionsData, deleteMissionsById, readUsers, writeUsers, readReceivers, writeReceivers, readContainers, writeContainers, readParcelContentTypes, writeParcelContentTypes, containerCountryKey } from './storage.js';
+import { readOrders, writeOrders, readAffiliates, writeAffiliates, readMissions, writeMissions, insertMissionData, updateMissionsData, deleteMissionsById, readUsers, writeUsers, upsertCustomerProfileByPhone, readReceivers, writeReceivers, readContainers, writeContainers, readParcelContentTypes, writeParcelContentTypes, containerCountryKey } from './storage.js';
 import { israeliMobileKey } from './phoneKey.js';
 import {
   createLionWheelTaskForEmptyBoxMission,
@@ -615,25 +615,13 @@ async function mergeCustomerAddressFromCustomerMission(body, missionType) {
     [body.firstName, body.lastName].filter(Boolean).join(' ').trim() ||
     '';
 
-  const users = await readUsers();
-  const idx = users.findIndex((u) => israeliMobileKey(u.phone) === key);
-  if (idx !== -1) {
-    users[idx] = {
-      ...users[idx],
-      fullName: fullName || users[idx].fullName,
-      address: { ...addr },
-    };
-  } else {
-    users.unshift({
-      id: `USR-${Date.now()}`,
-      fullName: fullName,
-      phone: body.customerPhone,
-      address: { ...addr },
-      notes: '',
-      createdAt: new Date().toISOString(),
-    });
-  }
-  await writeUsers(users);
+  await upsertCustomerProfileByPhone(phone, { fullName, address: addr });
+}
+
+function scheduleMergeCustomerAddress(body, missionType) {
+  mergeCustomerAddressFromCustomerMission(body, missionType).catch((e) => {
+    console.warn('[mergeCustomerAddress]', e.message || e);
+  });
 }
 
 // Affiliate discount applies only to pickup missions
@@ -700,7 +688,6 @@ function scheduleMissionLionWheelSync(mission, missionForLw, missionType) {
 
 app.post('/api/missions', async (req, res) => {
   try {
-    const missions = await readMissions();
     const body = req.body;
     const validTypes = ['empty_box', 'pickup'];
     const missionType = validTypes.includes(body.type) ? body.type : 'pickup';
@@ -710,13 +697,23 @@ app.post('/api/missions', async (req, res) => {
       missionType === 'empty_box' || missionType === 'pickup'
         ? lwRegionFromCustomerBody(body.country, body.shippingDestination)
         : null;
+
+    /** Full mission list only when pickup needs linked-mission / container fallback for LW region. */
+    let missions = [];
+    if (missionType === 'pickup' && !lwRegionFromBody) {
+      missions = await readMissions();
+    }
+
     let pickupContainerId = null;
     if (missionType === 'pickup') {
       if (Object.prototype.hasOwnProperty.call(body, 'containerId')) {
         pickupContainerId = body.containerId || null;
       } else {
         const containersList = await readContainers();
-        pickupContainerId = resolveDefaultPickupContainerId(containersList, body.country);
+        pickupContainerId = resolveDefaultPickupContainerId(
+          containersList,
+          lwRegionFromBody ?? body.country,
+        );
       }
     }
     const newMission = {
@@ -784,7 +781,9 @@ app.post('/api/missions', async (req, res) => {
       }
     }
 
-    if (!body.createdBy || body.createdBy === 'customer') {
+    if (isCustomerMission) {
+      scheduleMergeCustomerAddress(body, missionType);
+    } else {
       try {
         await mergeCustomerAddressFromCustomerMission(body, missionType);
       } catch {

@@ -1,4 +1,5 @@
 import pool from './db.js';
+import { israeliMobileKey } from './phoneKey.js';
 
 async function readTable(table) {
   const { rows } = await pool.query(
@@ -79,6 +80,47 @@ export async function readUsers() {
 
 export async function writeUsers(users) {
   return writeTable('users', users);
+}
+
+/** Single-row user write — avoids DELETE + re-insert of entire users table on profile merge. */
+export async function insertUserData(id, data) {
+  await pool.query(`INSERT INTO users (id, data) VALUES ($1, $2::jsonb)`, [id, data]);
+}
+
+export async function updateUserData(id, data) {
+  const { rowCount } = await pool.query(`UPDATE users SET data = $2::jsonb WHERE id = $1`, [id, data]);
+  if (rowCount === 0) throw new Error('User not found');
+}
+
+/** Update one customer profile by phone, or insert a new user row. */
+export async function upsertCustomerProfileByPhone(phone, { fullName, address }) {
+  const key = israeliMobileKey(phone);
+  if (!key || key.length < 7) return;
+  if (!address || typeof address !== 'object') return;
+
+  const { rows } = await pool.query(`SELECT id, data FROM users`);
+  const existing = rows.find((r) => israeliMobileKey(r.data?.phone) === key);
+
+  if (existing) {
+    const next = {
+      ...existing.data,
+      fullName: fullName || existing.data.fullName,
+      address: { ...address },
+    };
+    await updateUserData(existing.id, next);
+    return next;
+  }
+
+  const created = {
+    id: `USR-${Date.now()}`,
+    fullName: fullName || '',
+    phone,
+    address: { ...address },
+    notes: '',
+    createdAt: new Date().toISOString(),
+  };
+  await insertUserData(created.id, created);
+  return created;
 }
 
 export async function readReceivers() {
