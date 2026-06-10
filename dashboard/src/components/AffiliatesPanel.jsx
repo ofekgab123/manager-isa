@@ -20,12 +20,100 @@ import {
   Search,
   Download,
   FileUp,
+  QrCode,
 } from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
+import QRCode from 'qrcode';
 import * as XLSX from 'xlsx';
 import { API_BASE } from '../config';
 import { isAffiliatePickupCompletedInLionWheel } from '../lionwheelStatus';
 
-const SITE_URL = import.meta.env.VITE_SITE_URL || 'https://isa-psi-six.vercel.app';
+const CUSTOMER_SITE_URL = import.meta.env.VITE_CUSTOMER_SITE_URL || import.meta.env.VITE_SITE_URL || 'https://www.isa-express.com';
+
+function getAffiliateOrderUrl(slug) {
+  return `${CUSTOMER_SITE_URL}/order?ref=${slug}`;
+}
+
+async function downloadAffiliateQr(slug) {
+  const url = getAffiliateOrderUrl(slug);
+  try {
+    const dataUrl = await QRCode.toDataURL(url, { width: 512, margin: 2, errorCorrectionLevel: 'M' });
+    const link = document.createElement('a');
+    link.download = `${slug}.png`;
+    link.href = dataUrl;
+    link.click();
+  } catch {
+    /* ignore */
+  }
+}
+
+function AffiliateQrBlock({ slug, size = 128, showLabel = true, showDownload = true }) {
+  const url = getAffiliateOrderUrl(slug);
+
+  if (!slug) return null;
+
+  return (
+    <div className="flex flex-col items-center gap-2">
+      <div className="bg-white p-2 rounded-xl border border-slate-200 shadow-sm">
+        <QRCodeSVG
+          id={`affiliate-qr-${slug}`}
+          value={url}
+          size={size}
+          level="M"
+          includeMargin
+        />
+      </div>
+      {showLabel && (
+        <p className="text-[10px] text-slate-400 font-mono text-center max-w-[160px] break-all">{url}</p>
+      )}
+      {showDownload && (
+        <button
+          type="button"
+          onClick={() => downloadAffiliateQr(slug)}
+          className="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-600 hover:text-indigo-800"
+        >
+          <Download className="w-3.5 h-3.5" />
+          Download QR ({slug}.png)
+        </button>
+      )}
+    </div>
+  );
+}
+
+function AffiliateQrModal({ affiliate, onClose }) {
+  if (!affiliate) return null;
+  return (
+    <div className="modal-overlay z-[60]" onClick={onClose}>
+      <div className="modal-content max-w-sm animate-slide-up" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2 className="font-bold text-slate-800 text-lg">QR Code — {affiliate.name}</h2>
+          <button onClick={onClose} className="action-btn hover:bg-slate-100 text-slate-400">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+        <div className="modal-body flex flex-col items-center gap-4 py-2">
+          <p className="text-sm text-slate-500 text-center">
+            Scan to open the customer order page with the discount applied automatically.
+          </p>
+          <AffiliateQrBlock slug={affiliate.slug} size={200} showDownload={false} />
+        </div>
+        <div className="modal-footer">
+          <button type="button" onClick={onClose} className="btn-secondary flex-1">
+            Close
+          </button>
+          <button
+            type="button"
+            onClick={() => downloadAffiliateQr(affiliate.slug)}
+            className="btn-primary flex-1 inline-flex items-center justify-center gap-2"
+          >
+            <Download className="w-4 h-4" />
+            Download {affiliate.slug}.png
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function copyToClipboard(text) {
   navigator.clipboard.writeText(text).catch(() => {});
@@ -135,8 +223,17 @@ function AffiliateFormModal({ affiliate, onSave, onClose }) {
               />
             </div>
             <p className="text-xs text-slate-400 mt-1.5">
-              Link: {SITE_URL}/?ref={form.slug || 'slug'}
+              Link: {getAffiliateOrderUrl(form.slug || 'slug')}
             </p>
+            {form.slug && (
+              <div className="mt-3 flex items-start gap-4 p-3 bg-slate-50 rounded-xl border border-slate-100">
+                <AffiliateQrBlock slug={form.slug} size={96} showLabel={false} />
+                <div className="text-xs text-slate-500 space-y-2 pt-1">
+                  <p className="font-semibold text-slate-700">QR preview</p>
+                  <p>Scanning opens the customer order page with this affiliate&apos;s discount applied.</p>
+                </div>
+              </div>
+            )}
           </div>
           <div>
             <label className="label">Promo code *</label>
@@ -451,6 +548,7 @@ export default function AffiliatesPanel({ missions = [] }) {
   const [search, setSearch] = useState('');
   const [importingId, setImportingId] = useState(null);
   const [importError, setImportError] = useState(null);
+  const [qrAffiliate, setQrAffiliate] = useState(null);
   const fileInputRef = useRef(null);
 
   const fetchAffiliates = useCallback(async () => {
@@ -658,7 +756,7 @@ export default function AffiliatesPanel({ missions = [] }) {
               </thead>
               <tbody>
                 {filteredAffiliates.map((affiliate) => {
-                  const trackingLink = `${SITE_URL}/?ref=${affiliate.slug}`;
+                  const trackingLink = getAffiliateOrderUrl(affiliate.slug);
                   const affiliateOrders = missions.filter(
                     (m) => m.affiliateName === affiliate.name && isAffiliatePickupCompletedInLionWheel(m),
                   );
@@ -783,6 +881,20 @@ export default function AffiliatesPanel({ missions = [] }) {
                         <td onClick={(e) => e.stopPropagation()}>
                           <div className="table-actions">
                             <button
+                              onClick={() => setQrAffiliate(affiliate)}
+                              className="action-btn hover:bg-indigo-50 text-slate-400 hover:text-indigo-600"
+                              title="Show QR code"
+                            >
+                              <QrCode className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => downloadAffiliateQr(affiliate.slug)}
+                              className="action-btn hover:bg-indigo-50 text-slate-400 hover:text-indigo-600"
+                              title={`Download ${affiliate.slug}.png`}
+                            >
+                              <Download className="w-4 h-4" />
+                            </button>
+                            <button
                               onClick={() => { setEditingAffiliate(affiliate); setShowForm(true); }}
                               className="action-btn hover:bg-slate-100 text-slate-400 hover:text-slate-700"
                               title="Edit"
@@ -804,6 +916,20 @@ export default function AffiliatesPanel({ missions = [] }) {
                         <tr key={`${affiliate.id}-customers`} className="bg-indigo-50/40">
                           <td colSpan={9} className="px-0 py-0">
                             <div className="border-t border-indigo-100">
+                              <div className="px-6 py-4 flex flex-col sm:flex-row items-center gap-6 bg-white/60 border-b border-indigo-100">
+                                <AffiliateQrBlock slug={affiliate.slug} size={120} />
+                                <div className="text-sm text-slate-600 text-center sm:text-left">
+                                  <p className="font-semibold text-slate-800 mb-1">Customer QR link</p>
+                                  <p className="text-xs text-slate-500 mb-2">Scanning opens the order page with discount code <span className="font-mono font-bold text-amber-700">{affiliate.promoCode}</span> applied automatically.</p>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleCopy(trackingLink, `link-${affiliate.id}`)}
+                                    className="text-xs font-mono text-blue-600 hover:underline break-all"
+                                  >
+                                    {trackingLink}
+                                  </button>
+                                </div>
+                              </div>
                               <div className="px-6 py-3 text-xs font-semibold text-indigo-700 flex items-center justify-between gap-2 bg-indigo-50/80">
                                 <span className="flex items-center gap-2">
                                   <Users className="w-3.5 h-3.5" />
@@ -854,6 +980,10 @@ export default function AffiliatesPanel({ missions = [] }) {
           onSave={handleSave}
           onClose={() => { setShowForm(false); setEditingAffiliate(null); }}
         />
+      )}
+
+      {qrAffiliate && (
+        <AffiliateQrModal affiliate={qrAffiliate} onClose={() => setQrAffiliate(null)} />
       )}
 
       <input

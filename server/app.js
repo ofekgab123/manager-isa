@@ -516,7 +516,12 @@ app.get('/api/affiliates/by-slug/:slug', async (req, res) => {
       (a) => a.slug === req.params.slug && a.active !== false
     );
     if (!affiliate) return res.status(404).json({ error: 'Affiliate not found' });
-    res.json({ name: affiliate.name, discountAmount: affiliate.discountAmount, slug: affiliate.slug });
+    res.json({
+      name: affiliate.name,
+      discountAmount: affiliate.discountAmount,
+      slug: affiliate.slug,
+      promoCode: affiliate.promoCode,
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
