@@ -15,6 +15,7 @@ import {
   lionWheelDestinationFromMission,
   extractLionWheelWebhookFields,
   LIONWHEEL_TASK_STATUS_COMPLETED,
+  missionHasLionWheelAddress,
 } from './lionwheel.js';
 import { notifyEmptyBoxMissionWebhook } from './missionWebhook.js';
 import {
@@ -646,6 +647,55 @@ function affiliateFieldsForMissionType(missionType, body) {
   };
 }
 
+function lionwheelMetaFromSyncResult(lw) {
+  if (lw.skipped) return null;
+  if (lw.ok) {
+    return {
+      taskId: lw.taskId,
+      publicId: lw.publicId,
+      trackingLink: lw.trackingLink,
+      barcode: lw.barcode,
+      label: lw.label,
+      destinationRegionStr: lw.destinationRegionStr,
+      syncedAt: new Date().toISOString(),
+    };
+  }
+  return {
+    syncError: lw.error,
+    syncHttpStatus: lw.status,
+    syncAttemptedAt: new Date().toISOString(),
+  };
+}
+
+async function syncMissionToLionWheel(mission, missionForLw, missionType) {
+  const lw =
+    missionType === 'empty_box'
+      ? await createLionWheelTaskForEmptyBoxMission(mission)
+      : await createLionWheelTaskForPickupMission(missionForLw);
+  const lionwheel = lionwheelMetaFromSyncResult(lw);
+  if (!lionwheel) return mission;
+  const updated = { ...mission, lionwheel };
+  await updateMissionsData(mission.id, updated);
+  return updated;
+}
+
+/** Customer forms must not wait on LionWheel — sync after HTTP 201. */
+function scheduleMissionLionWheelSync(mission, missionForLw, missionType) {
+  syncMissionToLionWheel(mission, missionForLw, missionType).catch(async (e) => {
+    try {
+      await updateMissionsData(mission.id, {
+        ...mission,
+        lionwheel: {
+          syncError: e.message || String(e),
+          syncAttemptedAt: new Date().toISOString(),
+        },
+      });
+    } catch {
+      /* mission already stored */
+    }
+  });
+}
+
 // ─── Public: POST /api/missions (no auth - for customer-facing forms) ──────────
 
 app.post('/api/missions', async (req, res) => {
@@ -711,40 +761,26 @@ app.post('/api/missions', async (req, res) => {
     await insertMissionData(newMission.id, newMission);
 
     let missionToReturn = newMission;
-    /** empty_box & pickup: always attempt LionWheel on create (customer forms included). Retry via POST /api/missions/:id/send-to-lionwheel if needed. */
+    const isCustomerMission = !body.createdBy || body.createdBy === 'customer';
+    const hasLwAddress = missionHasLionWheelAddress(newMission, missionType);
+    /** empty_box & pickup: LionWheel on create when address is ready. Customer forms return immediately. */
     const shouldSyncLionWheel = missionType === 'empty_box' || missionType === 'pickup';
     if (shouldSyncLionWheel) {
-      try {
-        const lw =
-          missionType === 'empty_box'
-            ? await createLionWheelTaskForEmptyBoxMission(newMission)
-            : await createLionWheelTaskForPickupMission(missionForLw);
-        if (!lw.skipped) {
-          const lionwheel = lw.ok
-            ? {
-                taskId: lw.taskId,
-                publicId: lw.publicId,
-                trackingLink: lw.trackingLink,
-                barcode: lw.barcode,
-                label: lw.label,
-                destinationRegionStr: lw.destinationRegionStr,
-                syncedAt: new Date().toISOString(),
-              }
-            : {
-                syncError: lw.error,
-                syncHttpStatus: lw.status,
-                syncAttemptedAt: new Date().toISOString(),
-              };
+      if (isCustomerMission) {
+        if (hasLwAddress) {
+          scheduleMissionLionWheelSync(newMission, missionForLw, missionType);
+        }
+      } else {
+        try {
+          missionToReturn = await syncMissionToLionWheel(newMission, missionForLw, missionType);
+        } catch (e) {
+          const lionwheel = {
+            syncError: e.message || String(e),
+            syncAttemptedAt: new Date().toISOString(),
+          };
           missionToReturn = { ...newMission, lionwheel };
           await updateMissionsData(newMission.id, missionToReturn);
         }
-      } catch (e) {
-        const lionwheel = {
-          syncError: e.message || String(e),
-          syncAttemptedAt: new Date().toISOString(),
-        };
-        missionToReturn = { ...newMission, lionwheel };
-        await updateMissionsData(newMission.id, missionToReturn);
       }
     }
 

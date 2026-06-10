@@ -7,6 +7,7 @@
  */
 
 const LIONWHEEL_BASE = 'https://members.lionwheel.com/api/v1';
+const LIONWHEEL_FETCH_TIMEOUT_MS = 12_000;
 
 /**
  * Returns { key, companyId } for the given shippingDestination.
@@ -71,6 +72,25 @@ function recipientNameFromMission(mission) {
   const combined = [first, last].filter(Boolean).join(' ').trim();
   if (combined) return combined;
   return String(mission.fullName || '').trim();
+}
+
+/** Pickup stores Israel pickup location on senderAddress; empty_box uses address. */
+export function missionAddressForLionWheel(mission, missionType) {
+  if (!mission) return null;
+  if (missionType === 'pickup') {
+    return mission.senderAddress || mission.address || null;
+  }
+  return mission.address || null;
+}
+
+/** True when city + name + phone are present — required before calling LionWheel create. */
+export function missionHasLionWheelAddress(mission, missionType) {
+  const addr = missionAddressForLionWheel(mission, missionType);
+  if (!addr || typeof addr !== 'object') return false;
+  const city = String(addr.city || '').trim();
+  const name = recipientNameFromMission(mission);
+  const phone = String(mission.customerPhone || '').trim();
+  return !!(city && name && phone);
 }
 
 function buildEmptyBoxNotes(mission) {
@@ -200,14 +220,23 @@ export async function sendLionWheelCreatePayload(payload, destination) {
 
   const url = `${LIONWHEEL_BASE}/tasks/create?key=${encodeURIComponent(key)}`;
   let res;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), LIONWHEEL_FETCH_TIMEOUT_MS);
   try {
     res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
       body: JSON.stringify(payload),
+      signal: controller.signal,
     });
   } catch (e) {
-    return { ok: false, status: 0, error: e.message || 'LionWheel network error' };
+    const msg =
+      e.name === 'AbortError'
+        ? `LionWheel request timed out after ${LIONWHEEL_FETCH_TIMEOUT_MS / 1000}s`
+        : e.message || 'LionWheel network error';
+    return { ok: false, status: 0, error: msg };
+  } finally {
+    clearTimeout(timeout);
   }
 
   const rawText = await res.text();
@@ -597,7 +626,7 @@ export async function createLionWheelTaskForEmptyBoxMission(mission) {
 export async function createLionWheelTaskForPickupMission(mission) {
   const destination = lionWheelDestinationFromMission(mission);
   const m = missionForLionWheelPayloadBuild(mission);
-  const addr = m.address || {};
+  const addr = m.senderAddress || m.address || {};
   const city = String(addr.city || '').trim();
   const street = lwDestinationStreet(addr.street);
   const recipient = recipientNameFromMission(m);
