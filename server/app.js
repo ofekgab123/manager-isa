@@ -3,19 +3,17 @@ import cors from 'cors';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import pool from './db.js';
-import { readOrders, writeOrders, readAffiliates, writeAffiliates, readMissions, writeMissions, insertMissionData, updateMissionsData, deleteMissionsById, readUsers, writeUsers, upsertCustomerProfileByPhone, readReceivers, writeReceivers, readContainers, writeContainers, readParcelContentTypes, writeParcelContentTypes, containerCountryKey } from './storage.js';
+import { readOrders, writeOrders, readAffiliates, writeAffiliates, readMissions, writeMissions, insertMissionData, updateMissionsData, deleteMissionsById, readUsers, writeUsers, readReceivers, writeReceivers, readContainers, writeContainers, readParcelContentTypes, writeParcelContentTypes, containerCountryKey } from './storage.js';
 import { israeliMobileKey } from './phoneKey.js';
 import {
   createLionWheelTaskForEmptyBoxMission,
   createLionWheelTaskForPickupMission,
   buildLionWheelPayloadFromRequest,
   sendLionWheelCreatePayload,
-  fetchLionWheelTaskShow,
   lionWheelTaskStatusLabel,
   lionWheelDestinationFromMission,
   extractLionWheelWebhookFields,
   LIONWHEEL_TASK_STATUS_COMPLETED,
-  missionHasLionWheelAddress,
 } from './lionwheel.js';
 import { notifyEmptyBoxMissionWebhook } from './missionWebhook.js';
 import {
@@ -113,11 +111,7 @@ async function assertMissionAccessForCountryUser(mission, user) {
   }
 }
 
-const LW_STATUS_REFRESH_MS = 10 * 60 * 1000;
-const LW_STATUS_RETRY_AFTER_ERROR_MS = 2 * 60 * 1000;
-const LW_STATUS_REFRESH_CAP = 40;
-
-/** Serialize affiliate.json updates so parallel LW status refreshes cannot drop increments. */
+/** Serialize affiliate.json updates so parallel webhook updates cannot drop increments. */
 let affiliatesUpdateChain = Promise.resolve();
 
 async function runSerializedAffiliateUpdate(updater) {
@@ -149,79 +143,6 @@ async function creditAffiliateIfPickupJustCompletedLionWheel(prevMission, nextMi
       /* ignore */
     }
   });
-}
-
-async function enrichMissionsWithLionWheelStatuses(missions, { force = false } = {}) {
-  const now = Date.now();
-  let candidates = missions.filter((m) => {
-    const lw = m.lionwheel;
-    if (!lw?.taskId) return false;
-    const dest = lionWheelDestinationFromMission(m);
-    if (!dest) return false;
-    if (force) return true;
-    const fetchedAt = lw.taskStatusFetchedAt ? new Date(lw.taskStatusFetchedAt).getTime() : 0;
-    const ttl = lw.taskStatusFetchError ? LW_STATUS_RETRY_AFTER_ERROR_MS : LW_STATUS_REFRESH_MS;
-    const cacheFresh = now - fetchedAt < ttl;
-    if (cacheFresh) return false;
-    return true;
-  });
-  if (!force) {
-    candidates = candidates.slice(0, LW_STATUS_REFRESH_CAP);
-  }
-
-  /** Row-level writes only — full-table writeMissions() races with LionWheel webhooks and can wipe their updates. */
-  const changedMissionIds = new Set();
-  const batch = 6;
-  for (let i = 0; i < candidates.length; i += batch) {
-    await Promise.all(
-      candidates.slice(i, i + batch).map(async (m) => {
-        const dest = lionWheelDestinationFromMission(m);
-        if (!dest) return;
-        const fr = await fetchLionWheelTaskShow(m.lionwheel.taskId, dest, { originalOrderId: m.id });
-        const idx = missions.findIndex((x) => x.id === m.id);
-        if (idx === -1) return;
-        const prevMission = missions[idx];
-        if (!fr.ok || typeof fr.taskStatus !== 'number') {
-          const rawMsg =
-            fr.skipped && fr.reason
-              ? fr.reason
-              : fr.error || (fr.status ? `HTTP ${fr.status}` : 'Unknown error');
-          const msg = rawMsg.length > 500 ? `${rawMsg.slice(0, 497)}…` : rawMsg;
-          missions[idx] = {
-            ...missions[idx],
-            lionwheel: {
-              ...missions[idx].lionwheel,
-              taskStatusFetchedAt: new Date().toISOString(),
-              taskStatusFetchError: msg,
-            },
-          };
-          changedMissionIds.add(missions[idx].id);
-          return;
-        }
-        missions[idx] = {
-          ...missions[idx],
-          lionwheel: {
-            ...missions[idx].lionwheel,
-            taskStatus: fr.taskStatus,
-            taskStatusLabel: lionWheelTaskStatusLabel(fr.taskStatus),
-            taskStatusFetchedAt: new Date().toISOString(),
-            taskStatusFetchError: undefined,
-          },
-        };
-        await creditAffiliateIfPickupJustCompletedLionWheel(prevMission, missions[idx]);
-        changedMissionIds.add(missions[idx].id);
-      }),
-    );
-  }
-  if (changedMissionIds.size > 0) {
-    await Promise.all(
-      [...changedMissionIds].map((mid) => {
-        const row = missions.find((x) => x.id === mid);
-        if (!row) return Promise.resolve();
-        return updateMissionsData(mid, row);
-      }),
-    );
-  }
 }
 
 /** Customer empty-box flow: eventual ship-to (India / Thailand) — same ids as isa-express-web */
@@ -615,13 +536,25 @@ async function mergeCustomerAddressFromCustomerMission(body, missionType) {
     [body.firstName, body.lastName].filter(Boolean).join(' ').trim() ||
     '';
 
-  await upsertCustomerProfileByPhone(phone, { fullName, address: addr });
-}
-
-function scheduleMergeCustomerAddress(body, missionType) {
-  mergeCustomerAddressFromCustomerMission(body, missionType).catch((e) => {
-    console.warn('[mergeCustomerAddress]', e.message || e);
-  });
+  const users = await readUsers();
+  const idx = users.findIndex((u) => israeliMobileKey(u.phone) === key);
+  if (idx !== -1) {
+    users[idx] = {
+      ...users[idx],
+      fullName: fullName || users[idx].fullName,
+      address: { ...addr },
+    };
+  } else {
+    users.unshift({
+      id: `USR-${Date.now()}`,
+      fullName: fullName,
+      phone: body.customerPhone,
+      address: { ...addr },
+      notes: '',
+      createdAt: new Date().toISOString(),
+    });
+  }
+  await writeUsers(users);
 }
 
 // Affiliate discount applies only to pickup missions
@@ -635,59 +568,11 @@ function affiliateFieldsForMissionType(missionType, body) {
   };
 }
 
-function lionwheelMetaFromSyncResult(lw) {
-  if (lw.skipped) return null;
-  if (lw.ok) {
-    return {
-      taskId: lw.taskId,
-      publicId: lw.publicId,
-      trackingLink: lw.trackingLink,
-      barcode: lw.barcode,
-      label: lw.label,
-      destinationRegionStr: lw.destinationRegionStr,
-      syncedAt: new Date().toISOString(),
-    };
-  }
-  return {
-    syncError: lw.error,
-    syncHttpStatus: lw.status,
-    syncAttemptedAt: new Date().toISOString(),
-  };
-}
-
-async function syncMissionToLionWheel(mission, missionForLw, missionType) {
-  const lw =
-    missionType === 'empty_box'
-      ? await createLionWheelTaskForEmptyBoxMission(mission)
-      : await createLionWheelTaskForPickupMission(missionForLw);
-  const lionwheel = lionwheelMetaFromSyncResult(lw);
-  if (!lionwheel) return mission;
-  const updated = { ...mission, lionwheel };
-  await updateMissionsData(mission.id, updated);
-  return updated;
-}
-
-/** Customer forms must not wait on LionWheel — sync after HTTP 201. */
-function scheduleMissionLionWheelSync(mission, missionForLw, missionType) {
-  syncMissionToLionWheel(mission, missionForLw, missionType).catch(async (e) => {
-    try {
-      await updateMissionsData(mission.id, {
-        ...mission,
-        lionwheel: {
-          syncError: e.message || String(e),
-          syncAttemptedAt: new Date().toISOString(),
-        },
-      });
-    } catch {
-      /* mission already stored */
-    }
-  });
-}
-
 // ─── Public: POST /api/missions (no auth - for customer-facing forms) ──────────
 
 app.post('/api/missions', async (req, res) => {
   try {
+    const missions = await readMissions();
     const body = req.body;
     const validTypes = ['empty_box', 'pickup'];
     const missionType = validTypes.includes(body.type) ? body.type : 'pickup';
@@ -697,23 +582,13 @@ app.post('/api/missions', async (req, res) => {
       missionType === 'empty_box' || missionType === 'pickup'
         ? lwRegionFromCustomerBody(body.country, body.shippingDestination)
         : null;
-
-    /** Full mission list only when pickup needs linked-mission / container fallback for LW region. */
-    let missions = [];
-    if (missionType === 'pickup' && !lwRegionFromBody) {
-      missions = await readMissions();
-    }
-
     let pickupContainerId = null;
     if (missionType === 'pickup') {
       if (Object.prototype.hasOwnProperty.call(body, 'containerId')) {
         pickupContainerId = body.containerId || null;
       } else {
         const containersList = await readContainers();
-        pickupContainerId = resolveDefaultPickupContainerId(
-          containersList,
-          lwRegionFromBody ?? body.country,
-        );
+        pickupContainerId = resolveDefaultPickupContainerId(containersList, body.country);
       }
     }
     const newMission = {
@@ -758,32 +633,44 @@ app.post('/api/missions', async (req, res) => {
     await insertMissionData(newMission.id, newMission);
 
     let missionToReturn = newMission;
-    const isCustomerMission = !body.createdBy || body.createdBy === 'customer';
-    const hasLwAddress = missionHasLionWheelAddress(newMission, missionType);
-    /** empty_box & pickup: LionWheel on create when address is ready. Customer forms return immediately. */
+    /** empty_box & pickup: always attempt LionWheel on create (customer forms included). Retry via POST /api/missions/:id/send-to-lionwheel if needed. */
     const shouldSyncLionWheel = missionType === 'empty_box' || missionType === 'pickup';
     if (shouldSyncLionWheel) {
-      if (isCustomerMission) {
-        if (hasLwAddress) {
-          scheduleMissionLionWheelSync(newMission, missionForLw, missionType);
-        }
-      } else {
-        try {
-          missionToReturn = await syncMissionToLionWheel(newMission, missionForLw, missionType);
-        } catch (e) {
-          const lionwheel = {
-            syncError: e.message || String(e),
-            syncAttemptedAt: new Date().toISOString(),
-          };
+      try {
+        const lw =
+          missionType === 'empty_box'
+            ? await createLionWheelTaskForEmptyBoxMission(newMission)
+            : await createLionWheelTaskForPickupMission(missionForLw);
+        if (!lw.skipped) {
+          const lionwheel = lw.ok
+            ? {
+                taskId: lw.taskId,
+                publicId: lw.publicId,
+                trackingLink: lw.trackingLink,
+                barcode: lw.barcode,
+                label: lw.label,
+                destinationRegionStr: lw.destinationRegionStr,
+                syncedAt: new Date().toISOString(),
+              }
+            : {
+                syncError: lw.error,
+                syncHttpStatus: lw.status,
+                syncAttemptedAt: new Date().toISOString(),
+              };
           missionToReturn = { ...newMission, lionwheel };
           await updateMissionsData(newMission.id, missionToReturn);
         }
+      } catch (e) {
+        const lionwheel = {
+          syncError: e.message || String(e),
+          syncAttemptedAt: new Date().toISOString(),
+        };
+        missionToReturn = { ...newMission, lionwheel };
+        await updateMissionsData(newMission.id, missionToReturn);
       }
     }
 
-    if (isCustomerMission) {
-      scheduleMergeCustomerAddress(body, missionType);
-    } else {
+    if (!body.createdBy || body.createdBy === 'customer') {
       try {
         await mergeCustomerAddressFromCustomerMission(body, missionType);
       } catch {
@@ -1495,13 +1382,6 @@ app.get('/api/missions/stats', async (req, res) => {
 app.get('/api/missions', async (req, res) => {
   try {
     let missions = await readMissions();
-    const forceLw =
-      req.query.lionwheelSync === '1' ||
-      req.query.lionwheelSync === 'true' ||
-      req.query.lionwheelSync === '';
-    await enrichMissionsWithLionWheelStatuses(missions, { force: forceLw });
-    /** Re-read so LionWheel webhooks that landed during enrich are visible (per-row updates avoid clobbering them). */
-    missions = await readMissions();
     missions = await filterMissionsForCountryUser(missions, req.user);
     const { status, type, createdBy, customerPhone, affiliate, linkedEmptyBoxMissionId, containerId } = req.query;
     let filtered = missions;

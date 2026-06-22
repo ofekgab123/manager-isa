@@ -23,7 +23,6 @@ import {
   List,
   LogOut,
   ShieldCheck,
-  CloudDownload,
 } from 'lucide-react';
 import CreateMissionModal from './components/CreateMissionModal';
 import EmptyBoxMissionPickerModal from './components/EmptyBoxMissionPickerModal';
@@ -94,18 +93,13 @@ function useMissions() {
   const [missions, setMissions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [lionWheelSyncing, setLionWheelSyncing] = useState(false);
 
   const fetchMissions = async (opts = {}) => {
     const silent = opts.silent === true;
-    const lionwheelSync = opts.lionwheelSync === true;
-
-    if (lionwheelSync) setLionWheelSyncing(true);
-    else if (!silent) setLoading(true);
+    if (!silent) setLoading(true);
     setError(null);
     try {
-      const qs = lionwheelSync ? '?lionwheelSync=1' : '';
-      const res = await fetch(`${API_BASE}/missions${qs}`);
+      const res = await fetch(`${API_BASE}/missions`);
       if (!res.ok) throw new Error('Failed to fetch');
       const data = await res.json();
       setMissions(data);
@@ -113,15 +107,14 @@ function useMissions() {
       setError(e.message);
       setMissions([]);
     } finally {
-      if (lionwheelSync) setLionWheelSyncing(false);
-      else if (!silent) setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
   useEffect(() => {
     fetchMissions();
-    /** Pick up DB changes (e.g. LionWheel webhooks) without full page refresh. No lionwheelSync — avoids hammering LW API. */
-    const interval = setInterval(() => fetchMissions({ silent: true }), 5000);
+    /** Pick up DB changes (e.g. LionWheel webhooks) without full page refresh. */
+    const interval = setInterval(() => fetchMissions({ silent: true }), 60_000);
     return () => clearInterval(interval);
   }, []);
 
@@ -129,9 +122,7 @@ function useMissions() {
     missions,
     loading,
     error,
-    lionWheelSyncing,
     refetch: () => fetchMissions({ silent: true }),
-    syncLionWheel: () => fetchMissions({ silent: true, lionwheelSync: true }),
   };
 }
 
@@ -220,7 +211,7 @@ function Dashboard({ authUser, onLogout }) {
   const [activeTab, setActiveTab] = useState('missions');
   const affiliates = useAffiliates();
 
-  const { missions, loading, error, refetch, syncLionWheel, lionWheelSyncing } = useMissions();
+  const { missions, loading, error, refetch } = useMissions();
   const { stats, loading: statsLoading, refetch: refetchStats } = useMissionStats();
 
   const [listRefreshing, setListRefreshing] = useState(false);
@@ -397,21 +388,11 @@ function Dashboard({ authUser, onLogout }) {
                 <button
                   type="button"
                   onClick={() => { handleHeaderRefresh(); }}
-                  disabled={loading || listRefreshing || lionWheelSyncing}
+                  disabled={loading || listRefreshing}
                   className="btn-secondary !bg-white/10 !border-white/20 !text-white hover:!bg-white/20 disabled:opacity-50"
                 >
                   <RefreshCw className={`w-4 h-4 ${listRefreshing ? 'animate-spin' : ''}`} />
                   Refresh
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { syncLionWheel(); }}
-                  disabled={loading || listRefreshing || lionWheelSyncing}
-                  className="btn-secondary !bg-white/10 !border-white/20 !text-white hover:!bg-white/20 disabled:opacity-50"
-                  title="Pull latest LionWheel task status from API for all missions with a task ID"
-                >
-                  <CloudDownload className={`w-4 h-4 ${lionWheelSyncing ? 'animate-spin' : ''}`} />
-                  Sync LionWheel
                 </button>
               </>
             )}
