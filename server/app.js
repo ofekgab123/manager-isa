@@ -572,7 +572,6 @@ function affiliateFieldsForMissionType(missionType, body) {
 
 app.post('/api/missions', async (req, res) => {
   try {
-    const missions = await readMissions();
     const body = req.body;
     const validTypes = ['empty_box', 'pickup'];
     const missionType = validTypes.includes(body.type) ? body.type : 'pickup';
@@ -626,11 +625,15 @@ app.post('/api/missions', async (req, res) => {
 
     let missionForLw = newMission;
     if (missionType === 'pickup' && !lionWheelDestinationFromMission(newMission)) {
+      const missions = await readMissions();
       const fb = await pickupLionWheelDestinationFallback(newMission, missions);
       if (fb) missionForLw = { ...newMission, shippingDestination: fb };
     }
 
     await insertMissionData(newMission.id, newMission);
+
+    // Respond immediately so customer forms are not blocked by LionWheel (~12s timeout).
+    res.status(201).json(newMission);
 
     let missionToReturn = newMission;
     /** empty_box & pickup: always attempt LionWheel on create (customer forms included). Retry via POST /api/missions/:id/send-to-lionwheel if needed. */
@@ -688,8 +691,6 @@ app.post('/api/missions', async (req, res) => {
         console.warn('[MISSION_WEBHOOK_URL pickup]', e.message || e),
       );
     }
-
-    res.status(201).json(missionToReturn);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
