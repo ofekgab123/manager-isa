@@ -23,6 +23,7 @@ import {
   List,
   LogOut,
   ShieldCheck,
+  MessageSquare,
 } from 'lucide-react';
 import CreateMissionModal from './components/CreateMissionModal';
 import EmptyBoxMissionPickerModal from './components/EmptyBoxMissionPickerModal';
@@ -36,6 +37,7 @@ import UsersPanel from './components/UsersPanel';
 import StatisticsPanel from './components/StatisticsPanel';
 import ContainersPanel from './components/ContainersPanel';
 import ParcelContentTypesPanel from './components/ParcelContentTypesPanel';
+import LeadsPanel from './components/LeadsPanel';
 import TableHorizontalScroll from './components/TableHorizontalScroll';
 import LoginPage from './components/LoginPage';
 import { API_BASE } from './config';
@@ -459,6 +461,15 @@ function Dashboard({ authUser, onLogout }) {
             <UserCircle2 className="w-4 h-4" />
             Customers
           </button>
+          <button
+            onClick={() => setActiveTab('leads')}
+            className={`flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-xl transition-all duration-200 whitespace-nowrap ${
+              activeTab === 'leads' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-600 hover:text-slate-800 hover:bg-white/60'
+            }`}
+          >
+            <MessageSquare className="w-4 h-4" />
+            Leads
+          </button>
           {authUser.isAdmin && (
             <button
               onClick={() => setActiveTab('users')}
@@ -495,6 +506,7 @@ function Dashboard({ authUser, onLogout }) {
         {activeTab === 'containers' && <ContainersPanel />}
         {activeTab === 'affiliates' && <AffiliatesPanel missions={missions} />}
         {activeTab === 'customers' && <CustomersPanel />}
+        {activeTab === 'leads' && <LeadsPanel authUser={authUser} />}
         {activeTab === 'users' && authUser.isAdmin && <UsersPanel />}
         {activeTab === 'statistics' && (
           <StatisticsPanel

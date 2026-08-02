@@ -16,6 +16,7 @@ import {
   LIONWHEEL_TASK_STATUS_COMPLETED,
 } from './lionwheel.js';
 import { notifyEmptyBoxMissionWebhook } from './missionWebhook.js';
+import { registerWhatsAppWebhook, registerLeadsRoutes } from './leadsApi.js';
 import {
   snapshotMakeWebhookRequest,
   pushMakeWebhookInbound,
@@ -253,6 +254,7 @@ const WEBHOOK_JSON_SNAPSHOT_PATHS = new Set([
   '/api/webhooks/lionwheel-task',
   '/api/webhooks/make-lionwheel-status',
   '/api/webhooks/make-inspect',
+  '/api/webhooks/whatsapp',
 ]);
 
 function isWebhookJsonSnapshotRoute(req) {
@@ -1049,6 +1051,8 @@ app.post('/api/webhooks/make-inspect', async (req, res) => {
     return res.status(500).json({ error: err.message });
   }
 });
+
+registerWhatsAppWebhook(app);
 
 // ─── Apply auth to all other /api routes ──────────────────────────────────────
 
@@ -2142,5 +2146,7 @@ app.delete('/api/receivers/:id', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+registerLeadsRoutes(app, { requireAdmin });
 
 export default app;

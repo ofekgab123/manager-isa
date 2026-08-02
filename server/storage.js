@@ -236,3 +236,70 @@ export async function readParcelContentTypes() {
 export async function writeParcelContentTypes(types) {
   return writeTable('parcel_content_types', types);
 }
+
+export async function readLeads() {
+  return readTable('leads');
+}
+
+export async function insertLeadData(id, data) {
+  await pool.query(`INSERT INTO leads (id, data) VALUES ($1, $2::jsonb)`, [id, data]);
+}
+
+export async function updateLeadData(id, data) {
+  const { rowCount } = await pool.query(`UPDATE leads SET data = $2::jsonb WHERE id = $1`, [id, data]);
+  if (rowCount === 0) throw new Error('Lead not found');
+}
+
+export async function deleteLeadById(id) {
+  const { rowCount } = await pool.query('DELETE FROM leads WHERE id = $1', [id]);
+  if (rowCount === 0) throw new Error('Lead not found');
+}
+
+export async function findLeadByPhoneKey(phoneKey) {
+  if (!phoneKey) return null;
+  const { rows } = await pool.query(`SELECT id, data FROM leads`);
+  const match = rows.find((r) => r.data?.phoneKey === phoneKey);
+  return match ? match.data : null;
+}
+
+export async function readMessageTemplates() {
+  return readTable('message_templates');
+}
+
+export async function writeMessageTemplates(templates) {
+  return writeTable('message_templates', templates);
+}
+
+export async function insertMessageTemplateData(id, data) {
+  await pool.query(`INSERT INTO message_templates (id, data) VALUES ($1, $2::jsonb)`, [id, data]);
+}
+
+export async function updateMessageTemplateData(id, data) {
+  const { rowCount } = await pool.query(
+    `UPDATE message_templates SET data = $2::jsonb WHERE id = $1`,
+    [id, data],
+  );
+  if (rowCount === 0) throw new Error('Template not found');
+}
+
+export async function readMessagesForLead(leadId) {
+  const { rows } = await pool.query(
+    `SELECT data FROM messages WHERE data->>'leadId' = $1 ORDER BY (data->>'sentAt') DESC NULLS LAST`,
+    [leadId],
+  );
+  return rows.map((r) => r.data);
+}
+
+export async function insertMessageData(id, data) {
+  await pool.query(`INSERT INTO messages (id, data) VALUES ($1, $2::jsonb)`, [id, data]);
+}
+
+export async function updateMessageByWaMessageId(waMessageId, patch) {
+  const { rows } = await pool.query(`SELECT id, data FROM messages WHERE data->>'waMessageId' = $1`, [
+    waMessageId,
+  ]);
+  if (rows.length === 0) return null;
+  const next = { ...rows[0].data, ...patch };
+  await pool.query(`UPDATE messages SET data = $2::jsonb WHERE id = $1`, [rows[0].id, next]);
+  return next;
+}

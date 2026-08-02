@@ -38,6 +38,18 @@ export async function initDb() {
       id TEXT PRIMARY KEY,
       data JSONB NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS leads (
+      id TEXT PRIMARY KEY,
+      data JSONB NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS message_templates (
+      id TEXT PRIMARY KEY,
+      data JSONB NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS messages (
+      id TEXT PRIMARY KEY,
+      data JSONB NOT NULL
+    );
     CREATE TABLE IF NOT EXISTS auth_users (
       id TEXT PRIMARY KEY,
       username TEXT UNIQUE NOT NULL,
