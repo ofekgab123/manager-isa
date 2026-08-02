@@ -85,7 +85,7 @@ function SendWhatsAppModal({ lead, templates, onClose, onSent }) {
           <p className="text-sm text-slate-600">To: <strong>{lead.phone}</strong>{lead.fullName ? ` (${lead.fullName})` : ''}</p>
           {activeTemplates.length === 0 ? (
             <p className="text-amber-700 bg-amber-50 rounded-xl px-4 py-3 text-sm border border-amber-100">
-              No active templates. Ask an admin to add templates in the Templates tab.
+              No approved WhatsApp templates found. Create and approve templates in Meta WhatsApp Manager.
             </p>
           ) : (
             <>
@@ -98,7 +98,9 @@ function SendWhatsAppModal({ lead, templates, onClose, onSent }) {
                 >
                   <option value="">Select template…</option>
                   {activeTemplates.map((t) => (
-                    <option key={t.id} value={t.id}>{t.name}</option>
+                    <option key={t.id} value={t.id}>
+                      {t.name}{t.language ? ` (${t.language})` : ''}
+                    </option>
                   ))}
                 </select>
               </div>

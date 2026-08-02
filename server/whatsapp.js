@@ -27,6 +27,34 @@ export function verifyWebhookSignature(rawBody, signatureHeader, appSecret) {
   }
 }
 
+/** Approved templates from Meta WABA (message_templates API). */
+export async function fetchApprovedMessageTemplates() {
+  const wabaId = (process.env.WHATSAPP_BUSINESS_ACCOUNT_ID || '').trim();
+  const accessToken = (process.env.WHATSAPP_ACCESS_TOKEN || '').trim();
+  if (!wabaId || !accessToken) return [];
+
+  const fields = 'name,status,language,category,components';
+  let url = `https://graph.facebook.com/${GRAPH_API_VERSION}/${wabaId}/message_templates?limit=100&fields=${fields}`;
+  const out = [];
+
+  while (url) {
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const msg = data?.error?.message || JSON.stringify(data).slice(0, 300);
+      throw new Error(`WhatsApp templates API error: ${msg}`);
+    }
+    for (const tpl of data.data || []) {
+      if (tpl.status === 'APPROVED') out.push(tpl);
+    }
+    url = data.paging?.next || null;
+  }
+
+  return out;
+}
+
 /** Send an approved WhatsApp template message via Meta Cloud API. */
 export async function sendTemplateMessage({
   to,

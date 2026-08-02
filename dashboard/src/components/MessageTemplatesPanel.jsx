@@ -177,7 +177,7 @@ export default function MessageTemplatesPanel() {
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <p className="text-sm text-slate-500">
-          Map approved Meta templates here. Agents pick from active templates when sending.
+          Approved Meta templates appear automatically when sending. Add entries here to override names, variables, or preview text.
         </p>
         <button
           type="button"

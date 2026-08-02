@@ -12,7 +12,12 @@ import {
   updateMessageByWaMessageId,
 } from './storage.js';
 import { israeliMobileKey } from './phoneKey.js';
-import { sendTemplateMessage, sendTextMessage, verifyWebhookSignature } from './whatsapp.js';
+import {
+  sendTemplateMessage,
+  sendTextMessage,
+  verifyWebhookSignature,
+  fetchApprovedMessageTemplates,
+} from './whatsapp.js';
 
 export const LEAD_STATUSES = ['new', 'contacted', 'interested', 'not_interested', 'converted'];
 
@@ -68,6 +73,61 @@ function previewBody(template, lead) {
     body = body.replace(new RegExp(`\\{\\{${template.variables?.[i] || i}\\}\\}`, 'g'), v);
   });
   return body;
+}
+
+function templateKey(t) {
+  return `${t.waTemplateName}:${t.language || 'en'}`;
+}
+
+function metaTemplateToRecord(meta) {
+  const bodyComp = meta.components?.find((c) => c.type === 'BODY');
+  const headerComp = meta.components?.find((c) => c.type === 'HEADER' && c.format === 'TEXT');
+  const parts = [];
+  if (headerComp?.text) parts.push(headerComp.text);
+  if (bodyComp?.text) parts.push(bodyComp.text);
+  const bodyPreview = parts.join('\n').trim();
+  const varCount = (bodyComp?.text?.match(/\{\{\d+\}\}/g) || []).length;
+  const variables =
+    varCount > 0
+      ? Array.from({ length: varCount }, (_, i) => (i === 0 ? 'fullName' : `var${i + 1}`))
+      : [];
+  const language = meta.language || 'en';
+  return {
+    id: `WA-${meta.name}-${language}`,
+    name: meta.name,
+    waTemplateName: meta.name,
+    language,
+    variables,
+    bodyPreview,
+    isActive: true,
+    source: 'meta',
+    category: meta.category || null,
+  };
+}
+
+/** Meta-approved templates merged with local DB overrides (same name + language). */
+async function getMergedTemplates({ activeOnly = false } = {}) {
+  const local = await readMessageTemplates();
+  let metaApproved = [];
+  try {
+    metaApproved = await fetchApprovedMessageTemplates();
+  } catch (err) {
+    console.error('Failed to fetch Meta templates:', err.message);
+  }
+
+  const byKey = new Map();
+  for (const meta of metaApproved) {
+    const rec = metaTemplateToRecord(meta);
+    byKey.set(templateKey(rec), rec);
+  }
+  for (const tpl of local) {
+    byKey.set(templateKey(tpl), tpl);
+  }
+
+  let merged = [...byKey.values()];
+  if (activeOnly) merged = merged.filter((t) => t.isActive !== false);
+  merged.sort((a, b) => String(a.name).localeCompare(String(b.name)));
+  return merged;
 }
 
 /** Register WhatsApp webhook routes — must be called BEFORE app.use('/api', requireAuth). */
@@ -301,8 +361,8 @@ export function registerLeadsRoutes(app, { requireAdmin }) {
       const lead = leads.find((l) => l.id === req.params.id);
       if (!lead) return res.status(404).json({ error: 'Lead not found' });
 
-      const templates = await readMessageTemplates();
-      const template = templates.find((t) => t.id === templateId && t.isActive !== false);
+      const templates = await getMergedTemplates({ activeOnly: true });
+      const template = templates.find((t) => t.id === templateId);
       if (!template) return res.status(404).json({ error: 'Template not found or inactive' });
 
       const variables = templateVariablesForLead(template, lead);
@@ -413,7 +473,8 @@ export function registerLeadsRoutes(app, { requireAdmin }) {
 
   app.get('/api/message-templates', async (req, res) => {
     try {
-      res.json(await readMessageTemplates());
+      const activeOnly = req.query.active !== '0';
+      res.json(await getMergedTemplates({ activeOnly }));
     } catch (err) {
       res.status(500).json({ error: err.message });
     }
