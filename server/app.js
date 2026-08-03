@@ -62,6 +62,12 @@ function resolveDefaultPickupContainerId(containersList, bodyCountry) {
   return legacy ? legacy.id : null;
 }
 
+function defaultContainerForCountryKey(containersList, country) {
+  const key = containerCountryKey(country);
+  if (!key) return null;
+  return containersList.find((c) => c.isDefault && containerCountryKey(c.country) === key) ?? null;
+}
+
 /** auth_users.country (India / Thailand) → same ids as LionWheel region (stored on mission.country for empty_box). */
 function userAuthCountryToShippingDestId(country) {
   if (country == null || String(country).trim() === '') return null;
@@ -1783,12 +1789,16 @@ app.delete('/api/containers/:id', async (req, res) => {
     const sameCountryAlternatives = containers.filter(
       (c) => c.id !== containerId && containerCountryKey(c.country) === countryKey,
     );
-    if (container.isDefault && sameCountryAlternatives.length > 0 && !newDefaultId) {
+    const isDefaultForCountry = defaultContainerForCountryKey(containers, container.country)?.id === containerId;
+    if (isDefaultForCountry && sameCountryAlternatives.length > 0 && !newDefaultId) {
       return res.status(400).json({
         error: 'This container is the default for its country. Choose another default before deleting.',
       });
     }
     if (newDefaultId) {
+      if (!isDefaultForCountry) {
+        return res.status(400).json({ error: 'newDefaultId is only allowed when deleting the country default container' });
+      }
       const replacement = containers.find((c) => c.id === newDefaultId);
       if (!replacement || replacement.id === containerId) {
         return res.status(400).json({ error: 'Invalid newDefaultId' });
@@ -1817,7 +1827,7 @@ app.delete('/api/containers/:id', async (req, res) => {
     }
 
     let filtered = containers.filter((c) => c.id !== req.params.id);
-    if (newDefaultId) {
+    if (newDefaultId && isDefaultForCountry) {
       filtered = filtered.map((c) =>
         c.id === newDefaultId
           ? { ...c, isDefault: true }

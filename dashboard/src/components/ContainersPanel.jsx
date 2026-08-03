@@ -34,6 +34,11 @@ function defaultContainerForCountry(containers, country) {
   return containers.find((c) => c.isDefault && containerCountryKey(c.country) === key) ?? null;
 }
 
+function isContainerDefaultForCountry(container, containers) {
+  if (!container?.id) return false;
+  return defaultContainerForCountry(containers, container.country)?.id === container.id;
+}
+
 const CONTAINER_STATUS_LABELS = {
   in_storage_tlv: 'In storage TLV',
   in_transit: 'In transit — estimated arrival in 60 days',
@@ -1185,10 +1190,10 @@ function DeleteContainerModal({ container, containers, packagesCount, onConfirm,
     (c) => c.id !== container.id && containerCountryKey(c.country) === countryKey,
   );
   const otherContainers = containers.filter((c) => c.id !== container.id);
-  const isDefault = Boolean(container.isDefault);
-  const needsNewDefault = isDefault && sameCountryAlternatives.length > 0;
+  const isDefaultForCountry = isContainerDefaultForCountry(container, containers);
+  const needsNewDefault = isDefaultForCountry && sameCountryAlternatives.length > 0;
   const hasPackages = packagesCount > 0;
-  const showDefaultStep = isDefault;
+  const showDefaultStep = isDefaultForCountry;
 
   const [newDefaultId, setNewDefaultId] = useState(sameCountryAlternatives[0]?.id ?? '');
   const [movePackages, setMovePackages] = useState(hasPackages && otherContainers.length > 0);
@@ -1463,6 +1468,33 @@ export default function ContainersPanel() {
     } finally {
       setDeletingId(null);
     }
+  };
+
+  const handleSimpleDelete = async (container) => {
+    if (!window.confirm(`Delete ${formatContainerLabel(container)}? This cannot be undone.`)) return;
+    setDeletingId(container.id);
+    try {
+      const res = await fetch(`${API_BASE}/containers/${container.id}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || 'Failed to delete');
+      }
+      await fetchData();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const handleDeleteClick = (container) => {
+    const packagesCount = packagesByContainer[container.id] || 0;
+    const isDefaultForCountry = isContainerDefaultForCountry(container, containers);
+    if (isDefaultForCountry || packagesCount > 0) {
+      setDeletingContainer(container);
+      return;
+    }
+    handleSimpleDelete(container);
   };
 
   const handleSave = (saved) => {
@@ -1798,7 +1830,7 @@ export default function ContainersPanel() {
                           <Pencil className="w-4 h-4" />
                         </button>
                         <button
-                          onClick={() => setDeletingContainer(c)}
+                          onClick={() => handleDeleteClick(c)}
                           disabled={deletingId === c.id}
                           className="action-btn hover:bg-red-50 text-slate-400 hover:text-red-600 disabled:opacity-50"
                           title="Delete"
