@@ -1189,17 +1189,15 @@ function DeleteContainerModal({ container, containers, packagesCount, onConfirm,
   const sameCountryAlternatives = containers.filter(
     (c) => c.id !== container.id && containerCountryKey(c.country) === countryKey,
   );
-  const otherContainers = containers.filter((c) => c.id !== container.id);
   const isDefaultForCountry = isContainerDefaultForCountry(container, containers);
   const needsNewDefault = isDefaultForCountry && sameCountryAlternatives.length > 0;
   const hasPackages = packagesCount > 0;
   const showDefaultStep = isDefaultForCountry;
+  const canMovePackagesToSameCountry = sameCountryAlternatives.length > 0;
 
   const [newDefaultId, setNewDefaultId] = useState(sameCountryAlternatives[0]?.id ?? '');
-  const [movePackages, setMovePackages] = useState(hasPackages && otherContainers.length > 0);
-  const [movePackagesTo, setMovePackagesTo] = useState(
-    sameCountryAlternatives[0]?.id ?? otherContainers[0]?.id ?? '',
-  );
+  const [movePackages, setMovePackages] = useState(hasPackages && canMovePackagesToSameCountry);
+  const [movePackagesTo, setMovePackagesTo] = useState(sameCountryAlternatives[0]?.id ?? '');
 
   useEffect(() => {
     if (newDefaultId && movePackages && !movePackagesTo) {
@@ -1293,48 +1291,57 @@ function DeleteContainerModal({ container, containers, packagesCount, onConfirm,
                 <div>
                   <p className="font-semibold text-slate-800">Packages in this container</p>
                   <p className="text-sm text-slate-600 mt-1">
-                    {packagesCount} pickup package{packagesCount !== 1 ? 's' : ''} assigned. Move them to another container, or leave them without a container.
+                    {packagesCount} pickup package{packagesCount !== 1 ? 's' : ''} assigned.
+                    {canMovePackagesToSameCountry
+                      ? ` Move them to another ${container.country || 'same-country'} container, or leave them without a container.`
+                      : ' There is no other container in the same country — they will be left without a container.'}
                   </p>
                 </div>
               </div>
-              <label className="flex items-start gap-2 text-sm text-slate-700 cursor-pointer">
-                <input
-                  type="radio"
-                  name="movePackages"
-                  checked={movePackages}
-                  onChange={() => {
-                    setMovePackages(true);
-                    if (!movePackagesTo) {
-                      setMovePackagesTo(newDefaultId || otherContainers[0]?.id || '');
-                    }
-                  }}
-                  className="mt-0.5"
-                />
-                <span>Move all packages to another container</span>
-              </label>
-              {movePackages && (
+              {canMovePackagesToSameCountry && (
+                <label className="flex items-start gap-2 text-sm text-slate-700 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="movePackages"
+                    checked={movePackages}
+                    onChange={() => {
+                      setMovePackages(true);
+                      if (!movePackagesTo) {
+                        setMovePackagesTo(newDefaultId || sameCountryAlternatives[0]?.id || '');
+                      }
+                    }}
+                    className="mt-0.5"
+                  />
+                  <span>
+                    Move all packages to another {container.country || 'same-country'} container
+                  </span>
+                </label>
+              )}
+              {movePackages && canMovePackagesToSameCountry && (
                 <select
                   value={movePackagesTo}
                   onChange={(e) => setMovePackagesTo(e.target.value)}
                   className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm ml-6"
                 >
-                  {otherContainers.map((c) => (
+                  {sameCountryAlternatives.map((c) => (
                     <option key={c.id} value={c.id}>
-                      {formatContainerLabel(c)}{c.country ? ` — ${c.country}` : ''}
+                      {formatContainerLabel(c)}
                     </option>
                   ))}
                 </select>
               )}
-              <label className="flex items-start gap-2 text-sm text-slate-700 cursor-pointer">
-                <input
-                  type="radio"
-                  name="movePackages"
-                  checked={!movePackages}
-                  onChange={() => setMovePackages(false)}
-                  className="mt-0.5"
-                />
-                <span>Leave packages without a container (&quot;No container&quot;)</span>
-              </label>
+              {canMovePackagesToSameCountry && (
+                <label className="flex items-start gap-2 text-sm text-slate-700 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="movePackages"
+                    checked={!movePackages}
+                    onChange={() => setMovePackages(false)}
+                    className="mt-0.5"
+                  />
+                  <span>Leave packages without a container (&quot;No container&quot;)</span>
+                </label>
+              )}
               {movePackages && newDefaultId && movePackagesTo === newDefaultId && (
                 <p className="text-xs text-indigo-700 bg-indigo-50 rounded-lg px-3 py-2">
                   Recommended: moving packages to the new default keeps pickup routing consistent.

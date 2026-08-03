@@ -1813,6 +1813,9 @@ app.delete('/api/containers/:id', async (req, res) => {
       }
       const target = containers.find((c) => c.id === movePackagesTo);
       if (!target) return res.status(400).json({ error: 'Invalid movePackagesTo container' });
+      if (containerCountryKey(target.country) !== countryKey) {
+        return res.status(400).json({ error: 'Packages can only be moved to a container in the same country' });
+      }
     }
 
     const missions = await readMissions();
