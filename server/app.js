@@ -68,6 +68,38 @@ function defaultContainerForCountryKey(containersList, country) {
   return containersList.find((c) => c.isDefault && containerCountryKey(c.country) === key) ?? null;
 }
 
+async function movePickupMissionsToContainer(missionIds, targetContainerId, fromContainerId) {
+  if (!Array.isArray(missionIds) || missionIds.length === 0) return;
+  const ids = missionIds.map((id) => String(id).trim()).filter(Boolean);
+  if (ids.length === 0) return;
+
+  const containers = await readContainers();
+  const target = containers.find((c) => c.id === targetContainerId);
+  if (!target) throw new Error('Invalid move target container');
+
+  const from = fromContainerId ? containers.find((c) => c.id === fromContainerId) : null;
+  if (fromContainerId && !from) throw new Error('Invalid moveFromContainerId');
+  if (from && containerCountryKey(from.country) !== containerCountryKey(target.country)) {
+    throw new Error('Packages can only be moved to a container in the same country');
+  }
+
+  const missions = await readMissions();
+  const moveSet = new Set(ids);
+  for (const id of moveSet) {
+    const m = missions.find((x) => x.id === id);
+    if (!m || m.type !== 'pickup') throw new Error('Invalid moveMissionIds');
+    if (fromContainerId && m.containerId !== fromContainerId) {
+      throw new Error('Invalid moveMissionIds');
+    }
+  }
+
+  for (const m of missions) {
+    if (moveSet.has(m.id)) {
+      await updateMissionsData(m.id, { ...m, containerId: targetContainerId });
+    }
+  }
+}
+
 /** auth_users.country (India / Thailand) → same ids as LionWheel region (stored on mission.country for empty_box). */
 function userAuthCountryToShippingDestId(country) {
   if (country == null || String(country).trim() === '') return null;
@@ -1692,6 +1724,13 @@ app.post('/api/containers', async (req, res) => {
     }
     containers.push(newContainer);
     await writeContainers(containers);
+    if (Array.isArray(body.moveMissionIds) && body.moveMissionIds.length > 0 && body.moveFromContainerId) {
+      await movePickupMissionsToContainer(
+        body.moveMissionIds,
+        newContainer.id,
+        String(body.moveFromContainerId).trim(),
+      );
+    }
     res.status(201).json(newContainer);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1763,6 +1802,13 @@ app.patch('/api/containers/:id', async (req, res) => {
               : containers[i];
       }
       await writeContainers(containers);
+      if (Array.isArray(body.moveMissionIds) && body.moveMissionIds.length > 0 && body.moveFromContainerId) {
+        await movePickupMissionsToContainer(
+          body.moveMissionIds,
+          req.params.id,
+          String(body.moveFromContainerId).trim(),
+        );
+      }
       res.json(containers.find((c) => c.id === req.params.id));
       return;
     }
