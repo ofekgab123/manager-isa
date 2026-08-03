@@ -862,6 +862,12 @@ function ContainerFormModal({ container, onSave, onClose, containers = [] }) {
       setError('Max packages must be a positive number');
       return;
     }
+    if (form.isDefault && hasOtherDefault && !thisIsDefault && defaultContainer) {
+      const label = formatContainerLabel(defaultContainer);
+      if (!window.confirm(`Set this container as the default for ${form.country}, replacing ${label}?`)) {
+        return;
+      }
+    }
     setSaving(true);
     try {
       const url = isEdit
@@ -994,19 +1000,7 @@ function ContainerFormModal({ container, onSave, onClose, containers = [] }) {
                 </span>
               )}
             </div>
-            {thisIsDefault && (
-              <p className="text-xs text-slate-600 leading-relaxed text-left border-t border-slate-200/80 pt-2">
-                To set a different default for this country: uncheck here, save, then mark another container with the same
-                country as default.
-              </p>
-            )}
-            {hasOtherDefault && !thisIsDefault && defaultContainer && (
-              <p className="text-xs text-slate-600 leading-relaxed text-left border-t border-slate-200/80 pt-2">
-                To set this as the default for this country, first remove the default from{' '}
-                <span className="font-medium text-slate-800">{formatContainerLabel(defaultContainer)}</span>.
-              </p>
-            )}
-            {!hasOtherDefault && (
+            {form.country ? (
               <label className="flex items-start gap-3 cursor-pointer pt-1 border-t border-slate-200/80">
                 <input
                   type="checkbox"
@@ -1018,10 +1012,19 @@ function ContainerFormModal({ container, onSave, onClose, containers = [] }) {
                 <span className="text-sm text-slate-700 text-left">
                   <span className="font-medium text-slate-800">Default container (this country)</span>
                   <span className="block text-slate-500 mt-0.5">
-                    One default per country. Pickup missions without a <code className="text-xs bg-slate-100 px-1 rounded">containerId</code> use the default for the same <code className="text-xs bg-slate-100 px-1 rounded">country</code> in the API request (legacy: if <code className="text-xs bg-slate-100 px-1 rounded">country</code> is omitted, the first default in the list is used).
+                    One default per country. Pickup missions without a <code className="text-xs bg-slate-100 px-1 rounded">containerId</code> use the default for the same <code className="text-xs bg-slate-100 px-1 rounded">country</code>.
                   </span>
+                  {hasOtherDefault && !thisIsDefault && form.isDefault && defaultContainer && (
+                    <span className="block text-amber-700 mt-1.5 text-xs">
+                      Saving will replace {formatContainerLabel(defaultContainer)} as the default for {form.country}.
+                    </span>
+                  )}
                 </span>
               </label>
+            ) : (
+              <p className="text-xs text-slate-500 border-t border-slate-200/80 pt-2 text-left">
+                Select a country to set this container as the default.
+              </p>
             )}
           </div>
           <div>
@@ -1198,25 +1201,23 @@ function DeleteContainerModal({ container, containers, packages, onConfirm, onCl
   const [newDefaultId, setNewDefaultId] = useState(sameCountryAlternatives[0]?.id ?? '');
   const [wantsMovePackages, setWantsMovePackages] = useState(false);
   const [selectedMissionIds, setSelectedMissionIds] = useState(() => new Set());
+  const [moveTargetId, setMoveTargetId] = useState(sameCountryAlternatives[0]?.id ?? '');
 
-  const effectiveMoveTargetId = needsNewDefault
-    ? newDefaultId
-    : (() => {
-        const remaining = containers.filter((c) => c.id !== container.id);
-        const def = defaultContainerForCountry(remaining, container.country);
-        if (def && sameCountryAlternatives.some((c) => c.id === def.id)) return def.id;
-        return sameCountryAlternatives[0]?.id ?? '';
-      })();
+  useEffect(() => {
+    if (needsNewDefault && newDefaultId) {
+      setMoveTargetId(newDefaultId);
+    }
+  }, [needsNewDefault, newDefaultId]);
 
-  const moveTargetContainer = sameCountryAlternatives.find((c) => c.id === effectiveMoveTargetId)
-    ?? containers.find((c) => c.id === effectiveMoveTargetId);
+  const moveTargetContainer = sameCountryAlternatives.find((c) => c.id === moveTargetId)
+    ?? containers.find((c) => c.id === moveTargetId);
 
   const step1Complete = !needsNewDefault || Boolean(newDefaultId);
   const canConfirm = step1Complete && (
     !hasPackages
     || !canMovePackagesToSameCountry
     || !wantsMovePackages
-    || Boolean(effectiveMoveTargetId)
+    || Boolean(moveTargetId)
   );
 
   const toggleMission = (id) => {
@@ -1232,10 +1233,30 @@ function DeleteContainerModal({ container, containers, packages, onConfirm, onCl
   const clearAllMissions = () => setSelectedMissionIds(new Set());
 
   const handleConfirm = () => {
+    if (needsNewDefault && newDefaultId) {
+      const currentDef = defaultContainerForCountry(containers, container.country);
+      const nextDef = sameCountryAlternatives.find((c) => c.id === newDefaultId);
+      if (currentDef && currentDef.id !== newDefaultId && nextDef) {
+        if (!window.confirm(
+          `Set ${formatContainerLabel(nextDef)} as the new default for ${container.country || 'this country'}, replacing ${formatContainerLabel(currentDef)}?`,
+        )) {
+          return;
+        }
+      }
+    }
+
     const idsToMove = wantsMovePackages ? [...selectedMissionIds] : [];
+    if (wantsMovePackages && idsToMove.length > 0 && moveTargetContainer) {
+      if (!window.confirm(
+        `Move ${idsToMove.length} package${idsToMove.length !== 1 ? 's' : ''} to ${formatContainerLabel(moveTargetContainer)}? Unselected packages will have no container.`,
+      )) {
+        return;
+      }
+    }
+
     onConfirm({
       newDefaultId: needsNewDefault ? newDefaultId : null,
-      movePackagesTo: wantsMovePackages && idsToMove.length > 0 ? effectiveMoveTargetId : null,
+      movePackagesTo: wantsMovePackages && idsToMove.length > 0 ? moveTargetId : null,
       moveMissionIds: idsToMove,
     });
   };
@@ -1285,17 +1306,24 @@ function DeleteContainerModal({ container, containers, packages, onConfirm, onCl
                 </div>
               </div>
               {needsNewDefault && (
-                <select
-                  value={newDefaultId}
-                  onChange={(e) => setNewDefaultId(e.target.value)}
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                >
-                  {sameCountryAlternatives.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {formatContainerLabel(c)}
-                    </option>
-                  ))}
-                </select>
+                <>
+                  <select
+                    value={newDefaultId}
+                    onChange={(e) => setNewDefaultId(e.target.value)}
+                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                  >
+                    {sameCountryAlternatives.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {formatContainerLabel(c)}
+                      </option>
+                    ))}
+                  </select>
+                  {newDefaultId && defaultContainerForCountry(containers, container.country)?.id !== newDefaultId && (
+                    <p className="text-xs text-amber-700 bg-amber-50 rounded-lg px-3 py-2">
+                      Confirm on delete: {formatContainerLabel(sameCountryAlternatives.find((c) => c.id === newDefaultId))} will replace the current default.
+                    </p>
+                  )}
+                </>
               )}
             </div>
           )}
@@ -1314,7 +1342,7 @@ function DeleteContainerModal({ container, containers, packages, onConfirm, onCl
                   <p className="text-sm text-slate-600 mt-1">
                     {packages.length} pickup package{packages.length !== 1 ? 's' : ''} assigned.
                     {canMovePackagesToSameCountry
-                      ? ' Choose whether to move selected packages to the new default container.'
+                      ? ' Choose whether to move selected packages to another container in the same country.'
                       : ' There is no other container in the same country — they will be left without a container.'}
                   </p>
                 </div>
@@ -1349,11 +1377,24 @@ function DeleteContainerModal({ container, containers, packages, onConfirm, onCl
               )}
               {wantsMovePackages && canMovePackagesToSameCountry && (
                 <div className="space-y-2">
-                  {moveTargetContainer && (
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Move selected packages to</label>
+                    <select
+                      value={moveTargetId}
+                      onChange={(e) => setMoveTargetId(e.target.value)}
+                      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                    >
+                      {sameCountryAlternatives.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {formatContainerLabel(c)}{needsNewDefault && c.id === newDefaultId ? ' (new default)' : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  {moveTargetContainer && selectedMissionIds.size > 0 && (
                     <p className="text-xs text-indigo-700 bg-indigo-50 rounded-lg px-3 py-2">
-                      Selected packages will move to{' '}
-                      <span className="font-semibold">{formatContainerLabel(moveTargetContainer)}</span>
-                      {needsNewDefault ? ' (new default)' : ''}.
+                      {selectedMissionIds.size} selected package{selectedMissionIds.size !== 1 ? 's' : ''} will move to{' '}
+                      <span className="font-semibold">{formatContainerLabel(moveTargetContainer)}</span> after you confirm.
                     </p>
                   )}
                   <div className="flex items-center justify-between gap-2">
