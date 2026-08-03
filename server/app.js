@@ -1784,6 +1784,9 @@ app.delete('/api/containers/:id', async (req, res) => {
     const body = req.body && typeof req.body === 'object' ? req.body : {};
     const newDefaultId = body.newDefaultId ? String(body.newDefaultId).trim() : null;
     const movePackagesTo = body.movePackagesTo ? String(body.movePackagesTo).trim() : null;
+    const moveMissionIds = Array.isArray(body.moveMissionIds)
+      ? body.moveMissionIds.map((id) => String(id).trim()).filter(Boolean)
+      : null;
 
     const countryKey = containerCountryKey(container.country);
     const sameCountryAlternatives = containers.filter(
@@ -1820,13 +1823,25 @@ app.delete('/api/containers/:id', async (req, res) => {
 
     const missions = await readMissions();
     const hasPackages = missions.some((m) => m.type === 'pickup' && m.containerId === containerId);
-    if (hasPackages) {
-      const updatedMissions = missions.map((m) =>
-        m.type === 'pickup' && m.containerId === containerId
-          ? { ...m, containerId: movePackagesTo || null }
-          : m,
-      );
-      await writeMissions(updatedMissions);
+    if (movePackagesTo && moveMissionIds?.length) {
+      for (const id of moveMissionIds) {
+        const m = missions.find((x) => x.id === id);
+        if (!m || m.type !== 'pickup' || m.containerId !== containerId) {
+          return res.status(400).json({ error: 'Invalid moveMissionIds' });
+        }
+      }
+      const moveSet = new Set(moveMissionIds);
+      for (const m of missions) {
+        if (m.type !== 'pickup' || m.containerId !== containerId) continue;
+        const nextContainerId = moveSet.has(m.id) ? movePackagesTo : null;
+        await updateMissionsData(m.id, { ...m, containerId: nextContainerId });
+      }
+    } else if (hasPackages) {
+      for (const m of missions) {
+        if (m.type === 'pickup' && m.containerId === containerId) {
+          await updateMissionsData(m.id, { ...m, containerId: null });
+        }
+      }
     }
 
     let filtered = containers.filter((c) => c.id !== req.params.id);

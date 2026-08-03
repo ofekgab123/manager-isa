@@ -1184,34 +1184,59 @@ function ContainerFormModal({ container, onSave, onClose, containers = [] }) {
   );
 }
 
-function DeleteContainerModal({ container, containers, packagesCount, onConfirm, onClose, deleting }) {
+function DeleteContainerModal({ container, containers, packages, onConfirm, onClose, deleting }) {
   const countryKey = containerCountryKey(container.country);
   const sameCountryAlternatives = containers.filter(
     (c) => c.id !== container.id && containerCountryKey(c.country) === countryKey,
   );
   const isDefaultForCountry = isContainerDefaultForCountry(container, containers);
   const needsNewDefault = isDefaultForCountry && sameCountryAlternatives.length > 0;
-  const hasPackages = packagesCount > 0;
+  const hasPackages = packages.length > 0;
   const showDefaultStep = isDefaultForCountry;
   const canMovePackagesToSameCountry = sameCountryAlternatives.length > 0;
 
   const [newDefaultId, setNewDefaultId] = useState(sameCountryAlternatives[0]?.id ?? '');
-  const [movePackages, setMovePackages] = useState(hasPackages && canMovePackagesToSameCountry);
-  const [movePackagesTo, setMovePackagesTo] = useState(sameCountryAlternatives[0]?.id ?? '');
+  const [wantsMovePackages, setWantsMovePackages] = useState(false);
+  const [selectedMissionIds, setSelectedMissionIds] = useState(() => new Set());
 
-  useEffect(() => {
-    if (newDefaultId && movePackages && !movePackagesTo) {
-      setMovePackagesTo(newDefaultId);
-    }
-  }, [newDefaultId, movePackages, movePackagesTo]);
+  const effectiveMoveTargetId = needsNewDefault
+    ? newDefaultId
+    : (() => {
+        const remaining = containers.filter((c) => c.id !== container.id);
+        const def = defaultContainerForCountry(remaining, container.country);
+        if (def && sameCountryAlternatives.some((c) => c.id === def.id)) return def.id;
+        return sameCountryAlternatives[0]?.id ?? '';
+      })();
+
+  const moveTargetContainer = sameCountryAlternatives.find((c) => c.id === effectiveMoveTargetId)
+    ?? containers.find((c) => c.id === effectiveMoveTargetId);
 
   const step1Complete = !needsNewDefault || Boolean(newDefaultId);
-  const canConfirm = step1Complete && (!hasPackages || !movePackages || Boolean(movePackagesTo));
+  const canConfirm = step1Complete && (
+    !hasPackages
+    || !canMovePackagesToSameCountry
+    || !wantsMovePackages
+    || Boolean(effectiveMoveTargetId)
+  );
+
+  const toggleMission = (id) => {
+    setSelectedMissionIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const selectAllMissions = () => setSelectedMissionIds(new Set(packages.map((m) => m.id)));
+  const clearAllMissions = () => setSelectedMissionIds(new Set());
 
   const handleConfirm = () => {
+    const idsToMove = wantsMovePackages ? [...selectedMissionIds] : [];
     onConfirm({
       newDefaultId: needsNewDefault ? newDefaultId : null,
-      movePackagesTo: movePackages ? movePackagesTo : null,
+      movePackagesTo: wantsMovePackages && idsToMove.length > 0 ? effectiveMoveTargetId : null,
+      moveMissionIds: idsToMove,
     });
   };
 
@@ -1219,7 +1244,7 @@ function DeleteContainerModal({ container, containers, packagesCount, onConfirm,
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40">
-      <div className="bg-white rounded-2xl shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
+      <div className={`bg-white rounded-2xl shadow-xl w-full max-h-[90vh] overflow-y-auto ${wantsMovePackages && hasPackages ? 'max-w-2xl' : 'max-w-lg'}`}>
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
           <h3 className="text-lg font-semibold text-slate-800">Delete container</h3>
           <button type="button" onClick={onClose} className="p-1 rounded-lg hover:bg-slate-100 text-slate-400">
@@ -1262,11 +1287,7 @@ function DeleteContainerModal({ container, containers, packagesCount, onConfirm,
               {needsNewDefault && (
                 <select
                   value={newDefaultId}
-                  onChange={(e) => {
-                    const id = e.target.value;
-                    setNewDefaultId(id);
-                    if (movePackages) setMovePackagesTo(id);
-                  }}
+                  onChange={(e) => setNewDefaultId(e.target.value)}
                   className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
                 >
                   {sameCountryAlternatives.map((c) => (
@@ -1291,61 +1312,99 @@ function DeleteContainerModal({ container, containers, packagesCount, onConfirm,
                 <div>
                   <p className="font-semibold text-slate-800">Packages in this container</p>
                   <p className="text-sm text-slate-600 mt-1">
-                    {packagesCount} pickup package{packagesCount !== 1 ? 's' : ''} assigned.
+                    {packages.length} pickup package{packages.length !== 1 ? 's' : ''} assigned.
                     {canMovePackagesToSameCountry
-                      ? ` Move them to another ${container.country || 'same-country'} container, or leave them without a container.`
+                      ? ' Choose whether to move selected packages to the new default container.'
                       : ' There is no other container in the same country — they will be left without a container.'}
                   </p>
                 </div>
               </div>
               {canMovePackagesToSameCountry && (
-                <label className="flex items-start gap-2 text-sm text-slate-700 cursor-pointer">
-                  <input
-                    type="radio"
-                    name="movePackages"
-                    checked={movePackages}
-                    onChange={() => {
-                      setMovePackages(true);
-                      if (!movePackagesTo) {
-                        setMovePackagesTo(newDefaultId || sameCountryAlternatives[0]?.id || '');
-                      }
-                    }}
-                    className="mt-0.5"
-                  />
-                  <span>
-                    Move all packages to another {container.country || 'same-country'} container
-                  </span>
-                </label>
+                <>
+                  <p className="text-sm font-medium text-slate-800">Move packages between containers?</p>
+                  <div className="flex gap-4">
+                    <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="wantsMovePackages"
+                        checked={!wantsMovePackages}
+                        onChange={() => {
+                          setWantsMovePackages(false);
+                          setSelectedMissionIds(new Set());
+                        }}
+                      />
+                      <span>No — leave all without a container</span>
+                    </label>
+                    <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="wantsMovePackages"
+                        checked={wantsMovePackages}
+                        onChange={() => setWantsMovePackages(true)}
+                      />
+                      <span>Yes — select packages to move</span>
+                    </label>
+                  </div>
+                </>
               )}
-              {movePackages && canMovePackagesToSameCountry && (
-                <select
-                  value={movePackagesTo}
-                  onChange={(e) => setMovePackagesTo(e.target.value)}
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm ml-6"
-                >
-                  {sameCountryAlternatives.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {formatContainerLabel(c)}
-                    </option>
-                  ))}
-                </select>
-              )}
-              {canMovePackagesToSameCountry && (
-                <label className="flex items-start gap-2 text-sm text-slate-700 cursor-pointer">
-                  <input
-                    type="radio"
-                    name="movePackages"
-                    checked={!movePackages}
-                    onChange={() => setMovePackages(false)}
-                    className="mt-0.5"
-                  />
-                  <span>Leave packages without a container (&quot;No container&quot;)</span>
-                </label>
-              )}
-              {movePackages && newDefaultId && movePackagesTo === newDefaultId && (
-                <p className="text-xs text-indigo-700 bg-indigo-50 rounded-lg px-3 py-2">
-                  Recommended: moving packages to the new default keeps pickup routing consistent.
-                </p>
+              {wantsMovePackages && canMovePackagesToSameCountry && (
+                <div className="space-y-2">
+                  {moveTargetContainer && (
+                    <p className="text-xs text-indigo-700 bg-indigo-50 rounded-lg px-3 py-2">
+                      Selected packages will move to{' '}
+                      <span className="font-semibold">{formatContainerLabel(moveTargetContainer)}</span>
+                      {needsNewDefault ? ' (new default)' : ''}.
+                    </p>
+                  )}
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs font-medium text-slate-600">
+                      {selectedMissionIds.size} of {packages.length} selected
+                    </span>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={selectAllMissions}
+                        className="text-xs font-medium text-indigo-600 hover:text-indigo-800"
+                      >
+                        Select all
+                      </button>
+                      <button
+                        type="button"
+                        onClick={clearAllMissions}
+                        className="text-xs font-medium text-slate-500 hover:text-slate-700"
+                      >
+                        Clear
+                      </button>
+                    </div>
+                  </div>
+                  <div className="max-h-64 overflow-y-auto rounded-lg border border-slate-200 bg-white divide-y divide-slate-100">
+                    {packages.map((m) => {
+                      const name = m.fullName
+                        || [m.firstName, m.lastName].filter(Boolean).join(' ')
+                        || '—';
+                      return (
+                        <label
+                          key={m.id}
+                          className="flex items-start gap-3 px-3 py-2.5 hover:bg-slate-50 cursor-pointer text-left"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={selectedMissionIds.has(m.id)}
+                            onChange={() => toggleMission(m.id)}
+                            className="mt-0.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                          />
+                          <span className="min-w-0 flex-1">
+                            <span className="block text-sm font-medium text-slate-800 truncate">{name}</span>
+                            <span className="block text-xs text-slate-500 truncate">
+                              {m.id}
+                              {m.customerPhone ? ` · ${m.customerPhone}` : ''}
+                            </span>
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
               )}
             </div>
           )}
@@ -1453,7 +1512,7 @@ export default function ContainersPanel() {
     return { ...c, packagesCount, currentWeight, capacityPercent, isAtCapacityAlert, isDefaultForCountry };
   });
 
-  const handleDeleteConfirm = async ({ newDefaultId, movePackagesTo }) => {
+  const handleDeleteConfirm = async ({ newDefaultId, movePackagesTo, moveMissionIds }) => {
     if (!deletingContainer) return;
     setDeletingId(deletingContainer.id);
     try {
@@ -1463,6 +1522,7 @@ export default function ContainersPanel() {
         body: JSON.stringify({
           ...(newDefaultId ? { newDefaultId } : {}),
           ...(movePackagesTo ? { movePackagesTo } : {}),
+          ...(moveMissionIds?.length ? { moveMissionIds } : {}),
         }),
       });
       if (!res.ok) {
@@ -1902,7 +1962,7 @@ export default function ContainersPanel() {
         <DeleteContainerModal
           container={deletingContainer}
           containers={containers}
-          packagesCount={packagesByContainer[deletingContainer.id] || 0}
+          packages={missions.filter((m) => m.type === 'pickup' && m.containerId === deletingContainer.id)}
           onConfirm={handleDeleteConfirm}
           onClose={() => !deletingId && setDeletingContainer(null)}
           deleting={deletingId === deletingContainer.id}
