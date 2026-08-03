@@ -1773,16 +1773,59 @@ app.delete('/api/containers/:id', async (req, res) => {
     const containers = await readContainers();
     const idx = containers.findIndex((c) => c.id === req.params.id);
     if (idx === -1) return res.status(404).json({ error: 'Container not found' });
-    const containerId = containers[idx].id;
+    const container = containers[idx];
+    const containerId = container.id;
+    const body = req.body && typeof req.body === 'object' ? req.body : {};
+    const newDefaultId = body.newDefaultId ? String(body.newDefaultId).trim() : null;
+    const movePackagesTo = body.movePackagesTo ? String(body.movePackagesTo).trim() : null;
+
+    const countryKey = containerCountryKey(container.country);
+    const sameCountryAlternatives = containers.filter(
+      (c) => c.id !== containerId && containerCountryKey(c.country) === countryKey,
+    );
+    if (container.isDefault && sameCountryAlternatives.length > 0 && !newDefaultId) {
+      return res.status(400).json({
+        error: 'This container is the default for its country. Choose another default before deleting.',
+      });
+    }
+    if (newDefaultId) {
+      const replacement = containers.find((c) => c.id === newDefaultId);
+      if (!replacement || replacement.id === containerId) {
+        return res.status(400).json({ error: 'Invalid newDefaultId' });
+      }
+      if (containerCountryKey(replacement.country) !== countryKey) {
+        return res.status(400).json({ error: 'New default must be in the same country' });
+      }
+    }
+    if (movePackagesTo) {
+      if (movePackagesTo === containerId) {
+        return res.status(400).json({ error: 'Cannot move packages to the container being deleted' });
+      }
+      const target = containers.find((c) => c.id === movePackagesTo);
+      if (!target) return res.status(400).json({ error: 'Invalid movePackagesTo container' });
+    }
+
     const missions = await readMissions();
     const hasPackages = missions.some((m) => m.type === 'pickup' && m.containerId === containerId);
     if (hasPackages) {
       const updatedMissions = missions.map((m) =>
-        m.type === 'pickup' && m.containerId === containerId ? { ...m, containerId: null } : m
+        m.type === 'pickup' && m.containerId === containerId
+          ? { ...m, containerId: movePackagesTo || null }
+          : m,
       );
       await writeMissions(updatedMissions);
     }
-    const filtered = containers.filter((c) => c.id !== req.params.id);
+
+    let filtered = containers.filter((c) => c.id !== req.params.id);
+    if (newDefaultId) {
+      filtered = filtered.map((c) =>
+        c.id === newDefaultId
+          ? { ...c, isDefault: true }
+          : containerCountryKey(c.country) === countryKey
+            ? { ...c, isDefault: false }
+            : c,
+      );
+    }
     await writeContainers(filtered);
     res.json({ success: true });
   } catch (err) {

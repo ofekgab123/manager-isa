@@ -1179,6 +1179,188 @@ function ContainerFormModal({ container, onSave, onClose, containers = [] }) {
   );
 }
 
+function DeleteContainerModal({ container, containers, packagesCount, onConfirm, onClose, deleting }) {
+  const countryKey = containerCountryKey(container.country);
+  const sameCountryAlternatives = containers.filter(
+    (c) => c.id !== container.id && containerCountryKey(c.country) === countryKey,
+  );
+  const otherContainers = containers.filter((c) => c.id !== container.id);
+  const isDefault = Boolean(container.isDefault);
+  const needsNewDefault = isDefault && sameCountryAlternatives.length > 0;
+  const hasPackages = packagesCount > 0;
+  const showDefaultStep = isDefault;
+
+  const [newDefaultId, setNewDefaultId] = useState(sameCountryAlternatives[0]?.id ?? '');
+  const [movePackages, setMovePackages] = useState(hasPackages && otherContainers.length > 0);
+  const [movePackagesTo, setMovePackagesTo] = useState(
+    sameCountryAlternatives[0]?.id ?? otherContainers[0]?.id ?? '',
+  );
+
+  useEffect(() => {
+    if (newDefaultId && movePackages && !movePackagesTo) {
+      setMovePackagesTo(newDefaultId);
+    }
+  }, [newDefaultId, movePackages, movePackagesTo]);
+
+  const step1Complete = !needsNewDefault || Boolean(newDefaultId);
+  const canConfirm = step1Complete && (!hasPackages || !movePackages || Boolean(movePackagesTo));
+
+  const handleConfirm = () => {
+    onConfirm({
+      newDefaultId: needsNewDefault ? newDefaultId : null,
+      movePackagesTo: movePackages ? movePackagesTo : null,
+    });
+  };
+
+  const totalSteps = (showDefaultStep ? 1 : 0) + (hasPackages ? 1 : 0);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40">
+      <div className="bg-white rounded-2xl shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+          <h3 className="text-lg font-semibold text-slate-800">Delete container</h3>
+          <button type="button" onClick={onClose} className="p-1 rounded-lg hover:bg-slate-100 text-slate-400">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="px-6 py-4 space-y-4">
+          <p className="text-sm text-slate-600">
+            You are about to delete <span className="font-semibold text-slate-800">{formatContainerLabel(container)}</span>
+            {container.country ? ` (${container.country})` : ''}.
+          </p>
+
+          {totalSteps > 1 && (
+            <p className="text-xs font-medium text-indigo-600 uppercase tracking-wide">
+              {totalSteps}-step delete
+            </p>
+          )}
+
+          {showDefaultStep && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50/80 p-4 space-y-3">
+              {totalSteps > 1 && (
+                <p className="text-xs font-semibold text-amber-800 uppercase tracking-wide">Step 1 — Default</p>
+              )}
+              <div className="flex gap-2">
+                <Star className="w-5 h-5 text-amber-600 shrink-0 fill-amber-400/30 mt-0.5" />
+                <div>
+                  <p className="font-semibold text-slate-800">Default container</p>
+                  {needsNewDefault ? (
+                    <p className="text-sm text-slate-600 mt-1">
+                      This is the default for {container.country || 'this country'}. Choose another container to become the new default before deleting.
+                    </p>
+                  ) : (
+                    <p className="text-sm text-slate-600 mt-1">
+                      This is the default for {container.country || 'this country'}, and there is no other container in the same country. After deletion, new pickup missions will not auto-assign to a container.
+                    </p>
+                  )}
+                </div>
+              </div>
+              {needsNewDefault && (
+                <select
+                  value={newDefaultId}
+                  onChange={(e) => {
+                    const id = e.target.value;
+                    setNewDefaultId(id);
+                    if (movePackages) setMovePackagesTo(id);
+                  }}
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                >
+                  {sameCountryAlternatives.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {formatContainerLabel(c)}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+          )}
+
+          {hasPackages && (
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-3">
+              {totalSteps > 1 && (
+                <p className="text-xs font-semibold text-indigo-800 uppercase tracking-wide">
+                  Step {showDefaultStep ? 2 : 1} — Packages
+                </p>
+              )}
+              <div className="flex gap-2">
+                <Package className="w-5 h-5 text-indigo-600 shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-semibold text-slate-800">Packages in this container</p>
+                  <p className="text-sm text-slate-600 mt-1">
+                    {packagesCount} pickup package{packagesCount !== 1 ? 's' : ''} assigned. Move them to another container, or leave them without a container.
+                  </p>
+                </div>
+              </div>
+              <label className="flex items-start gap-2 text-sm text-slate-700 cursor-pointer">
+                <input
+                  type="radio"
+                  name="movePackages"
+                  checked={movePackages}
+                  onChange={() => {
+                    setMovePackages(true);
+                    if (!movePackagesTo) {
+                      setMovePackagesTo(newDefaultId || otherContainers[0]?.id || '');
+                    }
+                  }}
+                  className="mt-0.5"
+                />
+                <span>Move all packages to another container</span>
+              </label>
+              {movePackages && (
+                <select
+                  value={movePackagesTo}
+                  onChange={(e) => setMovePackagesTo(e.target.value)}
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm ml-6"
+                >
+                  {otherContainers.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {formatContainerLabel(c)}{c.country ? ` — ${c.country}` : ''}
+                    </option>
+                  ))}
+                </select>
+              )}
+              <label className="flex items-start gap-2 text-sm text-slate-700 cursor-pointer">
+                <input
+                  type="radio"
+                  name="movePackages"
+                  checked={!movePackages}
+                  onChange={() => setMovePackages(false)}
+                  className="mt-0.5"
+                />
+                <span>Leave packages without a container (&quot;No container&quot;)</span>
+              </label>
+              {movePackages && newDefaultId && movePackagesTo === newDefaultId && (
+                <p className="text-xs text-indigo-700 bg-indigo-50 rounded-lg px-3 py-2">
+                  Recommended: moving packages to the new default keeps pickup routing consistent.
+                </p>
+              )}
+            </div>
+          )}
+
+          {!showDefaultStep && !hasPackages && (
+            <p className="text-sm text-slate-600">This container has no assigned packages. This action cannot be undone.</p>
+          )}
+        </div>
+
+        <div className="flex justify-end gap-2 px-6 py-4 border-t border-slate-100">
+          <button type="button" onClick={onClose} className="btn-secondary" disabled={deleting}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={handleConfirm}
+            disabled={deleting || !canConfirm}
+            className="btn-primary bg-red-600 hover:bg-red-700 disabled:opacity-50"
+          >
+            {deleting ? 'Deleting…' : 'Delete container'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function ContainersPanel() {
   const [containers, setContainers] = useState([]);
   const [missions, setMissions] = useState([]);
@@ -1188,6 +1370,7 @@ export default function ContainersPanel() {
   const [editingContainer, setEditingContainer] = useState(null);
   const [viewingContainer, setViewingContainer] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
+  const [deletingContainer, setDeletingContainer] = useState(null);
   const [exportModalContainer, setExportModalContainer] = useState(null);
   const [summaryModalContainer, setSummaryModalContainer] = useState(null);
 
@@ -1257,14 +1440,26 @@ export default function ContainersPanel() {
     return { ...c, packagesCount, currentWeight, capacityPercent, isAtCapacityAlert };
   });
 
-  const handleDelete = async (id) => {
-    if (!window.confirm('Delete this container? Assigned packages will be set to "No container".')) return;
-    setDeletingId(id);
+  const handleDeleteConfirm = async ({ newDefaultId, movePackagesTo }) => {
+    if (!deletingContainer) return;
+    setDeletingId(deletingContainer.id);
     try {
-      const res = await fetch(`${API_BASE}/containers/${id}`, { method: 'DELETE' });
-      if (!res.ok) throw new Error('Failed to delete');
+      const res = await fetch(`${API_BASE}/containers/${deletingContainer.id}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...(newDefaultId ? { newDefaultId } : {}),
+          ...(movePackagesTo ? { movePackagesTo } : {}),
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || 'Failed to delete');
+      }
+      setDeletingContainer(null);
       await fetchData();
-    } catch {
+    } catch (e) {
+      setError(e.message);
     } finally {
       setDeletingId(null);
     }
@@ -1603,7 +1798,7 @@ export default function ContainersPanel() {
                           <Pencil className="w-4 h-4" />
                         </button>
                         <button
-                          onClick={() => handleDelete(c.id)}
+                          onClick={() => setDeletingContainer(c)}
                           disabled={deletingId === c.id}
                           className="action-btn hover:bg-red-50 text-slate-400 hover:text-red-600 disabled:opacity-50"
                           title="Delete"
@@ -1652,6 +1847,17 @@ export default function ContainersPanel() {
           container={summaryModalContainer}
           packages={missions.filter((m) => m.type === 'pickup' && m.containerId === summaryModalContainer.id)}
           onClose={() => setSummaryModalContainer(null)}
+        />
+      )}
+
+      {deletingContainer && (
+        <DeleteContainerModal
+          container={deletingContainer}
+          containers={containers}
+          packagesCount={packagesByContainer[deletingContainer.id] || 0}
+          onConfirm={handleDeleteConfirm}
+          onClose={() => !deletingId && setDeletingContainer(null)}
+          deleting={deletingId === deletingContainer.id}
         />
       )}
     </div>

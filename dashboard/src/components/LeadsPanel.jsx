@@ -630,26 +630,30 @@ export default function LeadsPanel({ authUser }) {
                   <th className="px-4 py-3 font-semibold">Phone</th>
                   <th className="px-4 py-3 font-semibold">Name</th>
                   <th className="px-4 py-3 font-semibold">Status</th>
+                  <th className="px-4 py-3 font-semibold">Alert</th>
                   <th className="px-4 py-3 font-semibold">Last contacted</th>
                   <th className="px-4 py-3 font-semibold">Created</th>
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
-                  <tr><td colSpan={5} className="px-4 py-8 text-center text-slate-400">Loading…</td></tr>
+                  <tr><td colSpan={6} className="px-4 py-8 text-center text-slate-400">Loading…</td></tr>
                 ) : filteredLeads.length === 0 ? (
-                  <tr><td colSpan={5} className="px-4 py-8 text-center text-slate-400">No leads yet — import or add one</td></tr>
+                  <tr><td colSpan={6} className="px-4 py-8 text-center text-slate-400">No leads yet — import or add one</td></tr>
                 ) : (
                   filteredLeads.map((lead) => (
                     <tr
                       key={lead.id}
-                      className="border-t border-slate-100 hover:bg-indigo-50/30 cursor-pointer"
+                      className={`border-t border-slate-100 hover:bg-indigo-50/30 cursor-pointer ${lead.needsReply ? 'bg-amber-50/60' : ''}`}
                       onClick={() => setSelectedLead(lead)}
                     >
                       <td className="px-4 py-3 font-medium text-slate-800">
                         <span className="inline-flex items-center gap-1.5">
                           <Phone className="w-3.5 h-3.5 text-slate-400" />
                           {lead.phone}
+                          {lead.needsReply && (
+                            <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0" title="New message" />
+                          )}
                         </span>
                       </td>
                       <td className="px-4 py-3 text-slate-600">{lead.fullName || '—'}</td>
@@ -657,6 +661,16 @@ export default function LeadsPanel({ authUser }) {
                         <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium border ${statusMeta(lead.status).className}`}>
                           {statusMeta(lead.status).label}
                         </span>
+                      </td>
+                      <td className="px-4 py-3 text-xs max-w-[220px]">
+                        {lead.alertText ? (
+                          <span className="inline-flex items-start gap-1.5 text-amber-800 bg-amber-100 border border-amber-200 rounded-lg px-2 py-1 leading-snug">
+                            <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                            <span className="line-clamp-2">{lead.alertText}</span>
+                          </span>
+                        ) : (
+                          <span className="text-slate-300">—</span>
+                        )}
                       </td>
                       <td className="px-4 py-3 text-slate-500 text-xs">
                         {lead.lastContactedAt ? new Date(lead.lastContactedAt).toLocaleString() : '—'}

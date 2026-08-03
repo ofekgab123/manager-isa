@@ -52,6 +52,7 @@ function buildLeadRecord({ phone, fullName = '', status = 'new', notes = '', sou
     lastContactedAt: null,
     lastContactedBy: null,
     lastInboundAt: null,
+    lastInboundPreview: null,
     conversationWindowOpenUntil: null,
   };
 }
@@ -128,6 +129,25 @@ async function getMergedTemplates({ activeOnly = false } = {}) {
   if (activeOnly) merged = merged.filter((t) => t.isActive !== false);
   merged.sort((a, b) => String(a.name).localeCompare(String(b.name)));
   return merged;
+}
+
+export function leadNeedsReply(lead) {
+  if (!lead?.lastInboundAt) return false;
+  if (!lead.lastContactedAt) return true;
+  return new Date(lead.lastInboundAt) > new Date(lead.lastContactedAt);
+}
+
+function enrichLeadForList(lead) {
+  const needsReply = leadNeedsReply(lead);
+  return {
+    ...lead,
+    needsReply,
+    alertText: needsReply
+      ? lead.lastInboundPreview?.trim()
+        ? `New message: ${lead.lastInboundPreview.trim()}`
+        : 'New message — awaiting reply'
+      : null,
+  };
 }
 
 /** Register WhatsApp webhook routes — must be called BEFORE app.use('/api', requireAuth). */
@@ -218,6 +238,7 @@ export function registerWhatsAppWebhook(app) {
                 ...lead,
                 status: lead.status === 'new' ? 'contacted' : lead.status,
                 lastInboundAt: now,
+                lastInboundPreview: inboundBody.slice(0, 200),
                 conversationWindowOpenUntil: windowUntil,
                 updatedAt: now,
               });
@@ -236,7 +257,19 @@ export function registerWhatsAppWebhook(app) {
 
 /** Register authenticated leads + templates routes — call AFTER app.use('/api', requireAuth). */
 export function registerLeadsRoutes(app, { requireAdmin }) {
-  app.get('/api/leads', async (req, res) => {
+  function canAccessLeads(user) {
+    if (!user) return false;
+    if (user.isAdmin) return true;
+    const country = user.country == null ? '' : String(user.country).trim().toLowerCase();
+    return country === 'india';
+  }
+
+  function requireLeadsAccess(req, res, next) {
+    if (canAccessLeads(req.user)) return next();
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+
+  app.get('/api/leads', requireLeadsAccess, async (req, res) => {
     try {
       let leads = await readLeads();
       const { status, q } = req.query;
@@ -250,13 +283,21 @@ export function registerLeadsRoutes(app, { requireAdmin }) {
             (l.phoneKey || '').includes(israeliMobileKey(q)),
         );
       }
-      res.json(leads);
+      leads.sort((a, b) => {
+        const aAlert = leadNeedsReply(a) ? 1 : 0;
+        const bAlert = leadNeedsReply(b) ? 1 : 0;
+        if (aAlert !== bAlert) return bAlert - aAlert;
+        const aT = a.lastInboundAt || a.updatedAt || '';
+        const bT = b.lastInboundAt || b.updatedAt || '';
+        return bT.localeCompare(aT);
+      });
+      res.json(leads.map(enrichLeadForList));
     } catch (err) {
       res.status(500).json({ error: err.message });
     }
   });
 
-  app.post('/api/leads', async (req, res) => {
+  app.post('/api/leads', requireLeadsAccess, async (req, res) => {
     try {
       const leads = await readLeads();
       const lead = buildLeadRecord(req.body);
@@ -270,7 +311,7 @@ export function registerLeadsRoutes(app, { requireAdmin }) {
     }
   });
 
-  app.post('/api/leads/import', async (req, res) => {
+  app.post('/api/leads/import', requireLeadsAccess, async (req, res) => {
     try {
       const rows = Array.isArray(req.body?.leads) ? req.body.leads : req.body?.phones;
       if (!Array.isArray(rows) || rows.length === 0) {
@@ -306,7 +347,7 @@ export function registerLeadsRoutes(app, { requireAdmin }) {
     }
   });
 
-  app.patch('/api/leads/:id', async (req, res) => {
+  app.patch('/api/leads/:id', requireLeadsAccess, async (req, res) => {
     try {
       const leads = await readLeads();
       const idx = leads.findIndex((l) => l.id === req.params.id);
@@ -327,7 +368,7 @@ export function registerLeadsRoutes(app, { requireAdmin }) {
     }
   });
 
-  app.delete('/api/leads/:id', async (req, res) => {
+  app.delete('/api/leads/:id', requireLeadsAccess, async (req, res) => {
     try {
       await deleteLeadById(req.params.id);
       res.json({ ok: true });
@@ -336,7 +377,7 @@ export function registerLeadsRoutes(app, { requireAdmin }) {
     }
   });
 
-  app.get('/api/leads/:id/messages', async (req, res) => {
+  app.get('/api/leads/:id/messages', requireLeadsAccess, async (req, res) => {
     try {
       const leads = await readLeads();
       const lead = leads.find((l) => l.id === req.params.id);
@@ -352,7 +393,7 @@ export function registerLeadsRoutes(app, { requireAdmin }) {
     }
   });
 
-  app.post('/api/leads/:id/send-message', async (req, res) => {
+  app.post('/api/leads/:id/send-message', requireLeadsAccess, async (req, res) => {
     try {
       const { templateId } = req.body || {};
       if (!templateId) return res.status(400).json({ error: 'templateId is required' });
@@ -412,7 +453,7 @@ export function registerLeadsRoutes(app, { requireAdmin }) {
     }
   });
 
-  app.post('/api/leads/:id/send-text', async (req, res) => {
+  app.post('/api/leads/:id/send-text', requireLeadsAccess, async (req, res) => {
     try {
       const { text } = req.body || {};
       const body = String(text || '').trim();
@@ -471,7 +512,7 @@ export function registerLeadsRoutes(app, { requireAdmin }) {
     }
   });
 
-  app.get('/api/message-templates', async (req, res) => {
+  app.get('/api/message-templates', requireLeadsAccess, async (req, res) => {
     try {
       const activeOnly = req.query.active !== '0';
       res.json(await getMergedTemplates({ activeOnly }));
