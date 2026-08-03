@@ -1442,7 +1442,8 @@ export default function ContainersPanel() {
       ? Math.round((packagesCount / c.maxPackages) * 100)
       : 0;
     const isAtCapacityAlert = capacityPercent >= CAPACITY_ALERT_THRESHOLD;
-    return { ...c, packagesCount, currentWeight, capacityPercent, isAtCapacityAlert };
+    const isDefaultForCountry = isContainerDefaultForCountry(c, containers);
+    return { ...c, packagesCount, currentWeight, capacityPercent, isAtCapacityAlert, isDefaultForCountry };
   });
 
   const handleDeleteConfirm = async ({ newDefaultId, movePackagesTo }) => {
@@ -1512,7 +1513,7 @@ export default function ContainersPanel() {
   };
 
   const containersOver70 = containersWithStats.filter((c) => c.isAtCapacityAlert);
-  const defaultContainersInList = containers.filter((c) => c.isDefault);
+  const defaultContainersInList = containersWithStats.filter((c) => c.isDefaultForCountry);
 
   const exportAllContainers = () => {
     const escapeCsv = (val) => {
@@ -1746,7 +1747,15 @@ export default function ContainersPanel() {
                   >
                     <td>
                       <div className="flex flex-col items-center justify-center gap-0.5">
-                        <span className="table-id">{c.id}</span>
+                        <span className="table-id inline-flex items-center gap-1.5">
+                          {c.isDefaultForCountry && (
+                            <Star
+                              className="w-4 h-4 text-amber-600 shrink-0 fill-amber-400/30"
+                              title={`Default for ${c.country || 'this country'}`}
+                            />
+                          )}
+                          {c.id}
+                        </span>
                         {c.name && (
                           <span className="text-xs text-slate-500 font-medium">{c.name}</span>
                         )}
