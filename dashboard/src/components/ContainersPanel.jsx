@@ -1148,6 +1148,7 @@ function ContainerFormModal({ container, onSave, onClose, containers = [], missi
               )}
             </div>
             {form.country ? (
+              <>
               <label className="flex items-start gap-3 cursor-pointer pt-1 border-t border-slate-200/80">
                 <input
                   type="checkbox"
@@ -1195,6 +1196,7 @@ function ContainerFormModal({ container, onSave, onClose, containers = [], missi
                   radioName="wantsMovePackagesEdit"
                 />
               )}
+              </>
             ) : (
               <p className="text-xs text-slate-500 border-t border-slate-200/80 pt-2 text-left">
                 Select a country to set this container as the default.
