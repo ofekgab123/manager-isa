@@ -14,6 +14,8 @@ import {
   lionWheelDestinationFromMission,
   extractLionWheelWebhookFields,
   LIONWHEEL_TASK_STATUS_COMPLETED,
+  LIONWHEEL_TERMINAL_TASK_STATUSES,
+  refreshMissionLionWheelTaskStatus,
 } from './lionwheel.js';
 import { notifyEmptyBoxMissionWebhook } from './missionWebhook.js';
 import { registerWhatsAppWebhook, registerLeadsRoutes } from './leadsApi.js';
@@ -772,6 +774,73 @@ app.post('/api/lionwheel/create', requireAuth, async (req, res) => {
       task_id: lw.taskId,
       public_id: lw.publicId,
       tracking_link: lw.trackingLink,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── POST /api/lionwheel/sync-status — refresh LW task status from API (auth required) ──
+
+app.post('/api/lionwheel/sync-status', requireAuth, async (req, res) => {
+  try {
+    const includeTerminal = req.body?.includeTerminal === true;
+    const concurrency = Math.min(Math.max(parseInt(req.body?.concurrency, 10) || 5, 1), 10);
+    const missions = await readMissions();
+    const candidates = missions.filter((m) => {
+      if (!m.lionwheel?.taskId) return false;
+      if (includeTerminal) return true;
+      const s = Number(m.lionwheel?.taskStatus);
+      return !Number.isFinite(s) || !LIONWHEEL_TERMINAL_TASK_STATUSES.has(s);
+    });
+
+    const updates = [];
+    const failures = [];
+    let unchanged = 0;
+    let cursor = 0;
+
+    async function worker() {
+      while (cursor < candidates.length) {
+        const mission = candidates[cursor++];
+        const outcome = await refreshMissionLionWheelTaskStatus(mission);
+        if (!outcome.ok) {
+          failures.push({
+            missionId: mission.id,
+            taskId: mission.lionwheel?.taskId,
+            reason: outcome.reason,
+            error: outcome.error,
+          });
+          continue;
+        }
+        if (!outcome.changed) {
+          unchanged += 1;
+          continue;
+        }
+        await creditAffiliateIfPickupJustCompletedLionWheel(mission, outcome.mission);
+        await updateMissionsData(outcome.mission.id, outcome.mission);
+        updates.push({
+          missionId: outcome.mission.id,
+          taskId: outcome.mission.lionwheel?.taskId,
+          from: outcome.prevStatus,
+          fromLabel: lionWheelTaskStatusLabel(outcome.prevStatus),
+          to: outcome.taskStatus,
+          toLabel: outcome.taskStatusLabel,
+        });
+      }
+    }
+
+    await Promise.all(
+      Array.from({ length: Math.min(concurrency, Math.max(candidates.length, 1)) }, () => worker()),
+    );
+
+    res.json({
+      ok: true,
+      checked: candidates.length,
+      updated: updates.length,
+      unchanged,
+      failed: failures.length,
+      updates,
+      failures: failures.slice(0, 30),
     });
   } catch (err) {
     res.status(500).json({ error: err.message });

@@ -342,6 +342,9 @@ export function lionWheelApiStatusToNum(raw) {
 /** LionWheel `tasks/show` numeric status when the task is completed (README / API). */
 export const LIONWHEEL_TASK_STATUS_COMPLETED = 3;
 
+/** Unlikely to change — skipped by bulk sync unless `includeTerminal`. */
+export const LIONWHEEL_TERMINAL_TASK_STATUSES = new Set([3, 4, 5, 9]);
+
 /** LionWheel task status → label (tasks/show response per README). */
 export function lionWheelTaskStatusLabel(status) {
   const labels = {
@@ -680,4 +683,45 @@ export async function createLionWheelTaskForPickupMission(mission) {
   }
 
   return sendLionWheelCreatePayload(payload, destination);
+}
+
+/**
+ * Fetch current LionWheel task status and merge into mission.lionwheel when changed.
+ * @returns {Promise<{ ok: true, changed: boolean, mission: object, prevStatus?: number, taskStatus: number, taskStatusLabel: string } | { ok: false, reason: string, error?: string }>}
+ */
+export async function refreshMissionLionWheelTaskStatus(mission) {
+  const taskId = mission?.lionwheel?.taskId;
+  if (taskId == null) return { ok: false, reason: 'no_task_id' };
+
+  const destination = lionWheelDestinationFromMission(mission);
+  if (!destination) return { ok: false, reason: 'no_destination' };
+
+  const prevStatus = mission.lionwheel?.taskStatus;
+  const result = await fetchLionWheelTaskShow(taskId, destination, { originalOrderId: mission.id });
+  if (!result.ok) {
+    return {
+      ok: false,
+      reason: 'fetch_failed',
+      error: result.error || result.reason || 'LionWheel fetch failed',
+    };
+  }
+
+  const taskStatus = result.taskStatus;
+  const taskStatusLabel = lionWheelTaskStatusLabel(taskStatus);
+  const changed = prevStatus !== taskStatus;
+  const missionNext = changed
+    ? {
+        ...mission,
+        lionwheel: {
+          ...mission.lionwheel,
+          taskStatus,
+          taskStatusLabel,
+          taskStatusFetchedAt: new Date().toISOString(),
+          taskStatusFetchError: undefined,
+          lastStatusSyncSource: 'api-sync',
+        },
+      }
+    : mission;
+
+  return { ok: true, changed, mission: missionNext, prevStatus, taskStatus, taskStatusLabel };
 }

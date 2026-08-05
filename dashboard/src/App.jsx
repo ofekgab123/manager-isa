@@ -219,9 +219,45 @@ function Dashboard({ authUser, onLogout }) {
   const { stats, loading: statsLoading, refetch: refetchStats } = useMissionStats();
 
   const [listRefreshing, setListRefreshing] = useState(false);
+  const [lwSyncing, setLwSyncing] = useState(false);
   const handleHeaderRefresh = () => {
     setListRefreshing(true);
     return Promise.all([refetch(), refetchStats()]).finally(() => setListRefreshing(false));
+  };
+  const handleLwSync = async () => {
+    if (lwSyncing) return;
+    setLwSyncing(true);
+    try {
+      const res = await fetch(`${API_BASE}/lionwheel/sync-status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        window.alert(data.error || 'LionWheel sync failed');
+        return;
+      }
+      await Promise.all([refetch(), refetchStats()]);
+      const lines = [
+        `Checked: ${data.checked ?? 0}`,
+        `Updated: ${data.updated ?? 0}`,
+        `Unchanged: ${data.unchanged ?? 0}`,
+        `Failed: ${data.failed ?? 0}`,
+      ];
+      if (Array.isArray(data.updates) && data.updates.length > 0) {
+        lines.push('', 'Changes:');
+        for (const u of data.updates.slice(0, 8)) {
+          lines.push(`• ${u.missionId}: ${u.fromLabel ?? u.from ?? '—'} → ${u.toLabel ?? u.to}`);
+        }
+        if (data.updates.length > 8) lines.push(`… and ${data.updates.length - 8} more`);
+      }
+      window.alert(lines.join('\n'));
+    } catch (e) {
+      window.alert(e.message || 'LionWheel sync failed');
+    } finally {
+      setLwSyncing(false);
+    }
   };
 
   const [containers, setContainers] = useState([]);
@@ -398,7 +434,7 @@ function Dashboard({ authUser, onLogout }) {
                 <button
                   type="button"
                   onClick={() => { handleHeaderRefresh(); }}
-                  disabled={loading || listRefreshing}
+                  disabled={loading || listRefreshing || lwSyncing}
                   className="btn-secondary !bg-white/10 !border-white/20 !text-white hover:!bg-white/20 disabled:opacity-50"
                 >
                   <RefreshCw className={`w-4 h-4 ${listRefreshing ? 'animate-spin' : ''}`} />
@@ -406,6 +442,16 @@ function Dashboard({ authUser, onLogout }) {
                 </button>
               </>
             )}
+            <button
+              type="button"
+              onClick={handleLwSync}
+              disabled={lwSyncing || listRefreshing}
+              className="btn-secondary !bg-white/10 !border-white/20 !text-white hover:!bg-white/20 disabled:opacity-50"
+              title="Fetch latest LionWheel status from API"
+            >
+              <RefreshCw className={`w-4 h-4 ${lwSyncing ? 'animate-spin' : ''}`} />
+              Sync LionWheel
+            </button>
             <div className="flex items-center gap-2.5 pl-3 border-l border-white/20 ml-1">
               <span className="flex items-center gap-1.5 text-sm text-indigo-200">
                 {authUser.isAdmin && <ShieldCheck className="w-4 h-4 text-amber-400" />}
