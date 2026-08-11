@@ -6,7 +6,6 @@ import {
   XCircle,
   ChevronRight,
   X,
-  Info,
 } from 'lucide-react';
 import { API_BASE } from '../config';
 import { authCountryToShippingDestination } from '../authCountryUtils';
@@ -149,32 +148,18 @@ export default function IntegrationsPanel({ authUser }) {
   return (
     <div className="space-y-6">
       {authUser?.isAdmin && (
-        <div className="card border-l-4 border-indigo-500">
-          <div className="px-6 py-4 border-b border-slate-100">
-            <h3 className="section-title text-base">
-              <Info className="w-4 h-4 text-indigo-500" />
-              External API (LionWheel create)
-            </h3>
-          </div>
-          <div className="px-6 py-4 space-y-3 text-sm text-slate-600">
-            <p>
-              Share this endpoint with external systems. Authentication uses{' '}
-              <code className="text-xs bg-slate-100 px-1.5 py-0.5 rounded">LIONWHEEL_INTEGRATION_API_KEY</code>{' '}
-              as a Bearer token (set in server environment — not shown here).
-            </p>
-            <div>
-              <div className="text-xs text-slate-500 uppercase tracking-wide mb-1">Endpoint</div>
-              <code className="block text-xs bg-slate-50 border border-slate-100 rounded-lg px-3 py-2 break-all text-slate-800">
-                POST {apiUrl}
-              </code>
-            </div>
-            <p className="text-xs text-slate-500">
-              Required body fields: <code>destination</code> (india | thailand),{' '}
-              <code>orderId</code>, <code>city</code>, <code>name</code>, <code>phone</code>,{' '}
-              <code>number</code> (house number). Optional: <code>type</code> (pickup | empty),{' '}
-              street, boxes, emptyBoxes.
-            </p>
-          </div>
+        <div className="card border-l-4 border-indigo-500 px-4 py-2">
+          <p className="text-[11px] leading-snug text-slate-600">
+            <span className="font-semibold text-slate-700">External API</span>
+            {' · '}
+            <code className="bg-slate-50 px-1 rounded text-slate-800">POST {apiUrl}</code>
+            {' · Bearer '}
+            <code className="bg-slate-100 px-1 rounded">LIONWHEEL_INTEGRATION_API_KEY</code>
+            {' · Required: '}
+            <code>destination</code>, <code>orderId</code>, <code>city</code>, <code>name</code>, <code>phone</code>, <code>number</code>
+            {' · Optional: '}
+            <code>type</code>, <code>street</code>, <code>boxes</code>, <code>emptyBoxes</code>
+          </p>
         </div>
       )}
 
