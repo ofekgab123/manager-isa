@@ -156,9 +156,9 @@ export default function IntegrationsPanel({ authUser }) {
             {' · Bearer '}
             <code className="bg-slate-100 px-1 rounded">LIONWHEEL_INTEGRATION_API_KEY</code>
             {' · Required: '}
-            <code>destination</code>, <code>orderId</code>, <code>city</code>, <code>name</code>, <code>phone</code>, <code>number</code>
+            <code>destination</code>, <code>city</code>, <code>name</code>, <code>phone</code>, <code>number</code>
             {' · Optional: '}
-            <code>type</code>, <code>street</code>, <code>boxes</code>, <code>emptyBoxes</code>
+            <code>orderId</code>, <code>type</code>, <code>street</code>, <code>boxes</code>, <code>emptyBoxes</code>
           </p>
         </div>
       )}

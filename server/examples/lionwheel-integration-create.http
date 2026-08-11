@@ -14,7 +14,6 @@ Content-Type: application/json
 
 {
   "destination": "india",
-  "orderId": "EXT-12345",
   "city": "Tel Aviv",
   "number": "12",
   "name": "John Doe",

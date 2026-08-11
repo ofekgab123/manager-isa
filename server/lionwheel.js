@@ -184,7 +184,7 @@ export function buildLionWheelPayloadFromRequest(body) {
 
   const payload = {
     pickup_at: formatPickupAtDdMmYyyy(),
-    original_order_id: String(orderId),
+    original_order_id: String(orderId ?? '').trim() || `INT-${Date.now()}`,
     destination_city: String(city || '').trim(),
     destination_street: lwDestinationStreet(street),
     destination_number: lwDestinationNumber(houseNumber),

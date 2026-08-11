@@ -406,7 +406,6 @@ function sanitizeLwIntegrationRequestBody(body) {
 function validateLionWheelIntegrationCreateBody(body) {
   const { orderId, type, boxes, emptyBoxes, city, street, number, name, phone, destination } = body || {};
   const missing = [];
-  if (!orderId) missing.push('orderId');
   if (type != null && type !== '' && !['pickup', 'empty'].includes(type)) {
     missing.push('type (pickup|empty) if provided');
   }
@@ -417,10 +416,11 @@ function validateLionWheelIntegrationCreateBody(body) {
   if (!name) missing.push('name');
   if (!phone) missing.push('phone');
   if (String(number ?? '').trim() === '') missing.push('number');
+  const trimmedOrderId = orderId != null ? String(orderId).trim() : '';
   return {
     missing,
     normalized: {
-      orderId,
+      ...(trimmedOrderId ? { orderId: trimmedOrderId } : {}),
       type: type || undefined,
       boxes: boxes || 0,
       emptyBoxes: emptyBoxes || 0,
