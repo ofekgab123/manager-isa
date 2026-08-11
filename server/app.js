@@ -28,6 +28,7 @@ import {
   getMakeWebhookDebugCaptures,
   clearMakeWebhookDebugCaptures,
 } from './makeWebhookInboundLog.js';
+import { insertLwIntegrationLog, readLwIntegrationLogs } from './lwIntegrationLog.js';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'isa-manager-jwt-secret-key';
 /** POST /api/webhooks/make-lionwheel-status — Make.com forwards LionWheel payload; must match env secret. */
@@ -36,6 +37,8 @@ const MAKE_LIONWHEEL_WEBHOOK_SECRET = (process.env.MAKE_LIONWHEEL_WEBHOOK_SECRET
 const MAKE_WEBHOOK_INSPECT_SECRET = (process.env.MAKE_WEBHOOK_INSPECT_SECRET || MAKE_LIONWHEEL_WEBHOOK_SECRET).trim();
 /** Shared with isa-express-web (VITE_MANAGER_SERVICE_KEY). Bearer value must match. Legacy: VITE_CUSTOMER_SITE_API_KEY in server .env. */
 const SERVICE_KEY = (process.env.MANAGER_SERVICE_KEY || process.env.VITE_CUSTOMER_SITE_API_KEY || '').trim();
+/** External systems: POST /api/integrations/lionwheel/create — Bearer must match. */
+const LIONWHEEL_INTEGRATION_API_KEY = (process.env.LIONWHEEL_INTEGRATION_API_KEY || '').trim();
 
 /** Webhook auth: Authorization Bearer, or plain secret in X-Manager-Isa-Webhook-Secret / X-Webhook-Secret (helps Make / proxies). */
 function lionWheelWebhookProvidedSecret(req) {
@@ -355,6 +358,93 @@ function requireAuth(req, res, next) {
 function requireAdmin(req, res, next) {
   if (!req.user?.isAdmin) return res.status(403).json({ error: 'Forbidden' });
   next();
+}
+
+function requireIntegrationApiKey(req, res, next) {
+  if (!LIONWHEEL_INTEGRATION_API_KEY) {
+    return res.status(503).json({ error: 'LIONWHEEL_INTEGRATION_API_KEY not configured' });
+  }
+  const header = req.headers['authorization'];
+  if (!header || !header.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  const token = header.slice(7).trim();
+  if (token !== LIONWHEEL_INTEGRATION_API_KEY) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  next();
+}
+
+function sanitizeLwIntegrationRequestBody(body) {
+  if (!body || typeof body !== 'object') return {};
+  const {
+    orderId,
+    type,
+    destination,
+    city,
+    street,
+    number,
+    name,
+    phone,
+    boxes,
+    emptyBoxes,
+  } = body;
+  return {
+    orderId,
+    type,
+    destination,
+    city,
+    street,
+    number,
+    name,
+    phone,
+    boxes,
+    emptyBoxes,
+  };
+}
+
+function validateLionWheelIntegrationCreateBody(body) {
+  const { orderId, type, boxes, emptyBoxes, city, street, number, name, phone, destination } = body || {};
+  const missing = [];
+  if (!orderId) missing.push('orderId');
+  if (type != null && type !== '' && !['pickup', 'empty'].includes(type)) {
+    missing.push('type (pickup|empty) if provided');
+  }
+  if (!destination || !['thailand', 'india'].includes(String(destination).toLowerCase())) {
+    missing.push('destination (thailand|india)');
+  }
+  if (!city) missing.push('city');
+  if (!name) missing.push('name');
+  if (!phone) missing.push('phone');
+  if (String(number ?? '').trim() === '') missing.push('number');
+  return {
+    missing,
+    normalized: {
+      orderId,
+      type: type || undefined,
+      boxes: boxes || 0,
+      emptyBoxes: emptyBoxes || 0,
+      city,
+      street,
+      number: String(number ?? '').trim(),
+      name,
+      phone,
+      destination: String(destination || '').trim().toLowerCase(),
+    },
+  };
+}
+
+async function persistLwIntegrationLog(req, request, outcome) {
+  try {
+    await insertLwIntegrationLog({
+      destination: request.destination || null,
+      request: sanitizeLwIntegrationRequestBody(request),
+      outcome,
+      sourceIp: req.ip || req.socket?.remoteAddress || null,
+    });
+  } catch (e) {
+    console.warn('[lw-integration-log]', e.message || e);
+  }
 }
 
 // ─── Auth routes (public) ──────────────────────────────────────────────────────
@@ -1161,9 +1251,82 @@ app.post('/api/webhooks/make-inspect', async (req, res) => {
 
 registerWhatsAppWebhook(app);
 
+// ─── POST /api/integrations/lionwheel/create — external LW task creation (integration API key) ──
+
+app.post('/api/integrations/lionwheel/create', requireIntegrationApiKey, async (req, res) => {
+  const body = req.body || {};
+  const { missing, normalized } = validateLionWheelIntegrationCreateBody(body);
+
+  if (missing.length) {
+    const outcome = { success: false, error: `Missing required fields: ${missing.join(', ')}`, httpStatus: 400 };
+    await persistLwIntegrationLog(req, { ...sanitizeLwIntegrationRequestBody(body), destination: normalized.destination || null }, outcome);
+    return res.status(400).json({ error: outcome.error });
+  }
+
+  try {
+    const payload = buildLionWheelPayloadFromRequest(normalized);
+    const lw = await sendLionWheelCreatePayload(payload, normalized.destination);
+
+    if (lw.skipped) {
+      const outcome = {
+        success: false,
+        error: 'LionWheel credentials not configured',
+        detail: lw.reason,
+        httpStatus: 503,
+      };
+      await persistLwIntegrationLog(req, normalized, outcome);
+      return res.status(503).json({ error: outcome.error, detail: lw.reason });
+    }
+
+    if (!lw.ok) {
+      const outcome = { success: false, error: lw.error, httpStatus: lw.status || 502 };
+      await persistLwIntegrationLog(req, normalized, outcome);
+      return res.status(502).json({ error: lw.error, lionwheel_status: lw.status });
+    }
+
+    const outcome = {
+      success: true,
+      taskId: lw.taskId,
+      publicId: lw.publicId,
+      trackingLink: lw.trackingLink,
+      httpStatus: 200,
+    };
+    await persistLwIntegrationLog(req, normalized, outcome);
+
+    return res.json({
+      success: true,
+      task_id: lw.taskId,
+      public_id: lw.publicId,
+      tracking_link: lw.trackingLink,
+    });
+  } catch (err) {
+    const outcome = { success: false, error: err.message, httpStatus: 500 };
+    await persistLwIntegrationLog(req, normalized, outcome);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── Apply auth to all other /api routes ──────────────────────────────────────
 
 app.use('/api', requireAuth);
+
+app.get('/api/integrations/lionwheel/logs', async (req, res) => {
+  try {
+    const limit = req.query.limit;
+    const offset = req.query.offset;
+    let destination = null;
+    if (req.user?.country && !req.user.isAdmin) {
+      destination = userAuthCountryToShippingDestId(req.user.country);
+      if (!destination) {
+        return res.json({ entries: [], total: 0 });
+      }
+    }
+    const result = await readLwIntegrationLogs({ destination, limit, offset });
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 app.get('/api/debug/make-webhook-inbound-log', requireAdmin, (req, res) => {
   try {

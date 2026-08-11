@@ -1,0 +1,52 @@
+# LionWheel integration — external task create
+# Share POST URL + LIONWHEEL_INTEGRATION_API_KEY with the integrating system.
+#
+# Local:  @baseUrl = http://localhost:3001
+# Prod:   @baseUrl = https://manager-isa.vercel.app
+
+@baseUrl = http://localhost:3001
+@LIONWHEEL_INTEGRATION_API_KEY = your-integration-api-key-here
+
+### Create task — India
+POST {{baseUrl}}/api/integrations/lionwheel/create
+Authorization: Bearer {{LIONWHEEL_INTEGRATION_API_KEY}}
+Content-Type: application/json
+
+{
+  "destination": "india",
+  "orderId": "EXT-12345",
+  "city": "Tel Aviv",
+  "number": "12",
+  "name": "John Doe",
+  "phone": "0501234567",
+  "boxes": 2
+}
+
+### Create task — Thailand (pickup)
+POST {{baseUrl}}/api/integrations/lionwheel/create
+Authorization: Bearer {{LIONWHEEL_INTEGRATION_API_KEY}}
+Content-Type: application/json
+
+{
+  "destination": "thailand",
+  "orderId": "EXT-67890",
+  "type": "pickup",
+  "city": "Ramat Gan",
+  "number": "5",
+  "name": "Jane Smith",
+  "phone": "0527654321",
+  "boxes": 1,
+  "emptyBoxes": 0
+}
+
+### Expected success response
+# {
+#   "success": true,
+#   "task_id": 12345678,
+#   "public_id": "...",
+#   "tracking_link": "..."
+# }
+
+### View logs (dashboard JWT — not for external integrator)
+# GET {{baseUrl}}/api/integrations/lionwheel/logs?limit=50
+# Authorization: Bearer {{dashboardJwt}}

@@ -57,6 +57,10 @@ export async function initDb() {
       is_admin BOOLEAN NOT NULL DEFAULT false,
       created_at TIMESTAMPTZ DEFAULT NOW()
     );
+    CREATE TABLE IF NOT EXISTS lw_integration_logs (
+      id TEXT PRIMARY KEY,
+      data JSONB NOT NULL
+    );
   `);
 
   const { rows: adminRows } = await pool.query(

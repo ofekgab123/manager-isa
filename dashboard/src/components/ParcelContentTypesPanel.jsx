@@ -144,7 +144,7 @@ function ParcelContentTypeFormModal({ type, onSave, onClose }) {
   );
 }
 
-export default function ParcelContentTypesPanel() {
+export default function ParcelContentTypesPanel({ embedded = false }) {
   const [types, setTypes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -222,7 +222,7 @@ export default function ParcelContentTypesPanel() {
   };
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className={embedded ? 'space-y-6' : 'space-y-6 animate-fade-in'}>
       <div className="stat-card border-l-4 border-indigo-500">
         <div className="text-3xl font-extrabold text-slate-800">{types.length}</div>
         <div className="text-sm text-slate-500 mt-1">Parcel content types</div>

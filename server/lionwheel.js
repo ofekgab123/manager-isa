@@ -148,7 +148,9 @@ function lineItemsForPickupMission(mission) {
  */
 function buildNotesFromRequest({ type, boxes = 0, emptyBoxes = 0, notes = '' }) {
   let base;
-  if (type === 'empty') {
+  if (!type) {
+    base = boxes > 0 ? `${boxes} ארגזים` : 'משלוח';
+  } else if (type === 'empty') {
     base = `משלוח ${boxes} ארגזים ריקים`;
   } else if (emptyBoxes > 0) {
     base = `איסוף ${boxes} ארגזים + ${emptyBoxes} ארגזים ריקים`;

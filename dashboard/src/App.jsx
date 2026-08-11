@@ -36,7 +36,7 @@ import CustomersPanel from './components/CustomersPanel';
 import UsersPanel from './components/UsersPanel';
 import StatisticsPanel from './components/StatisticsPanel';
 import ContainersPanel from './components/ContainersPanel';
-import ParcelContentTypesPanel from './components/ParcelContentTypesPanel';
+import SettingsPanel from './components/SettingsPanel';
 import LeadsPanel from './components/LeadsPanel';
 import TableHorizontalScroll from './components/TableHorizontalScroll';
 import LoginPage from './components/LoginPage';
@@ -572,7 +572,7 @@ function Dashboard({ authUser, onLogout }) {
             loading={loading || listRefreshing}
           />
         )}
-        {activeTab === 'settings' && <ParcelContentTypesPanel />}
+        {activeTab === 'settings' && <SettingsPanel authUser={authUser} />}
 
         {activeTab === 'missions' && (
           <>
