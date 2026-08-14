@@ -59,10 +59,13 @@ function buildLeadRecord({ phone, fullName = '', status = 'new', notes = '', sou
 
 function templateVariablesForLead(template, lead) {
   const vars = Array.isArray(template.variables) ? template.variables : [];
-  return vars.map((key) => {
+  const defaults = Array.isArray(template.variableDefaults) ? template.variableDefaults : [];
+  return vars.map((key, i) => {
     if (key === 'fullName') return lead.fullName?.trim() || 'there';
-    if (key === 'phone') return lead.phone || '';
-    return lead[key] != null ? String(lead[key]) : '';
+    if (key === 'phone') return lead.phone || defaults[i] || '';
+    const fromLead = lead[key] != null ? String(lead[key]).trim() : '';
+    if (fromLead) return fromLead;
+    return defaults[i] || '';
   });
 }
 
@@ -74,6 +77,62 @@ function previewBody(template, lead) {
     body = body.replace(new RegExp(`\\{\\{${template.variables?.[i] || i}\\}\\}`, 'g'), v);
   });
   return body;
+}
+
+async function sendTemplateToLead(lead, template, sentBy) {
+  const variables = templateVariablesForLead(template, lead);
+  const bodyPreview = previewBody(template, lead);
+  const missingIdx = variables.findIndex((v) => !String(v ?? '').trim());
+  if (missingIdx >= 0) {
+    const varName = template.variables?.[missingIdx] || `#${missingIdx + 1}`;
+    throw new Error(
+      `Template parameter "${varName}" is empty. Fill the lead field or set a default in Leads → Templates.`,
+    );
+  }
+
+  const result = await sendTemplateMessage({
+    to: lead.phone,
+    templateName: template.waTemplateName,
+    language: template.language || 'en',
+    variables,
+  });
+
+  const now = new Date().toISOString();
+  const msgId = `MSG-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+  const message = {
+    id: msgId,
+    leadId: lead.id,
+    phone: lead.phone,
+    direction: 'outbound',
+    messageType: 'template',
+    templateId: template.id,
+    waTemplateName: template.waTemplateName,
+    body: bodyPreview,
+    waMessageId: result.waMessageId,
+    status: 'sent',
+    sentBy,
+    sentAt: now,
+    deliveredAt: null,
+    readAt: null,
+    repliedAt: null,
+    inboundBody: null,
+  };
+  await insertMessageData(msgId, message);
+
+  const updatedLead = {
+    ...lead,
+    status: lead.status === 'new' ? 'contacted' : lead.status,
+    lastContactedAt: now,
+    lastContactedBy: sentBy,
+    updatedAt: now,
+  };
+  await updateLeadData(lead.id, updatedLead);
+
+  return { message, lead: updatedLead };
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function templateKey(t) {
@@ -88,10 +147,12 @@ function metaTemplateToRecord(meta) {
   if (bodyComp?.text) parts.push(bodyComp.text);
   const bodyPreview = parts.join('\n').trim();
   const varCount = (bodyComp?.text?.match(/\{\{\d+\}\}/g) || []).length;
+  const exampleValues = bodyComp?.example?.body_text?.[0] || [];
   const variables =
     varCount > 0
       ? Array.from({ length: varCount }, (_, i) => (i === 0 ? 'fullName' : `var${i + 1}`))
       : [];
+  const variableDefaults = Array.from({ length: varCount }, (_, i) => exampleValues[i] || '');
   const language = meta.language || 'en';
   return {
     id: `WA-${meta.name}-${language}`,
@@ -99,6 +160,7 @@ function metaTemplateToRecord(meta) {
     waTemplateName: meta.name,
     language,
     variables,
+    variableDefaults,
     bodyPreview,
     isActive: true,
     source: 'meta',
@@ -406,48 +468,67 @@ export function registerLeadsRoutes(app, { requireAdmin }) {
       const template = templates.find((t) => t.id === templateId);
       if (!template) return res.status(404).json({ error: 'Template not found or inactive' });
 
-      const variables = templateVariablesForLead(template, lead);
-      const bodyPreview = previewBody(template, lead);
+      const sentBy = req.user?.id || req.user?.username || null;
+      const result = await sendTemplateToLead(lead, template, sentBy);
+      res.json(result);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
 
-      const result = await sendTemplateMessage({
-        to: lead.phone,
-        templateName: template.waTemplateName,
-        language: template.language || 'en',
-        variables,
-      });
+  app.post('/api/leads/bulk-send-message', requireLeadsAccess, async (req, res) => {
+    try {
+      const { templateId, leadIds } = req.body || {};
+      if (!templateId) return res.status(400).json({ error: 'templateId is required' });
+      if (!Array.isArray(leadIds) || leadIds.length === 0) {
+        return res.status(400).json({ error: 'leadIds array is required' });
+      }
+      if (leadIds.length > 100) {
+        return res.status(400).json({ error: 'Maximum 100 leads per bulk send' });
+      }
 
-      const now = new Date().toISOString();
-      const msgId = `MSG-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-      const message = {
-        id: msgId,
-        leadId: lead.id,
-        phone: lead.phone,
-        direction: 'outbound',
-        messageType: 'template',
-        templateId: template.id,
-        waTemplateName: template.waTemplateName,
-        body: bodyPreview,
-        waMessageId: result.waMessageId,
-        status: 'sent',
-        sentBy: req.user?.id || req.user?.username || null,
-        sentAt: now,
-        deliveredAt: null,
-        readAt: null,
-        repliedAt: null,
-        inboundBody: null,
-      };
-      await insertMessageData(msgId, message);
+      const leads = await readLeads();
+      const templates = await getMergedTemplates({ activeOnly: true });
+      const template = templates.find((t) => t.id === templateId);
+      if (!template) return res.status(404).json({ error: 'Template not found or inactive' });
 
-      const updatedLead = {
-        ...lead,
-        status: lead.status === 'new' ? 'contacted' : lead.status,
-        lastContactedAt: now,
-        lastContactedBy: req.user?.id || req.user?.username || null,
-        updatedAt: now,
-      };
-      await updateLeadData(lead.id, updatedLead);
+      const sentBy = req.user?.id || req.user?.username || null;
+      const results = [];
+      let sent = 0;
+      let failed = 0;
 
-      res.json({ message, lead: updatedLead });
+      for (let i = 0; i < leadIds.length; i++) {
+        const leadId = leadIds[i];
+        const lead = leads.find((l) => l.id === leadId);
+        if (!lead) {
+          results.push({ leadId, ok: false, error: 'Lead not found' });
+          failed++;
+          continue;
+        }
+        try {
+          const out = await sendTemplateToLead(lead, template, sentBy);
+          results.push({
+            leadId,
+            ok: true,
+            phone: lead.phone,
+            fullName: lead.fullName || null,
+            lead: out.lead,
+          });
+          sent++;
+        } catch (err) {
+          results.push({
+            leadId,
+            ok: false,
+            phone: lead.phone,
+            fullName: lead.fullName || null,
+            error: err.message,
+          });
+          failed++;
+        }
+        if (i < leadIds.length - 1) await sleep(350);
+      }
+
+      res.json({ sent, failed, total: leadIds.length, results });
     } catch (err) {
       res.status(500).json({ error: err.message });
     }

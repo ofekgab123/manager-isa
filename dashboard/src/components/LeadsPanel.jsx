@@ -29,6 +29,139 @@ function statusMeta(status) {
   return STATUS_OPTIONS.find((s) => s.value === status) || STATUS_OPTIONS[0];
 }
 
+function BulkSendWhatsAppModal({ leads, templates, onClose, onSent }) {
+  const [templateId, setTemplateId] = useState('');
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState('');
+  const [progress, setProgress] = useState(null);
+
+  const activeTemplates = templates.filter((t) => t.isActive !== false);
+  const selectedTemplate = activeTemplates.find((t) => t.id === templateId);
+  const previewLead = leads[0];
+
+  const preview = (() => {
+    if (!selectedTemplate || !previewLead) return '';
+    let body = selectedTemplate.bodyPreview || '';
+    const vars = selectedTemplate.variables || ['fullName'];
+    const defaults = selectedTemplate.variableDefaults || [];
+    vars.forEach((key, i) => {
+      let val;
+      if (key === 'fullName') val = previewLead.fullName?.trim() || 'there';
+      else if (key === 'phone') val = previewLead.phone || defaults[i] || '';
+      else val = previewLead[key] || defaults[i] || '';
+      body = body.replace(new RegExp(`\\{\\{${i + 1}\\}\\}`, 'g'), val);
+      body = body.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), val);
+    });
+    return body;
+  })();
+
+  const handleSend = async () => {
+    if (!templateId) {
+      setError('Select a template');
+      return;
+    }
+    setSending(true);
+    setError('');
+    setProgress({ done: 0, total: leads.length });
+    try {
+      const res = await fetch(`${API_BASE}/leads/bulk-send-message`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          templateId,
+          leadIds: leads.map((l) => l.id),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Bulk send failed');
+      setProgress({ done: data.total, total: data.total });
+      onSent(data);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <div className="modal-overlay z-[60]" onClick={onClose}>
+      <div className="modal-content max-w-md animate-slide-up" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2 className="font-bold text-slate-800 text-lg">Bulk send template</h2>
+          <button onClick={onClose} className="action-btn hover:bg-slate-100 text-slate-400">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+        <div className="modal-body space-y-4">
+          <p className="text-sm text-slate-600">
+            Send to <strong>{leads.length}</strong> lead{leads.length === 1 ? '' : 's'}:
+          </p>
+          <ul className="max-h-28 overflow-y-auto rounded-xl bg-slate-50 border border-slate-200 divide-y divide-slate-100 text-sm">
+            {leads.map((l) => (
+              <li key={l.id} className="px-3 py-2 text-slate-700">
+                {l.phone}{l.fullName ? ` · ${l.fullName}` : ''}
+              </li>
+            ))}
+          </ul>
+          {activeTemplates.length === 0 ? (
+            <p className="text-amber-700 bg-amber-50 rounded-xl px-4 py-3 text-sm border border-amber-100">
+              No approved WhatsApp templates found.
+            </p>
+          ) : (
+            <>
+              <div>
+                <label className="label">Template *</label>
+                <select
+                  className="input-field"
+                  value={templateId}
+                  onChange={(e) => setTemplateId(e.target.value)}
+                  disabled={sending}
+                >
+                  <option value="">Select template…</option>
+                  {activeTemplates.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name}{t.language ? ` (${t.language})` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {preview && (
+                <div>
+                  <label className="label">Preview (first lead)</label>
+                  <div className="rounded-xl bg-slate-50 border border-slate-200 px-4 py-3 text-sm text-slate-700 whitespace-pre-wrap">{preview}</div>
+                </div>
+              )}
+            </>
+          )}
+          {sending && progress && (
+            <p className="text-sm text-indigo-600 font-medium">
+              Sending… please wait ({progress.total} recipients)
+            </p>
+          )}
+          {error && (
+            <div className="flex items-center gap-2 text-red-600 bg-red-50 rounded-xl px-4 py-2.5 text-sm border border-red-100">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              {error}
+            </div>
+          )}
+          <div className="flex justify-end gap-2 pt-2">
+            <button type="button" onClick={onClose} disabled={sending} className="btn-secondary">Cancel</button>
+            <button
+              type="button"
+              onClick={handleSend}
+              disabled={sending || activeTemplates.length === 0}
+              className="btn-primary flex items-center gap-2"
+            >
+              <Send className="w-4 h-4" />
+              {sending ? 'Sending…' : `Send to ${leads.length}`}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function SendWhatsAppModal({ lead, templates, onClose, onSent }) {
   const [templateId, setTemplateId] = useState('');
   const [sending, setSending] = useState(false);
@@ -41,8 +174,12 @@ function SendWhatsAppModal({ lead, templates, onClose, onSent }) {
     if (!selected) return '';
     let body = selected.bodyPreview || '';
     const vars = selected.variables || ['fullName'];
+    const defaults = selected.variableDefaults || [];
     vars.forEach((key, i) => {
-      const val = key === 'fullName' ? (lead.fullName?.trim() || 'there') : (lead[key] || '');
+      let val;
+      if (key === 'fullName') val = lead.fullName?.trim() || 'there';
+      else if (key === 'phone') val = lead.phone || defaults[i] || '';
+      else val = lead[key] || defaults[i] || '';
       body = body.replace(new RegExp(`\\{\\{${i + 1}\\}\\}`, 'g'), val);
       body = body.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), val);
     });
@@ -458,7 +595,7 @@ function AddLeadModal({ onClose, onCreated }) {
   );
 }
 
-export default function LeadsPanel({ authUser }) {
+export default function LeadsPanel({ authUser, openLeadId = null, onOpenLeadHandled }) {
   const [subTab, setSubTab] = useState('leads');
   const [leads, setLeads] = useState([]);
   const [templates, setTemplates] = useState([]);
@@ -470,10 +607,13 @@ export default function LeadsPanel({ authUser }) {
   const [showAdd, setShowAdd] = useState(false);
   const [importing, setImporting] = useState(false);
   const [importError, setImportError] = useState('');
+  const [selectedLeadIds, setSelectedLeadIds] = useState(() => new Set());
+  const [showBulkSend, setShowBulkSend] = useState(false);
   const fileInputRef = useRef(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (opts = {}) => {
+    const silent = opts.silent === true;
+    if (!silent) setLoading(true);
     setError('');
     try {
       const params = new URLSearchParams();
@@ -489,13 +629,27 @@ export default function LeadsPanel({ authUser }) {
       setLeads(leadsData);
       if (tplRes.ok) setTemplates(tplData);
     } catch (err) {
-      setError(err.message);
+      if (!silent) setError(err.message);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [search]);
 
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    const interval = setInterval(() => load({ silent: true }), 15_000);
+    return () => clearInterval(interval);
+  }, [load]);
+
+  useEffect(() => {
+    if (!openLeadId || loading) return;
+    const lead = leads.find((l) => l.id === openLeadId);
+    if (lead) {
+      setSelectedLead(lead);
+      onOpenLeadHandled?.();
+    }
+  }, [openLeadId, leads, loading, onOpenLeadHandled]);
 
   const handleImportClick = () => {
     setImportError(null);
@@ -544,6 +698,46 @@ export default function LeadsPanel({ authUser }) {
   const filteredLeads = statusFilter
     ? leads.filter((l) => l.status === statusFilter)
     : leads;
+
+  const selectedLeads = filteredLeads.filter((l) => selectedLeadIds.has(l.id));
+  const allFilteredSelected = filteredLeads.length > 0 && filteredLeads.every((l) => selectedLeadIds.has(l.id));
+
+  const toggleLeadSelection = (leadId) => {
+    setSelectedLeadIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(leadId)) next.delete(leadId);
+      else next.add(leadId);
+      return next;
+    });
+  };
+
+  const toggleSelectAllFiltered = () => {
+    setSelectedLeadIds((prev) => {
+      const next = new Set(prev);
+      if (allFilteredSelected) {
+        filteredLeads.forEach((l) => next.delete(l.id));
+      } else {
+        filteredLeads.forEach((l) => next.add(l.id));
+      }
+      return next;
+    });
+  };
+
+  const handleBulkSent = (data) => {
+    setShowBulkSend(false);
+    setSelectedLeadIds(new Set());
+    load({ silent: true });
+    const failedLines = (data.results || []).filter((r) => !r.ok).slice(0, 5);
+    let msg = `Sent: ${data.sent}\nFailed: ${data.failed}`;
+    if (failedLines.length > 0) {
+      msg += '\n\nFailed:';
+      for (const row of failedLines) {
+        msg += `\n• ${row.phone || row.leadId}: ${row.error}`;
+      }
+      if (data.failed > failedLines.length) msg += `\n… and ${data.failed - failedLines.length} more`;
+    }
+    alert(msg);
+  };
 
   const counts = STATUS_OPTIONS.reduce((acc, s) => {
     acc[s.value] = leads.filter((l) => l.status === s.value).length;
@@ -613,6 +807,16 @@ export default function LeadsPanel({ authUser }) {
               <Upload className="w-4 h-4" />
               {importing ? 'Importing…' : 'Import Excel'}
             </button>
+            {selectedLeads.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setShowBulkSend(true)}
+                className="btn-success flex items-center gap-2"
+              >
+                <Send className="w-4 h-4" />
+                Send template ({selectedLeads.length})
+              </button>
+            )}
             <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleFileChange} />
           </div>
 
@@ -627,6 +831,15 @@ export default function LeadsPanel({ authUser }) {
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-slate-50 text-slate-600 text-left">
+                  <th className="px-3 py-3 font-semibold w-10">
+                    <input
+                      type="checkbox"
+                      checked={allFilteredSelected}
+                      onChange={toggleSelectAllFiltered}
+                      className="w-4 h-4 accent-indigo-600 cursor-pointer rounded"
+                      title="Select all visible"
+                    />
+                  </th>
                   <th className="px-4 py-3 font-semibold">Phone</th>
                   <th className="px-4 py-3 font-semibold">Name</th>
                   <th className="px-4 py-3 font-semibold">Status</th>
@@ -637,16 +850,27 @@ export default function LeadsPanel({ authUser }) {
               </thead>
               <tbody>
                 {loading ? (
-                  <tr><td colSpan={6} className="px-4 py-8 text-center text-slate-400">Loading…</td></tr>
+                  <tr><td colSpan={7} className="px-4 py-8 text-center text-slate-400">Loading…</td></tr>
                 ) : filteredLeads.length === 0 ? (
-                  <tr><td colSpan={6} className="px-4 py-8 text-center text-slate-400">No leads yet — import or add one</td></tr>
+                  <tr><td colSpan={7} className="px-4 py-8 text-center text-slate-400">No leads yet — import or add one</td></tr>
                 ) : (
                   filteredLeads.map((lead) => (
                     <tr
                       key={lead.id}
-                      className={`border-t border-slate-100 hover:bg-indigo-50/30 cursor-pointer ${lead.needsReply ? 'bg-amber-50/60' : ''}`}
+                      className={`border-t border-slate-100 hover:bg-indigo-50/30 cursor-pointer ${lead.needsReply ? 'bg-amber-50/60' : ''} ${selectedLeadIds.has(lead.id) ? 'bg-indigo-50/50' : ''}`}
                       onClick={() => setSelectedLead(lead)}
                     >
+                      <td
+                        className="px-3 py-3"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedLeadIds.has(lead.id)}
+                          onChange={() => toggleLeadSelection(lead.id)}
+                          className="w-4 h-4 accent-indigo-600 cursor-pointer rounded"
+                        />
+                      </td>
                       <td className="px-4 py-3 font-medium text-slate-800">
                         <span className="inline-flex items-center gap-1.5">
                           <Phone className="w-3.5 h-3.5 text-slate-400" />
@@ -707,6 +931,15 @@ export default function LeadsPanel({ authUser }) {
             setSelectedLead(updated);
             setLeads((prev) => prev.map((l) => (l.id === updated.id ? updated : l)));
           }}
+        />
+      )}
+
+      {showBulkSend && selectedLeads.length > 0 && (
+        <BulkSendWhatsAppModal
+          leads={selectedLeads}
+          templates={templates}
+          onClose={() => setShowBulkSend(false)}
+          onSent={handleBulkSent}
         />
       )}
     </div>

@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
-import { MapPin, User, Save, Trash2, AlertTriangle, Copy, Video, Image, X, Tag, Link2, Info, Plus, Globe } from 'lucide-react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { MapPin, User, Save, Trash2, AlertTriangle, Copy, Video, Image, X, Tag, Link2, Info, Plus, Globe, Box } from 'lucide-react';
 import AddressPicker from './AddressPicker';
 import PhoneInput from './PhoneInput';
 import { API_BASE } from '../config';
@@ -22,6 +22,20 @@ const STATUS_OPTIONS = [
   { value: 'shipped',               label: 'Shipped'      },
   { value: 'completed',             label: 'Completed'    },
 ];
+
+function containerCountryKey(country) {
+  if (country == null || String(country).trim() === '') return '';
+  const s = String(country).trim().toLowerCase();
+  if (s === 'india') return 'india';
+  if (s === 'thailand' || s === 'th') return 'thailand';
+  return String(country).trim();
+}
+
+function defaultContainerForCountry(containers, country) {
+  const key = containerCountryKey(country);
+  if (!key) return null;
+  return containers.find((c) => c.isDefault && containerCountryKey(c.country) === key) ?? null;
+}
 
 function EditableField({ label, value, onChange, type = 'text', placeholder, readOnly }) {
   return (
@@ -431,9 +445,12 @@ export default function MissionDetails({
   const [emptyBoxMissionPickerOpen, setEmptyBoxMissionPickerOpen] = useState(false);
   const [linkedEmptyBoxMission, setLinkedEmptyBoxMission] = useState(null);
   const [parcelContentTypes, setParcelContentTypes] = useState([]);
+  const [containers, setContainers] = useState([]);
+  const containerDefaultAppliedRef = useRef(null);
 
   useEffect(() => {
-    setEdit({ ...mission, bringBoxes: mission.bringBoxes === true });
+    containerDefaultAppliedRef.current = null;
+    setEdit({ ...mission, bringBoxes: mission.bringBoxes === true, containerId: mission.containerId ?? null });
   }, [mission.id]);
 
   useEffect(() => {
@@ -450,9 +467,20 @@ export default function MissionDetails({
     } catch {}
   }, []);
 
+  const fetchContainers = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/containers`);
+      if (res.ok) setContainers(await res.json());
+    } catch {}
+  }, []);
+
   useEffect(() => {
     fetchParcelContentTypes();
   }, [fetchParcelContentTypes]);
+
+  useEffect(() => {
+    if (mission.type === 'pickup') fetchContainers();
+  }, [mission.type, fetchContainers]);
 
   useEffect(() => {
     if (edit.linkedEmptyBoxMissionId) {
@@ -466,6 +494,22 @@ export default function MissionDetails({
   }, [edit.linkedEmptyBoxMissionId]);
 
   const isPickup = edit.type === 'pickup';
+  const missionRegion = missionLwRegionId(edit);
+
+  const containersForMission = useMemo(() => {
+    const regionKey = containerCountryKey(missionRegion);
+    if (!regionKey) return containers;
+    return containers.filter((c) => containerCountryKey(c.country) === regionKey);
+  }, [containers, missionRegion]);
+
+  useEffect(() => {
+    if (!isPickup || containers.length === 0 || containerDefaultAppliedRef.current === mission.id) return;
+    containerDefaultAppliedRef.current = mission.id;
+    if (mission.containerId != null) return;
+    const def = defaultContainerForCountry(containers, missionLwRegionId(mission));
+    if (!def) return;
+    setEdit((prev) => (prev.id === mission.id ? { ...prev, containerId: def.id } : prev));
+  }, [containers, mission.id, mission.containerId, isPickup, mission]);
 
   useEffect(() => {
     if (!isPickup) setAffiliatePickerOpen(false);
@@ -673,6 +717,30 @@ export default function MissionDetails({
               </button>
             )}
           </button>
+        </div>
+      )}
+
+      {isPickup && (
+        <div className="card p-4 border-2 border-dashed border-slate-200 bg-slate-50/20 space-y-2">
+          <label className="label flex items-center gap-2">
+            <Box className="w-4 h-4" />
+            Container
+          </label>
+          <p className="text-xs text-slate-500">Transfer this package to another container</p>
+          <select
+            value={edit.containerId || ''}
+            onChange={(e) => update('containerId', e.target.value || null)}
+            className="select-field"
+          >
+            <option value="">No container</option>
+            {containersForMission.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name || c.id}
+                {c.maxPackages != null ? ` (${c.maxPackages} max packages)` : ''}
+                {c.isDefault ? ' — Default' : ''}
+              </option>
+            ))}
+          </select>
         </div>
       )}
 

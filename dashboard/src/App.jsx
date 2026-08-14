@@ -38,6 +38,7 @@ import StatisticsPanel from './components/StatisticsPanel';
 import ContainersPanel from './components/ContainersPanel';
 import SettingsPanel from './components/SettingsPanel';
 import LeadsPanel from './components/LeadsPanel';
+import LeadReplyAlertLayer from './components/LeadReplyAlertLayer';
 import TableHorizontalScroll from './components/TableHorizontalScroll';
 import LoginPage from './components/LoginPage';
 import { API_BASE } from './config';
@@ -50,20 +51,6 @@ const TYPE_LABELS = {
 };
 
 /** LionWheel task status codes (tasks/show) — must match server lionWheelTaskStatusLabel */
-const LW_STATUS_FILTER_OPTIONS = [
-  [0, 'Unassigned'],
-  [1, 'Assigned'],
-  [2, 'Active'],
-  [3, 'Completed'],
-  [4, 'Canceled'],
-  [5, 'Roundtrip delivered'],
-  [6, 'In inventory'],
-  [7, 'Out inventory'],
-  [8, 'Failed'],
-  [9, 'Final failed'],
-  [10, 'In transfer'],
-];
-
 const CREATED_BY_LABELS = {
   customer: 'Customer',
   customer_service: 'CS',
@@ -76,20 +63,6 @@ function lwStatusBadgeClasses(code) {
   if (code === 2 || code === 1) return 'bg-blue-100 text-blue-800 border border-blue-200';
   if (code === 0) return 'bg-slate-100 text-slate-700 border border-slate-200';
   return 'bg-indigo-50 text-indigo-800 border border-indigo-200';
-}
-
-function ColLabel({ label, colKey, vis, toggle }) {
-  return (
-    <label className="label flex items-center gap-1.5 cursor-pointer select-none group mb-1.5">
-      <input
-        type="checkbox"
-        checked={vis[colKey]}
-        onChange={() => toggle(colKey)}
-        className="w-3.5 h-3.5 accent-indigo-600 cursor-pointer rounded"
-      />
-      <span className={vis[colKey] ? 'text-slate-600' : 'text-slate-400 line-through'}>{label}</span>
-    </label>
-  );
 }
 
 function useMissions() {
@@ -154,6 +127,21 @@ function useMissionStats() {
 const isMissingAddress = (m) => m.type === 'pickup' ? !m.receiverAddress?.lat : !m.address?.lat;
 const needsDeliveryDetails = (m) => isMissingAddress(m) || isMissingThailandPayment(m);
 
+function missionTrackingIds(m) {
+  if (m.type !== 'pickup') return [];
+  const deliveries = m.deliveries?.length > 0 ? m.deliveries : [];
+  return deliveries.flatMap((d) => [
+    ...(d.boxTrackingIds ?? []),
+    ...(d.boxThailandRefs ?? []),
+  ]).map((t) => String(t).trim()).filter(Boolean);
+}
+
+function missionMatchesTrackingFilter(m, query) {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  return missionTrackingIds(m).some((tid) => tid.toLowerCase().includes(q));
+}
+
 function useAffiliates() {
   const [affiliates, setAffiliates] = useState([]);
   const fetchAffiliates = useCallback(async () => {
@@ -212,6 +200,8 @@ export default function App() {
 
 function Dashboard({ authUser, onLogout }) {
   const [activeTab, setActiveTab] = useState('missions');
+  const [leadsOpenLeadId, setLeadsOpenLeadId] = useState(null);
+  const [leadsReplyCount, setLeadsReplyCount] = useState(0);
   const showLeadsTab = canAccessLeads(authUser);
   const affiliates = useAffiliates();
 
@@ -292,38 +282,15 @@ function Dashboard({ authUser, onLogout }) {
     .filter((c) => c.capacityPercent >= 70);
   const showCapacityFloating = containersOver70.length > 0 && !capacityAlertDismissed;
 
-  const [filterType, setFilterType] = useState('');
-  const [filterLwStatus, setFilterLwStatus] = useState('');
-  const [filterCreatedBy, setFilterCreatedBy] = useState('');
-  const [filterMissingAddress, setFilterMissingAddress] = useState('');
   const [filterName, setFilterName] = useState('');
   const [filterPhone, setFilterPhone] = useState('');
-  const [filterReceiverName, setFilterReceiverName] = useState('');
-  const [filterReceiverPhone, setFilterReceiverPhone] = useState('');
-  const [filterPickupAddr, setFilterPickupAddr] = useState('');
-  const [filterDeliveryAddr, setFilterDeliveryAddr] = useState('');
-  const [filterDateFrom, setFilterDateFrom] = useState('');
-  const [filterBoxType, setFilterBoxType] = useState('');
-  const [filterAffiliate, setFilterAffiliate] = useState('');
+  const [filterTrackingId, setFilterTrackingId] = useState('');
 
-  const [visibleColumns, setVisibleColumns] = useState({
+  const [visibleColumns] = useState({
     type: true, sender: true, pickupAddr: true, shipTo: true,
     receiver: true, deliveryAddr: true, boxes: true, source: true, date: true, affiliate: true,
     senderPhone: true, receiverPhone: true, missingInfo: true, trackingId: true, lwTaskId: true, lwStatus: true,
   });
-  const [sectionVisible, setSectionVisible] = useState({ sender: true, receiver: true });
-  const toggleSection = (key) => {
-    setSectionVisible((p) => {
-      const newVal = !p[key];
-      if (key === 'sender') {
-        setVisibleColumns((vc) => ({ ...vc, sender: newVal, senderPhone: newVal, pickupAddr: newVal, shipTo: newVal }));
-      } else if (key === 'receiver') {
-        setVisibleColumns((vc) => ({ ...vc, receiver: newVal, receiverPhone: newVal, deliveryAddr: newVal, missingInfo: newVal }));
-      }
-      return { ...p, [key]: newVal };
-    });
-  };
-  const toggleColumn = (key) => setVisibleColumns((p) => ({ ...p, [key]: !p[key] }));
 
   const [showFilters, setShowFilters] = useState(false);
   const [editingMission, setEditingMission] = useState(null);
@@ -337,32 +304,19 @@ function Dashboard({ authUser, onLogout }) {
   const [showCreateMission, setShowCreateMission] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
 
-  const activeFilterCount = [filterType, filterLwStatus, filterCreatedBy, filterMissingAddress, filterName, filterPhone, filterReceiverName, filterReceiverPhone, filterPickupAddr, filterDeliveryAddr, filterDateFrom, filterBoxType, filterAffiliate].filter(Boolean).length;
+  const activeFilterCount = [filterName, filterPhone, filterTrackingId].filter(Boolean).length;
 
   const filtered = missions.filter((m) => {
-    if (filterType && m.type !== filterType) return false;
-    if (filterLwStatus !== '' && Number(m.lionwheel?.taskStatus) !== Number(filterLwStatus)) return false;
-    if (filterCreatedBy && m.createdBy !== filterCreatedBy) return false;
-    if (filterMissingAddress === 'yes' && !isMissingAddress(m)) return false;
-    if (filterMissingAddress === 'no' && isMissingAddress(m)) return false;
     if (filterName && !(m.fullName || '').toLowerCase().includes(filterName.toLowerCase())) return false;
     if (filterPhone && !(m.customerPhone || '').replace(/\D/g, '').includes(filterPhone.replace(/\D/g, ''))) return false;
-    if (filterReceiverName && !(m.receiverName || '').toLowerCase().includes(filterReceiverName.toLowerCase())) return false;
-    if (filterReceiverPhone && !(m.receiverPhone || '').replace(/\D/g, '').includes(filterReceiverPhone.replace(/\D/g, ''))) return false;
-    if (filterPickupAddr && !(m.address?.displayAddress || '').toLowerCase().includes(filterPickupAddr.toLowerCase())) return false;
-    if (filterDeliveryAddr && !(m.receiverAddress?.displayAddress || '').toLowerCase().includes(filterDeliveryAddr.toLowerCase())) return false;
-    if (filterDateFrom && m.createdAt && new Date(m.createdAt) < new Date(filterDateFrom)) return false;
-    if (filterBoxType === 'large' && !(m.boxSelection?.large > 0)) return false;
-    if (filterBoxType === 'small' && !(m.boxSelection?.small > 0)) return false;
-    if (filterAffiliate && (m.affiliateName !== filterAffiliate || m.type !== 'pickup')) return false;
+    if (!missionMatchesTrackingFilter(m, filterTrackingId)) return false;
     return true;
   });
 
   const clearFilters = () => {
-    setFilterType(''); setFilterLwStatus(''); setFilterCreatedBy(''); setFilterMissingAddress('');
-    setFilterName(''); setFilterPhone(''); setFilterReceiverName(''); setFilterReceiverPhone('');
-    setFilterPickupAddr(''); setFilterDeliveryAddr('');
-    setFilterDateFrom(''); setFilterBoxType(''); setFilterAffiliate('');
+    setFilterName('');
+    setFilterPhone('');
+    setFilterTrackingId('');
   };
 
   const handleDelete = async (id) => {
@@ -524,6 +478,15 @@ function Dashboard({ authUser, onLogout }) {
             >
               <MessageSquare className="w-4 h-4" />
               Leads
+              {leadsReplyCount > 0 && (
+                <span
+                  className={`min-w-[1.25rem] h-5 px-1.5 rounded-full text-[10px] font-bold leading-none flex items-center justify-center shrink-0 ${
+                    activeTab === 'leads' ? 'bg-amber-300 text-amber-950' : 'bg-amber-500 text-white animate-pulse'
+                  }`}
+                >
+                  {leadsReplyCount > 9 ? '9+' : leadsReplyCount}
+                </span>
+              )}
             </button>
           )}
           {authUser.isAdmin && (
@@ -562,7 +525,13 @@ function Dashboard({ authUser, onLogout }) {
         {activeTab === 'containers' && <ContainersPanel />}
         {activeTab === 'affiliates' && <AffiliatesPanel missions={missions} />}
         {activeTab === 'customers' && <CustomersPanel />}
-        {showLeadsTab && activeTab === 'leads' && <LeadsPanel authUser={authUser} />}
+        {showLeadsTab && activeTab === 'leads' && (
+          <LeadsPanel
+            authUser={authUser}
+            openLeadId={leadsOpenLeadId}
+            onOpenLeadHandled={() => setLeadsOpenLeadId(null)}
+          />
+        )}
         {activeTab === 'users' && authUser.isAdmin && <UsersPanel />}
         {activeTab === 'statistics' && (
           <StatisticsPanel
@@ -636,132 +605,37 @@ function Dashboard({ authUser, onLogout }) {
                 )}
               </div>
               {showFilters && (
-                <div className="card p-5 space-y-5 animate-slide-up">
-                  {/* Row 1: Sender */}
-                  <div>
-                    <label className="flex items-center gap-2 cursor-pointer select-none mb-3 w-fit">
+                <div className="card p-5 animate-slide-up">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div>
+                      <label className="label">Sender name</label>
                       <input
-                        type="checkbox"
-                        checked={sectionVisible.sender}
-                        onChange={() => toggleSection('sender')}
-                        className="w-3.5 h-3.5 accent-indigo-600 cursor-pointer"
+                        type="text"
+                        value={filterName}
+                        onChange={(e) => setFilterName(e.target.value)}
+                        placeholder="Name..."
+                        className="input-field"
                       />
-                      <span className={`text-[11px] font-semibold uppercase tracking-wider ${sectionVisible.sender ? 'text-slate-500' : 'text-slate-300 line-through'}`}>
-                        Sender
-                      </span>
-                    </label>
-                    {sectionVisible.sender && (
-                      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-                        <div>
-                          <ColLabel label="Sender name" colKey="sender" vis={visibleColumns} toggle={toggleColumn} />
-                          <input type="text" value={filterName} onChange={(e) => setFilterName(e.target.value)} placeholder="Name..." className="input-field" />
-                        </div>
-                        <div>
-                          <ColLabel label="Sender phone" colKey="senderPhone" vis={visibleColumns} toggle={toggleColumn} />
-                          <input type="text" value={filterPhone} onChange={(e) => setFilterPhone(e.target.value)} placeholder="050..." className="input-field" />
-                        </div>
-                        <div>
-                          <ColLabel label="Pickup address" colKey="pickupAddr" vis={visibleColumns} toggle={toggleColumn} />
-                          <input type="text" value={filterPickupAddr} onChange={(e) => setFilterPickupAddr(e.target.value)} placeholder="Street / city..." className="input-field" />
-                        </div>
-                        <div className="flex items-start pt-5">
-                          <ColLabel label="Ship to" colKey="shipTo" vis={visibleColumns} toggle={toggleColumn} />
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                  {/* Row 2: Receiver */}
-                  <div>
-                    <label className="flex items-center gap-2 cursor-pointer select-none mb-3 w-fit">
+                    </div>
+                    <div>
+                      <label className="label">Sender phone</label>
                       <input
-                        type="checkbox"
-                        checked={sectionVisible.receiver}
-                        onChange={() => toggleSection('receiver')}
-                        className="w-3.5 h-3.5 accent-indigo-600 cursor-pointer"
+                        type="text"
+                        value={filterPhone}
+                        onChange={(e) => setFilterPhone(e.target.value)}
+                        placeholder="050..."
+                        className="input-field"
                       />
-                      <span className={`text-[11px] font-semibold uppercase tracking-wider ${sectionVisible.receiver ? 'text-slate-500' : 'text-slate-300 line-through'}`}>
-                        Receiver (pickup only)
-                      </span>
-                    </label>
-                    {sectionVisible.receiver && (
-                      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-                        <div>
-                          <ColLabel label="Receiver name" colKey="receiver" vis={visibleColumns} toggle={toggleColumn} />
-                          <input type="text" value={filterReceiverName} onChange={(e) => setFilterReceiverName(e.target.value)} placeholder="Name..." className="input-field" />
-                        </div>
-                        <div>
-                          <ColLabel label="Receiver phone" colKey="receiverPhone" vis={visibleColumns} toggle={toggleColumn} />
-                          <input type="text" value={filterReceiverPhone} onChange={(e) => setFilterReceiverPhone(e.target.value)} placeholder="050..." className="input-field" />
-                        </div>
-                        <div>
-                          <ColLabel label="Delivery address" colKey="deliveryAddr" vis={visibleColumns} toggle={toggleColumn} />
-                          <input type="text" value={filterDeliveryAddr} onChange={(e) => setFilterDeliveryAddr(e.target.value)} placeholder="Street / city..." className="input-field" />
-                        </div>
-                        <div>
-                          <ColLabel label="Missing info" colKey="missingInfo" vis={visibleColumns} toggle={toggleColumn} />
-                          <select value={filterMissingAddress} onChange={(e) => setFilterMissingAddress(e.target.value)} className="select-field">
-                            <option value="">All</option>
-                            <option value="yes">Missing address</option>
-                            <option value="no">Has address</option>
-                          </select>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                  {/* Row 3: Mission */}
-                  <div>
-                    <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-3">Mission</p>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-                      <div>
-                        <ColLabel label="Type" colKey="type" vis={visibleColumns} toggle={toggleColumn} />
-                        <select value={filterType} onChange={(e) => setFilterType(e.target.value)} className="select-field">
-                          <option value="">All types</option>
-                          {Object.entries(TYPE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-                        </select>
-                      </div>
-                      <div>
-                        <ColLabel label="LionWheel status" colKey="lwStatus" vis={visibleColumns} toggle={toggleColumn} />
-                        <select value={filterLwStatus} onChange={(e) => setFilterLwStatus(e.target.value)} className="select-field">
-                          <option value="">All LW statuses</option>
-                          {LW_STATUS_FILTER_OPTIONS.map(([code, label]) => (
-                            <option key={code} value={String(code)}>{label}</option>
-                          ))}
-                        </select>
-                      </div>
-                      <div>
-                        <ColLabel label="Source" colKey="source" vis={visibleColumns} toggle={toggleColumn} />
-                        <select value={filterCreatedBy} onChange={(e) => setFilterCreatedBy(e.target.value)} className="select-field">
-                          <option value="">All sources</option>
-                          {Object.entries(CREATED_BY_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-                        </select>
-                      </div>
-                      <div>
-                        <ColLabel label="Box type" colKey="boxes" vis={visibleColumns} toggle={toggleColumn} />
-                        <select value={filterBoxType} onChange={(e) => setFilterBoxType(e.target.value)} className="select-field">
-                          <option value="">All boxes</option>
-                          <option value="large">ISA-BOX-70 (Large)</option>
-                          <option value="small">ISA-BOX-35 (Small)</option>
-                        </select>
-                      </div>
-                      <div>
-                        <ColLabel label="Affiliate" colKey="affiliate" vis={visibleColumns} toggle={toggleColumn} />
-                        <select value={filterAffiliate} onChange={(e) => setFilterAffiliate(e.target.value)} className="select-field">
-                          <option value="">All affiliates</option>
-                          {affiliates.map((a) => (
-                            <option key={a.id} value={a.name}>{a.name}</option>
-                          ))}
-                        </select>
-                      </div>
-                      <div>
-                        <ColLabel label="From date" colKey="date" vis={visibleColumns} toggle={toggleColumn} />
-                        <input type="date" value={filterDateFrom} onChange={(e) => setFilterDateFrom(e.target.value)} className="input-field" />
-                      </div>
-                      <div className="flex items-start pt-5">
-                        <ColLabel label="Tracking ID" colKey="trackingId" vis={visibleColumns} toggle={toggleColumn} />
-                      </div>
-                      <div className="flex items-start pt-5">
-                        <ColLabel label="LionWheel ID" colKey="lwTaskId" vis={visibleColumns} toggle={toggleColumn} />
-                      </div>
+                    </div>
+                    <div>
+                      <label className="label">Tracking number</label>
+                      <input
+                        type="text"
+                        value={filterTrackingId}
+                        onChange={(e) => setFilterTrackingId(e.target.value)}
+                        placeholder="Tracking ID..."
+                        className="input-field"
+                      />
                     </div>
                   </div>
                 </div>
@@ -900,8 +774,7 @@ function Dashboard({ authUser, onLogout }) {
                             {visibleColumns.trackingId && (
                               <td className="max-w-[9rem]">
                                 {mission.type === 'pickup' ? (() => {
-                                  const ids = (mission.deliveries?.length > 0 ? mission.deliveries : [mission])
-                                    .flatMap((d) => (d.boxTrackingIds ?? []).filter(Boolean));
+                                  const ids = missionTrackingIds(mission);
                                   return ids.length > 0 ? (
                                     <div className="flex flex-col gap-0.5">
                                       {ids.map((tid, i) => (
@@ -1254,6 +1127,17 @@ function Dashboard({ authUser, onLogout }) {
           authCountry={authUser.country}
           onClose={() => setCompletingMission(null)}
           onSaved={() => { refetch(); refetchStats(); setCompletingMission(null); }}
+        />
+      )}
+
+      {showLeadsTab && (
+        <LeadReplyAlertLayer
+          enabled={showLeadsTab}
+          onReplyCountChange={setLeadsReplyCount}
+          onOpenLead={(leadId) => {
+            setActiveTab('leads');
+            setLeadsOpenLeadId(leadId);
+          }}
         />
       )}
     </div>

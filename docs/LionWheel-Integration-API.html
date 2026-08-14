@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <title>LionWheel Integration API</title>
+  <style>
+    @page { margin: 2cm; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+      color: #1e293b;
+      line-height: 1.6;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+    h1 { color: #312e81; font-size: 24px; margin-bottom: 8px; }
+    h2 { color: #3730a3; font-size: 16px; margin-top: 28px; border-bottom: 2px solid #e0e7ff; padding-bottom: 6px; }
+    p, li { font-size: 13px; }
+    .subtitle { color: #64748b; font-size: 13px; margin-bottom: 24px; }
+    pre {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 14px;
+      font-size: 11px;
+      direction: ltr;
+      text-align: left;
+      overflow-x: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 8px; }
+    th, td { border: 1px solid #cbd5e1; padding: 8px 10px; text-align: right; }
+    th { background: #eef2ff; color: #3730a3; }
+    .req { color: #b45309; font-weight: 600; white-space: nowrap; }
+    .opt { color: #64748b; white-space: nowrap; }
+    code { background: #f1f5f9; padding: 1px 5px; border-radius: 4px; font-size: 11px; direction: ltr; unicode-bidi: embed; }
+    .footer { margin-top: 32px; font-size: 11px; color: #94a3b8; text-align: center; }
+  </style>
+</head>
+<body>
+  <h1>API ליצירת משימות LionWheel</h1>
+  <p class="subtitle">ISA Express — מסמך אינטגרציה למפתחים</p>
+
+  <h2>Endpoint</h2>
+  <pre>POST https://os.isa-express.com/api/integrations/lionwheel/create</pre>
+
+  <h2>Authentication</h2>
+  <p>יש לשלוח Bearer token ב-header:</p>
+  <pre>Authorization: Bearer d66d90d47eb26fe9b8847bd0cc9c92974158e8086d03a9cf854c5b3a165997a6
+Content-Type: application/json</pre>
+
+  <h2>שדות הבקשה</h2>
+  <table>
+    <tr><th>שדה</th><th>חובה / אופציונלי</th><th>תיאור</th></tr>
+    <tr><td><code>destination</code></td><td class="req">חובה</td><td><code>india</code> או <code>thailand</code> — קובע לאיזה חשבון LW נשלח</td></tr>
+    <tr><td><code>city</code></td><td class="req">חובה</td><td>עיר</td></tr>
+    <tr><td><code>name</code></td><td class="req">חובה</td><td>שם הנמען</td></tr>
+    <tr><td><code>phone</code></td><td class="req">חובה</td><td>טלפון</td></tr>
+    <tr><td><code>number</code></td><td class="req">חובה</td><td>מספר בית</td></tr>
+    <tr><td><code>orderId</code></td><td class="opt">אופציונלי</td><td>מזהה הזמנה אצלכם; אם לא נשלח — נוצר אוטומטית <code>INT-{timestamp}</code></td></tr>
+    <tr><td><code>type</code></td><td class="opt">אופציונלי</td><td><code>pickup</code> או <code>empty</code></td></tr>
+    <tr><td><code>street</code></td><td class="opt">אופציונלי</td><td>רחוב; אם לא נשלח — LW מקבל <code>—</code></td></tr>
+    <tr><td><code>boxes</code></td><td class="opt">אופציונלי</td><td>כמות ארגזים</td></tr>
+    <tr><td><code>emptyBoxes</code></td><td class="opt">אופציונלי</td><td>ארגזים ריקים (לאיסוף)</td></tr>
+  </table>
+
+  <h2>דוגמת בקשה — India</h2>
+  <pre>{
+  "destination": "india",
+  "city": "Tel Aviv",
+  "number": "12",
+  "name": "John Doe",
+  "phone": "0501234567",
+  "boxes": 2
+}</pre>
+
+  <h2>דוגמת בקשה — Thailand</h2>
+  <pre>{
+  "destination": "thailand",
+  "orderId": "EXT-67890",
+  "type": "pickup",
+  "city": "Ramat Gan",
+  "number": "5",
+  "name": "Jane Smith",
+  "phone": "0527654321",
+  "boxes": 1
+}</pre>
+
+  <h2>תשובה בהצלחה (HTTP 200)</h2>
+  <pre>{
+  "success": true,
+  "task_id": 26959944,
+  "public_id": "7SCJVUHZMJ",
+  "tracking_link": "https://members.lionwheel.com/locate/7SCJVUHZMJ"
+}</pre>
+
+  <h2>שגיאות אפשריות</h2>
+  <ul>
+    <li><strong>401</strong> — token שגוי או חסר</li>
+    <li><strong>400</strong> — שדות חובה חסרים</li>
+    <li><strong>502</strong> — שגיאה מ-LionWheel</li>
+    <li><strong>503</strong> — הגדרות שרת חסרות</li>
+  </ul>
+
+  <div class="footer">ISA Express · LionWheel Integration API</div>
+</body>
+</html>

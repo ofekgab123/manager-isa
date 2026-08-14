@@ -1771,8 +1771,9 @@ export default function ContainersPanel() {
             .map((it) => it.description)
             .join(', ');
           const weight = boxWeights[i] != null && String(boxWeights[i]).trim() !== '' ? parseFloat(boxWeights[i]) : '';
+          const trackingId = String(boxTrackingIds[i] ?? '').trim();
           rows.push({
-            packageId: m.id,
+            trackingId,
             description: descStr || '—',
             weight: typeof weight === 'number' ? weight : '',
           });
@@ -1800,8 +1801,9 @@ export default function ContainersPanel() {
         const receiverAddress = d.address?.displayAddress || m.receiverAddress?.displayAddress || '';
         for (let i = 0; i < boxCount; i++) {
           const weight = boxWeights[i] != null && String(boxWeights[i]).trim() !== '' ? parseFloat(boxWeights[i]) : '';
+          const trackingId = String(boxTrackingIds[i] ?? '').trim();
           rows.push({
-            packageId: m.id,
+            trackingId,
             receiverName,
             receiverPhone,
             receiverAddress,
@@ -1831,13 +1833,13 @@ export default function ContainersPanel() {
 
     const csvExportDate = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
     const headers = isCourier
-      ? ['Package ID', 'Recipient Name', 'Recipient Phone', 'Recipient Address', 'Sender Name', 'Sender Phone', 'Weight (kg)']
-      : ['Package ID', 'Description', 'Weight (kg)'];
+      ? ['Tracking ID', 'Recipient Name', 'Recipient Phone', 'Recipient Address', 'Sender Name', 'Sender Phone', 'Weight (kg)']
+      : ['Tracking ID', 'Description', 'Weight (kg)'];
     const csvLines = [`Date: ${csvExportDate}`, headers.map(escapeCsv).join(',')];
     rows.forEach((r) => {
       const cells = isCourier
-        ? [r.packageId, r.receiverName, r.receiverPhone, r.receiverAddress, r.senderName, r.senderPhone, r.weight]
-        : [r.packageId, r.description, r.weight];
+        ? [r.trackingId, r.receiverName, r.receiverPhone, r.receiverAddress, r.senderName, r.senderPhone, r.weight]
+        : [r.trackingId, r.description, r.weight];
       csvLines.push(cells.map(escapeCsv).join(','));
     });
     const csv = '\uFEFF' + csvLines.join('\n');

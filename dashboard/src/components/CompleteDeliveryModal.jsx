@@ -28,6 +28,9 @@ function DeliveryRow({
   parcelContentTypes,
   receiverDefaultCode = '+972',
   isThailand = false,
+  notes,
+  onNotesChange,
+  showNotes = false,
 }) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const lookupTimeoutRef = useRef(null);
@@ -176,6 +179,22 @@ function DeliveryRow({
         />
       </div>
 
+      {showNotes && (
+        <div>
+          <label className="label">
+            Notes
+            <span className="text-slate-400 font-normal ml-1">(optional)</span>
+          </label>
+          <textarea
+            value={notes ?? ''}
+            onChange={(e) => onNotesChange?.(e.target.value)}
+            rows={3}
+            placeholder="Gate code, floor, timing, special instructions…"
+            className="input-field resize-y min-h-[4.5rem]"
+          />
+        </div>
+      )}
+
       <div>
         <label className="label">
           Boxes for this address
@@ -211,7 +230,7 @@ function DeliveryRow({
                         type="number" min="0" step="0.1"
                         value={(row.boxWeights ?? [])[i] ?? ''}
                         onChange={(e) => {
-                          const next = [...(row.boxWeights ?? [])];
+                          const next = resizeStringArray(row.boxWeights, row.boxCount ?? 1);
                           next[i] = e.target.value;
                           onChange({ ...row, boxWeights: next });
                         }}
@@ -225,7 +244,7 @@ function DeliveryRow({
                         type="text"
                         value={(row.boxTrackingIds ?? [])[i] ?? ''}
                         onChange={(e) => {
-                          const next = [...(row.boxTrackingIds ?? [])];
+                          const next = resizeStringArray(row.boxTrackingIds, row.boxCount ?? 1);
                           next[i] = e.target.value;
                           onChange({ ...row, boxTrackingIds: next });
                         }}
@@ -241,7 +260,7 @@ function DeliveryRow({
                         type="text"
                         value={(row.boxThailandRefs ?? [])[i] ?? ''}
                         onChange={(e) => {
-                          const next = [...(row.boxThailandRefs ?? [])];
+                          const next = resizeStringArray(row.boxThailandRefs, row.boxCount ?? 1);
                           next[i] = e.target.value;
                           onChange({ ...row, boxThailandRefs: next });
                         }}
@@ -411,6 +430,7 @@ export default function CompleteDeliveryModal({ isOpen, mission, onClose, onSave
   const [containers, setContainers] = useState([]);
   const [parcelContentTypes, setParcelContentTypes] = useState([]);
   const [paymentLocation, setPaymentLocation] = useState(mission.paymentLocation ?? null);
+  const [notes, setNotes] = useState(mission.notes ?? '');
 
   const fetchContainers = useCallback(async () => {
     try {
@@ -461,6 +481,12 @@ export default function CompleteDeliveryModal({ isOpen, mission, onClose, onSave
       setPaymentLocation(mission.paymentLocation ?? null);
     }
   }, [isOpen, mission.paymentLocation]);
+
+  useEffect(() => {
+    if (isOpen) {
+      setNotes(mission.notes ?? '');
+    }
+  }, [isOpen, mission.notes]);
 
   const deliveriesContentTotal = useMemo(
     () => sumAllDeliveriesContentsIls(deliveries),
@@ -556,9 +582,17 @@ export default function CompleteDeliveryModal({ isOpen, mission, onClose, onSave
           receiverPhone:   normalizedDeliveries[0]?.receiverPhone || '',
           receiverPhone2:  isThailand ? (normalizedDeliveries[0]?.receiverPhone2 || '') : null,
           receiverAddress: normalizedDeliveries[0]?.address       || null,
+          notes: notes.trim() || null,
         }),
       });
-      if (!res.ok) throw new Error('Save error');
+      if (!res.ok) {
+        let msg = 'Save error';
+        try {
+          const j = await res.json();
+          if (j.error) msg = j.error;
+        } catch {}
+        throw new Error(msg);
+      }
       onSaved?.(await res.json());
       onClose();
     } catch (e) {
@@ -728,8 +762,13 @@ export default function CompleteDeliveryModal({ isOpen, mission, onClose, onSave
           )}
 
           {isThailand && (
-            <div>
+            <div className={`rounded-xl border-2 p-4 space-y-2 ${paymentLocation ? 'border-slate-200 bg-white' : 'border-amber-200 bg-amber-50/60'}`}>
               <label className="label">Payment location</label>
+              {!paymentLocation && (
+                <p className="text-xs text-amber-700 flex items-center gap-1">
+                  <AlertTriangle className="w-3.5 h-3.5" /> Required for Thailand shipments — select before closing the mission
+                </p>
+              )}
               <div className="flex gap-2">
                 {PAYMENT_LOCATIONS.map(({ id, label }) => (
                   <button
@@ -793,6 +832,9 @@ export default function CompleteDeliveryModal({ isOpen, mission, onClose, onSave
                   parcelContentTypes={parcelContentTypes}
                   receiverDefaultCode={receiverDefaultCode}
                   isThailand={isThailand}
+                  showNotes={deliveries.length === 1}
+                  notes={notes}
+                  onNotesChange={setNotes}
                 />
               );
             })}
@@ -803,6 +845,23 @@ export default function CompleteDeliveryModal({ isOpen, mission, onClose, onSave
               Total parcel: {formatIls(deliveriesContentTotal)}
             </span>
           </div>
+
+          {deliveries.length > 1 && (
+            <div className="card p-4 border-2 border-slate-200 space-y-2">
+              <label className="label !mb-0">
+                Notes
+                <span className="text-slate-400 font-normal ml-1">(optional)</span>
+              </label>
+              <p className="text-xs text-slate-500">Shown to the driver and synced to LionWheel</p>
+              <textarea
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                rows={3}
+                placeholder="Gate code, floor, timing, special instructions…"
+                className="input-field resize-y min-h-[4.5rem]"
+              />
+            </div>
+          )}
 
           {/* Add address */}
           {remaining > 0 && (
@@ -830,7 +889,19 @@ export default function CompleteDeliveryModal({ isOpen, mission, onClose, onSave
         />
 
         {/* Footer */}
-        <div className="modal-footer flex-shrink-0">
+        <div className="modal-footer flex-shrink-0 flex-col sm:flex-row gap-2">
+          {missingPayment && (
+            <p className="w-full sm:order-first text-xs text-amber-700 flex items-center gap-1.5 px-1">
+              <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+              Payment location not set — you can still save; select Israel or Thailand above when ready.
+            </p>
+          )}
+          {overLimit && (
+            <p className="w-full sm:order-first text-xs text-red-600 flex items-center gap-1.5 px-1">
+              <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+              Too many boxes assigned — reduce box counts before saving.
+            </p>
+          )}
           <button
             type="button"
             onClick={onClose}
@@ -841,7 +912,7 @@ export default function CompleteDeliveryModal({ isOpen, mission, onClose, onSave
           <button
             type="button"
             onClick={handleSave}
-            disabled={saving || overLimit || missingPayment}
+            disabled={saving || overLimit}
             className="btn-success flex-1"
           >
             <CheckCircle className="w-4 h-4" />
