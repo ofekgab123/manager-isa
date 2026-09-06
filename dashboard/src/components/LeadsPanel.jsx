@@ -203,7 +203,7 @@ function BulkSendWhatsAppModal({ leads, templates, onClose, onStart }) {
           </ul>
           {activeTemplates.length === 0 ? (
             <p className="text-amber-700 bg-amber-50 rounded-xl px-4 py-3 text-sm border border-amber-100">
-              No approved WhatsApp templates found.
+              No approved WhatsApp templates found. Submit a template from Leads → Templates and wait for Meta approval.
             </p>
           ) : (
             <>
@@ -218,7 +218,13 @@ function BulkSendWhatsAppModal({ leads, templates, onClose, onStart }) {
                   {activeTemplates.map((t) => (
                     <option key={t.id} value={t.id} disabled={t.metaApproved === false}>
                       {t.name}{t.language ? ` (${t.language})` : ''}
-                      {t.metaApproved === false ? ' — not approved on WhatsApp' : ''}
+                      {t.metaApproved === false
+                        ? t.metaStatus === 'PENDING'
+                          ? ' — pending approval'
+                          : t.metaStatus === 'REJECTED'
+                            ? ' — rejected by Meta'
+                            : ' — not approved on WhatsApp'
+                        : ''}
                     </option>
                   ))}
                 </select>
@@ -315,7 +321,7 @@ function SendWhatsAppModal({ lead, templates, onClose, onSent }) {
           <p className="text-sm text-slate-600">To: <strong>{lead.phone}</strong>{lead.fullName ? ` (${lead.fullName})` : ''}</p>
           {activeTemplates.length === 0 ? (
             <p className="text-amber-700 bg-amber-50 rounded-xl px-4 py-3 text-sm border border-amber-100">
-              No approved WhatsApp templates found. Create and approve templates in Meta WhatsApp Manager.
+              No approved WhatsApp templates found. Submit a template from Leads → Templates and wait for Meta approval.
             </p>
           ) : (
             <>
@@ -330,7 +336,13 @@ function SendWhatsAppModal({ lead, templates, onClose, onSent }) {
                   {activeTemplates.map((t) => (
                     <option key={t.id} value={t.id} disabled={t.metaApproved === false}>
                       {t.name}{t.language ? ` (${t.language})` : ''}
-                      {t.metaApproved === false ? ' — not approved on WhatsApp' : ''}
+                      {t.metaApproved === false
+                        ? t.metaStatus === 'PENDING'
+                          ? ' — pending approval'
+                          : t.metaStatus === 'REJECTED'
+                            ? ' — rejected by Meta'
+                            : ' — not approved on WhatsApp'
+                        : ''}
                     </option>
                   ))}
                 </select>

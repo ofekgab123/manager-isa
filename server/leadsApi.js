@@ -18,7 +18,12 @@ import {
   sendTextMessage,
   verifyWebhookSignature,
   fetchApprovedMessageTemplates,
+  fetchWabaMessageTemplates,
+  submitWabaMessageTemplate,
+  updateWabaMessageTemplate,
   normalizeWaTemplateName,
+  toMetaBodyText,
+  extractBodyPlaceholders,
 } from './whatsapp.js';
 
 export const LEAD_STATUSES = ['new', 'contacted', 'interested', 'not_interested', 'converted'];
@@ -92,6 +97,66 @@ async function loadApprovedMetaTemplates() {
     console.error('Failed to fetch Meta templates:', err.message);
     return null;
   }
+}
+
+async function loadAllMetaTemplates() {
+  try {
+    return await fetchWabaMessageTemplates();
+  } catch (err) {
+    console.error('Failed to fetch Meta templates:', err.message);
+    return null;
+  }
+}
+
+function findMetaTemplate(allMeta, name, language) {
+  const requested = normalizeWaTemplateName(name);
+  const matches = (allMeta || []).filter((m) => normalizeWaTemplateName(m.name) === requested);
+  return matches.find((m) => m.language === (language || 'en')) || matches[0] || null;
+}
+
+function variablesFromBody(text, fallback = []) {
+  const named = [...String(text || '').matchAll(/\{\{([^}]+)\}\}/g)].map((m) => String(m[1]).trim());
+  if (named.length === 0) return Array.isArray(fallback) ? fallback : [];
+  return named.map((n, i) => {
+    if (/^\d+$/.test(n)) return fallback[i] || (i === 0 ? 'fullName' : `var${i + 1}`);
+    return n;
+  });
+}
+
+function normalizeTemplatePayload(body, prev = {}) {
+  const displayName = String(body.name ?? prev.name ?? '').trim();
+  const waTemplateName =
+    normalizeWaTemplateName(body.waTemplateName ?? prev.waTemplateName ?? displayName) ||
+    String(body.waTemplateName ?? prev.waTemplateName ?? '').trim();
+  const bodyPreview = String(body.bodyPreview ?? prev.bodyPreview ?? '');
+  const fallbackVars = Array.isArray(body.variables)
+    ? body.variables
+    : Array.isArray(prev.variables)
+      ? prev.variables
+      : [];
+  const variables = variablesFromBody(bodyPreview, fallbackVars);
+  const exampleValues = Array.isArray(body.exampleValues)
+    ? body.exampleValues
+    : Array.isArray(body.variableDefaults)
+      ? body.variableDefaults
+      : Array.isArray(prev.exampleValues)
+        ? prev.exampleValues
+        : Array.isArray(prev.variableDefaults)
+          ? prev.variableDefaults
+          : [];
+  return {
+    name: displayName,
+    waTemplateName,
+    language: body.language ?? prev.language ?? 'en',
+    category: body.category ?? prev.category ?? 'UTILITY',
+    headerText: String(body.headerText ?? prev.headerText ?? '').trim(),
+    footerText: String(body.footerText ?? prev.footerText ?? '').trim(),
+    bodyPreview,
+    variables,
+    variableDefaults: exampleValues,
+    exampleValues,
+    isActive: body.isActive != null ? !!body.isActive : prev.isActive !== false,
+  };
 }
 
 /** Align a stored/UI template with the approved Meta name, language, and variable count. */
@@ -193,11 +258,12 @@ function sleep(ms) {
 function metaTemplateToRecord(meta) {
   const bodyComp = meta.components?.find((c) => c.type === 'BODY');
   const headerComp = meta.components?.find((c) => c.type === 'HEADER' && c.format === 'TEXT');
-  const parts = [];
-  if (headerComp?.text) parts.push(headerComp.text);
-  if (bodyComp?.text) parts.push(bodyComp.text);
-  const bodyPreview = parts.join('\n').trim();
-  const varCount = (bodyComp?.text?.match(/\{\{\d+\}\}/g) || []).length;
+  const footerComp = meta.components?.find((c) => c.type === 'FOOTER');
+  const bodyText = bodyComp?.text || '';
+  const headerText = headerComp?.text || '';
+  const footerText = footerComp?.text || '';
+  const bodyPreview = bodyText;
+  const varCount = extractBodyPlaceholders(bodyText).length;
   const exampleValues = bodyComp?.example?.body_text?.[0] || [];
   const variables =
     varCount > 0
@@ -205,6 +271,7 @@ function metaTemplateToRecord(meta) {
       : [];
   const variableDefaults = Array.from({ length: varCount }, (_, i) => exampleValues[i] || '');
   const language = meta.language || 'en';
+  const status = String(meta.status || '').toUpperCase();
   return {
     id: `WA-${meta.name}-${language}`,
     name: meta.name,
@@ -212,32 +279,87 @@ function metaTemplateToRecord(meta) {
     language,
     variables,
     variableDefaults,
+    exampleValues: variableDefaults,
+    headerText,
+    footerText,
     bodyPreview,
     isActive: true,
     source: 'meta',
     category: meta.category || null,
-    metaApproved: true,
+    metaId: meta.id || null,
+    metaStatus: status || 'UNKNOWN',
+    metaApproved: status === 'APPROVED',
+    rejectedReason: cleanRejectedReason(meta.rejected_reason),
   };
 }
 
-/** Meta-approved templates merged with local DB overrides (same name + language). */
+function cleanRejectedReason(reason) {
+  const text = String(reason || '').trim();
+  if (!text || /^none$/i.test(text)) return null;
+  return text;
+}
+
+function attachMetaStatus(record, anyMeta, fallback = {}) {
+  const status = String(
+    anyMeta?.status || fallback.metaStatus || (record.metaApproved ? 'APPROVED' : 'LOCAL'),
+  ).toUpperCase();
+  return {
+    ...record,
+    metaId: anyMeta?.id || fallback.metaId || record.metaId || null,
+    metaStatus: status,
+    metaApproved: status === 'APPROVED',
+    rejectedReason:
+      cleanRejectedReason(anyMeta?.rejected_reason) ||
+      cleanRejectedReason(fallback.rejectedReason) ||
+      cleanRejectedReason(record.rejectedReason),
+    category: record.category || anyMeta?.category || fallback.category || null,
+    headerText: record.headerText || fallback.headerText || '',
+    footerText: record.footerText || fallback.footerText || '',
+    exampleValues: record.exampleValues || record.variableDefaults || fallback.exampleValues || [],
+  };
+}
+
+/** Meta templates (all statuses) merged with local DB overrides (same name + language). */
 async function getMergedTemplates({ activeOnly = false } = {}) {
   const local = await readMessageTemplates();
-  const metaApproved = (await loadApprovedMetaTemplates()) || [];
+  const allMeta = await loadAllMetaTemplates();
+  const metaList = allMeta || [];
+  const approved = metaList.filter((m) => m.status === 'APPROVED');
 
   const byKey = new Map();
   for (const tpl of local) {
-    const resolved = resolveTemplateForSend(tpl, metaApproved);
+    const resolved = resolveTemplateForSend(tpl, approved);
     const key = `${normalizeWaTemplateName(resolved.waTemplateName)}:${resolved.language}`;
+    if (allMeta === null) {
+      const storedStatus = String(tpl.metaStatus || (tpl.metaApproved ? 'APPROVED' : 'LOCAL')).toUpperCase();
+      byKey.set(key, {
+        ...resolved,
+        id: tpl.id,
+        name: tpl.name || resolved.waTemplateName,
+        isActive: tpl.isActive !== false,
+        source: tpl.source || 'local',
+        metaId: tpl.metaId || null,
+        metaStatus: storedStatus,
+        metaApproved: storedStatus === 'APPROVED' || tpl.metaApproved === true,
+        rejectedReason: tpl.rejectedReason || null,
+        category: tpl.category || resolved.category || null,
+        headerText: tpl.headerText || '',
+        footerText: tpl.footerText || '',
+        exampleValues: tpl.exampleValues || tpl.variableDefaults || [],
+      });
+      continue;
+    }
+    const anyMeta = findMetaTemplate(metaList, resolved.waTemplateName, resolved.language);
+    const withStatus = attachMetaStatus(resolved, anyMeta, tpl);
     byKey.set(key, {
-      ...resolved,
+      ...withStatus,
       id: tpl.id,
       name: tpl.name || resolved.waTemplateName,
       isActive: tpl.isActive !== false,
-      source: resolved.metaApproved ? 'local+meta' : tpl.source || 'local',
+      source: anyMeta || withStatus.metaStatus !== 'LOCAL' ? 'local+meta' : tpl.source || 'local',
     });
   }
-  for (const meta of metaApproved) {
+  for (const meta of metaList) {
     const rec = metaTemplateToRecord(meta);
     const key = `${normalizeWaTemplateName(rec.waTemplateName)}:${rec.language}`;
     if (byKey.has(key)) continue;
@@ -248,6 +370,29 @@ async function getMergedTemplates({ activeOnly = false } = {}) {
   if (activeOnly) merged = merged.filter((t) => t.isActive !== false);
   merged.sort((a, b) => String(a.name).localeCompare(String(b.name)));
   return merged;
+}
+
+async function applyTemplateStatusUpdate(value) {
+  const name = value?.message_template_name;
+  const language = value?.message_template_language;
+  const event = String(value?.event || '').toUpperCase();
+  const metaId = value?.message_template_id;
+  if (!name && !metaId) return;
+  const templates = await readMessageTemplates();
+  for (const tpl of templates) {
+    const matchName = name && normalizeWaTemplateName(tpl.waTemplateName) === normalizeWaTemplateName(name);
+    const matchLang = !language || tpl.language === language;
+    const matchId = metaId && String(tpl.metaId || '') === String(metaId);
+    if (!((matchName && matchLang) || matchId)) continue;
+    await updateMessageTemplateData(tpl.id, {
+      ...tpl,
+      metaId: metaId || tpl.metaId || null,
+      metaStatus: event || tpl.metaStatus,
+      metaApproved: event === 'APPROVED',
+      rejectedReason: cleanRejectedReason(value.reason || value.rejected_reason) || tpl.rejectedReason || null,
+      updatedAt: new Date().toISOString(),
+    });
+  }
 }
 
 export function leadNeedsReply(lead) {
@@ -332,6 +477,10 @@ export function registerWhatsAppWebhook(app) {
         for (const change of entry.changes || []) {
           const value = change.value;
           if (!value) continue;
+
+          if (change.field === 'message_template_status_update') {
+            await applyTemplateStatusUpdate(value);
+          }
 
           if (value.statuses) {
             for (const st of value.statuses) {
@@ -718,17 +867,35 @@ export function registerLeadsRoutes(app, { requireAdmin }) {
   app.post('/api/message-templates', requireAdmin, async (req, res) => {
     try {
       const body = req.body || {};
-      if (!body.name?.trim() || !body.waTemplateName?.trim()) {
+      const fields = normalizeTemplatePayload(body);
+      if (!fields.name || !fields.waTemplateName) {
         return res.status(400).json({ error: 'name and waTemplateName are required' });
       }
+      if (body.submitToMeta && !fields.bodyPreview.trim()) {
+        return res.status(400).json({ error: 'Template body is required to submit to Meta' });
+      }
+
+      let metaResult = null;
+      if (body.submitToMeta) {
+        metaResult = await submitWabaMessageTemplate({
+          name: fields.waTemplateName,
+          language: fields.language,
+          category: fields.category,
+          headerText: fields.headerText,
+          bodyText: toMetaBodyText(fields.bodyPreview),
+          footerText: fields.footerText,
+          exampleValues: fields.exampleValues,
+        });
+      }
+
       const tpl = {
         id: `TPL-${Date.now()}`,
-        name: body.name.trim(),
-        waTemplateName: normalizeWaTemplateName(body.waTemplateName) || body.waTemplateName.trim(),
-        language: body.language || 'en',
-        variables: Array.isArray(body.variables) ? body.variables : [],
-        bodyPreview: body.bodyPreview || '',
-        isActive: body.isActive !== false,
+        ...fields,
+        metaId: metaResult?.id || null,
+        metaStatus: metaResult?.status || 'LOCAL',
+        metaApproved: metaResult?.status === 'APPROVED',
+        rejectedReason: null,
+        source: metaResult ? 'local+meta' : 'local',
         createdAt: new Date().toISOString(),
       };
       await insertMessageTemplateData(tpl.id, tpl);
@@ -741,21 +908,66 @@ export function registerLeadsRoutes(app, { requireAdmin }) {
   app.patch('/api/message-templates/:id', requireAdmin, async (req, res) => {
     try {
       const templates = await readMessageTemplates();
-      const prev = templates.find((t) => t.id === req.params.id);
-      if (!prev) return res.status(404).json({ error: 'Template not found' });
+      let prev = templates.find((t) => t.id === req.params.id);
       const body = req.body || {};
+      const fields = normalizeTemplatePayload(body, prev || {});
+      if (!fields.name || !fields.waTemplateName) {
+        return res.status(400).json({ error: 'name and waTemplateName are required' });
+      }
+      if (body.submitToMeta && !fields.bodyPreview.trim()) {
+        return res.status(400).json({ error: 'Template body is required to submit to Meta' });
+      }
+
+      if (!prev && !String(req.params.id || '').startsWith('WA-')) {
+        return res.status(404).json({ error: 'Template not found' });
+      }
+
+      const existingMetaId = prev?.metaId || body.metaId || null;
+      let metaResult = null;
+      if (body.submitToMeta) {
+        if (existingMetaId) {
+          metaResult = await updateWabaMessageTemplate(existingMetaId, {
+            category: fields.category,
+            headerText: fields.headerText,
+            bodyText: toMetaBodyText(fields.bodyPreview),
+            footerText: fields.footerText,
+            exampleValues: fields.exampleValues,
+          });
+        } else {
+          metaResult = await submitWabaMessageTemplate({
+            name: fields.waTemplateName,
+            language: fields.language,
+            category: fields.category,
+            headerText: fields.headerText,
+            bodyText: toMetaBodyText(fields.bodyPreview),
+            footerText: fields.footerText,
+            exampleValues: fields.exampleValues,
+          });
+        }
+      }
+
       const next = {
-        ...prev,
-        ...(body.name != null ? { name: String(body.name).trim() } : {}),
-        ...(body.waTemplateName != null
-          ? { waTemplateName: normalizeWaTemplateName(body.waTemplateName) || String(body.waTemplateName).trim() }
-          : {}),
-        ...(body.language != null ? { language: body.language } : {}),
-        ...(body.variables != null ? { variables: body.variables } : {}),
-        ...(body.bodyPreview != null ? { bodyPreview: body.bodyPreview } : {}),
-        ...(body.isActive != null ? { isActive: !!body.isActive } : {}),
+        ...(prev || {}),
+        id: prev?.id || `TPL-${Date.now()}`,
+        ...fields,
+        metaId: metaResult?.id || existingMetaId || prev?.metaId || null,
+        metaStatus: metaResult?.status || prev?.metaStatus || (existingMetaId ? 'PENDING' : 'LOCAL'),
+        metaApproved: (metaResult?.status || prev?.metaStatus) === 'APPROVED',
+        rejectedReason: prev?.rejectedReason || null,
+        source: (metaResult?.id || existingMetaId) ? 'local+meta' : prev?.source || 'local',
+        createdAt: prev?.createdAt || new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
       };
-      await updateMessageTemplateData(prev.id, next);
+      if (metaResult?.status) {
+        next.metaStatus = metaResult.status;
+        next.metaApproved = metaResult.status === 'APPROVED';
+      }
+
+      if (prev) {
+        await updateMessageTemplateData(prev.id, next);
+      } else {
+        await insertMessageTemplateData(next.id, next);
+      }
       res.json(next);
     } catch (err) {
       res.status(500).json({ error: err.message });
