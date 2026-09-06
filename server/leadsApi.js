@@ -255,6 +255,38 @@ export function leadNeedsReply(lead) {
   return new Date(lead.lastInboundAt) > new Date(lead.lastContactedAt);
 }
 
+function inboundMessageText(msg) {
+  const type = msg?.type;
+  if (type === 'text') return String(msg.text?.body || '').trim();
+  if (type === 'button') {
+    return String(msg.button?.text || msg.button?.payload || '').trim();
+  }
+  if (type === 'interactive') {
+    const reply = msg.interactive || {};
+    if (reply.button_reply) {
+      return String(reply.button_reply.title || reply.button_reply.id || '').trim();
+    }
+    if (reply.list_reply) {
+      return String(reply.list_reply.title || reply.list_reply.id || '').trim();
+    }
+    if (reply.nfm_reply?.response_json) {
+      return String(reply.nfm_reply.response_json).trim();
+    }
+  }
+  const caption =
+    msg?.image?.caption ||
+    msg?.video?.caption ||
+    msg?.document?.caption ||
+    msg?.document?.filename;
+  if (caption) return String(caption).trim();
+  if (type === 'location') {
+    const loc = msg.location || {};
+    return [loc.name, loc.address].filter(Boolean).join(', ') || '[location]';
+  }
+  if (type === 'reaction' && msg.reaction?.emoji) return String(msg.reaction.emoji).trim();
+  return String(msg?.text?.body || '').trim() || `[${type || 'message'}]`;
+}
+
 function enrichLeadForList(lead) {
   const needsReply = leadNeedsReply(lead);
   return {
@@ -326,10 +358,7 @@ export function registerWhatsAppWebhook(app) {
                 lead = created;
               }
 
-              const inboundBody =
-                msg.type === 'text'
-                  ? msg.text?.body || ''
-                  : `[${msg.type || 'message'}]`;
+              const inboundBody = inboundMessageText(msg);
 
               const now = new Date().toISOString();
               const msgId = `MSG-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
