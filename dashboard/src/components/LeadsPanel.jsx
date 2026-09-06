@@ -29,6 +29,76 @@ function statusMeta(status) {
   return STATUS_OPTIONS.find((s) => s.value === status) || STATUS_OPTIONS[0];
 }
 
+function excelKey(k) {
+  return String(k || '').toLowerCase().replace(/[^a-z0-9\u0590-\u05ff]+/g, '');
+}
+
+function isExcelBlank(value) {
+  if (value == null || value === '') return true;
+  const text = String(value).trim().replace(/^['"]|['"]$/g, '');
+  return /^(null|#null!|undefined|n\/a|na|none|-)$/i.test(text);
+}
+
+function excelCell(value) {
+  if (isExcelBlank(value)) return '';
+  if (value instanceof Date && !Number.isNaN(value.getTime())) return value.toISOString().slice(0, 10);
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return Number.isInteger(value) ? String(value) : String(value);
+  }
+  return String(value).trim();
+}
+
+function excelFieldMap(row) {
+  const map = {};
+  for (const [key, value] of Object.entries(row || {})) {
+    map[excelKey(key)] = value;
+  }
+  return map;
+}
+
+function getExcelField(row, aliases) {
+  const map = excelFieldMap(row);
+  for (const alias of aliases) {
+    const key = excelKey(alias);
+    if (Object.prototype.hasOwnProperty.call(map, key)) {
+      return { found: true, value: map[key] };
+    }
+  }
+  return { found: false, value: undefined };
+}
+
+function pickExcelField(row, aliases) {
+  const map = excelFieldMap(row);
+  for (const alias of aliases) {
+    const value = map[excelKey(alias)];
+    const text = excelCell(value);
+    if (text) return text;
+  }
+  return '';
+}
+
+/** Map a spreadsheet row to a lead — supports simple phone lists and the India worker export. */
+function parseLeadImportRow(row) {
+  const workerPhone = getExcelField(row, ['WorkerPhone', 'worker_phone']);
+  // Literal NULL / empty in WorkerPhone → skip the row, do not fall back to other columns.
+  if (workerPhone.found && isExcelBlank(workerPhone.value)) {
+    return { phone: '', fullName: '', notes: '' };
+  }
+
+  const phone = workerPhone.found
+    ? excelCell(workerPhone.value)
+    : pickExcelField(row, ['phone', 'Phone', 'mobile', 'Mobile', 'מספר טלפון', 'טלפון']);
+  const firstName = pickExcelField(row, ['FirstName', 'first_name', 'first name', 'שם פרטי']);
+  const lastName = pickExcelField(row, ['LastName', 'last_name', 'last name', 'שם משפחה']);
+  const fullName =
+    pickExcelField(row, ['fullName', 'Full Name', 'name', 'שם']) ||
+    [firstName, lastName].filter(Boolean).join(' ').trim();
+  const passport = pickExcelField(row, ['pasportNo', 'passportNo', 'passport', 'Passport', 'דרכון']);
+  const country = pickExcelField(row, ['country_name_EN', 'country_name', 'country', 'Country', 'מדינה']);
+  const notes = [passport && `passport ${passport}`, country].filter(Boolean).join(' · ');
+  return { phone, fullName, notes };
+}
+
 function BulkSendWhatsAppModal({ leads, templates, onClose, onSent }) {
   const [templateId, setTemplateId] = useState('');
   const [sending, setSending] = useState(false);
@@ -119,8 +189,9 @@ function BulkSendWhatsAppModal({ leads, templates, onClose, onSent }) {
                 >
                   <option value="">Select template…</option>
                   {activeTemplates.map((t) => (
-                    <option key={t.id} value={t.id}>
+                    <option key={t.id} value={t.id} disabled={t.metaApproved === false}>
                       {t.name}{t.language ? ` (${t.language})` : ''}
+                      {t.metaApproved === false ? ' — not approved on WhatsApp' : ''}
                     </option>
                   ))}
                 </select>
@@ -235,8 +306,9 @@ function SendWhatsAppModal({ lead, templates, onClose, onSent }) {
                 >
                   <option value="">Select template…</option>
                   {activeTemplates.map((t) => (
-                    <option key={t.id} value={t.id}>
+                    <option key={t.id} value={t.id} disabled={t.metaApproved === false}>
                       {t.name}{t.language ? ` (${t.language})` : ''}
+                      {t.metaApproved === false ? ' — not approved on WhatsApp' : ''}
                     </option>
                   ))}
                 </select>
@@ -664,18 +736,15 @@ export default function LeadsPanel({ authUser, openLeadId = null, onOpenLeadHand
     setImportError('');
     try {
       const data = await file.arrayBuffer();
-      const wb = XLSX.read(data);
+      const wb = XLSX.read(data, { cellDates: true });
       const ws = wb.Sheets[wb.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
-      const parsed = rows
-        .map((row) => ({
-          phone: String(row.phone || row['Phone'] || row['מספר טלפון'] || row['טלפון'] || row['mobile'] || '').trim(),
-          fullName: String(row.fullName || row['Full Name'] || row['שם'] || row['name'] || '').trim(),
-        }))
-        .filter((r) => r.phone);
+      const rows = XLSX.utils.sheet_to_json(ws, { defval: '', raw: false });
+      const mapped = rows.map(parseLeadImportRow);
+      const parsed = mapped.filter((r) => r.phone);
+      const skippedEmpty = mapped.length - parsed.length;
 
       if (parsed.length === 0) {
-        setImportError('No valid phone rows found. Expected a column: phone / Phone / מספר טלפון');
+        setImportError('No valid phone rows found. Expected WorkerPhone / phone / Phone / מספר טלפון');
         return;
       }
 
@@ -687,7 +756,10 @@ export default function LeadsPanel({ authUser, openLeadId = null, onOpenLeadHand
       const result = await res.json();
       if (!res.ok) throw new Error(result.error || 'Import failed');
       await load();
-      alert(`Imported ${result.imported} leads (${result.skipped} skipped as duplicates)`);
+      const parts = [`Imported ${result.imported} leads`];
+      if (result.skipped) parts.push(`${result.skipped} skipped as duplicates`);
+      if (skippedEmpty) parts.push(`${skippedEmpty} ignored (empty WorkerPhone)`);
+      alert(parts.join(' · '));
     } catch (err) {
       setImportError(err.message);
     } finally {
@@ -803,7 +875,13 @@ export default function LeadsPanel({ authUser, openLeadId = null, onOpenLeadHand
               <Plus className="w-4 h-4" />
               Add
             </button>
-            <button type="button" onClick={handleImportClick} disabled={importing} className="btn-primary flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleImportClick}
+              disabled={importing}
+              title="Supports WorkerPhone + FirstName/LastName, or a phone / fullName column"
+              className="btn-primary flex items-center gap-2"
+            >
               <Upload className="w-4 h-4" />
               {importing ? 'Importing…' : 'Import Excel'}
             </button>

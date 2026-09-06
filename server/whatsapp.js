@@ -3,6 +3,15 @@ import { israeliMobileKey } from './phoneKey.js';
 
 const GRAPH_API_VERSION = 'v21.0';
 
+/** Meta template names: lowercase letters, digits, underscores. */
+export function normalizeWaTemplateName(name) {
+  return String(name || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
 /** E.164 digits only for Meta API (e.g. 972559640862). */
 export function whatsAppRecipientDigits(phone) {
   let d = String(phone || '').replace(/\D/g, '');

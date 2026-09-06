@@ -78,9 +78,12 @@ function TemplateFormModal({ template, onSave, onClose }) {
               className="input-field"
               value={form.waTemplateName}
               onChange={(e) => setForm((p) => ({ ...p, waTemplateName: e.target.value }))}
-              placeholder="first_contact_en"
+              placeholder="new_customer_no_answer"
               required
             />
+            <p className="text-xs text-slate-500 mt-1">
+              Must match Meta exactly: lowercase with underscores (not spaces).
+            </p>
           </div>
           <div>
             <label className="label">Language code</label>

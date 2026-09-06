@@ -17,6 +17,7 @@ import {
   sendTextMessage,
   verifyWebhookSignature,
   fetchApprovedMessageTemplates,
+  normalizeWaTemplateName,
 } from './whatsapp.js';
 
 export const LEAD_STATUSES = ['new', 'contacted', 'interested', 'not_interested', 'converted'];
@@ -79,12 +80,65 @@ function previewBody(template, lead) {
   return body;
 }
 
-async function sendTemplateToLead(lead, template, sentBy) {
-  const variables = templateVariablesForLead(template, lead);
-  const bodyPreview = previewBody(template, lead);
+function placeholderCount(text) {
+  return (String(text || '').match(/\{\{\d+\}\}/g) || []).length;
+}
+
+async function loadApprovedMetaTemplates() {
+  try {
+    return await fetchApprovedMessageTemplates();
+  } catch (err) {
+    console.error('Failed to fetch Meta templates:', err.message);
+    return null;
+  }
+}
+
+/** Align a stored/UI template with the approved Meta name, language, and variable count. */
+function resolveTemplateForSend(template, metaApproved) {
+  const requested = normalizeWaTemplateName(template.waTemplateName || template.name);
+  const matches = Array.isArray(metaApproved)
+    ? metaApproved.filter((m) => normalizeWaTemplateName(m.name) === requested)
+    : [];
+  const meta =
+    matches.find((m) => m.language === (template.language || 'en')) || matches[0] || null;
+  const metaRec = meta ? metaTemplateToRecord(meta) : null;
+  const expectedVars = metaRec ? metaRec.variables.length : placeholderCount(template.bodyPreview);
+  let mapped =
+    expectedVars === 0
+      ? []
+      : Array.isArray(template.variables) && template.variables.length
+        ? template.variables.slice(0, expectedVars)
+        : metaRec?.variables || [];
+  while (mapped.length < expectedVars) {
+    mapped = [...mapped, metaRec?.variables?.[mapped.length] || `var${mapped.length + 1}`];
+  }
+  return {
+    ...template,
+    waTemplateName: meta?.name || requested,
+    language: meta?.language || template.language || 'en',
+    variables: mapped,
+    variableDefaults: template.variableDefaults || metaRec?.variableDefaults || [],
+    bodyPreview: template.bodyPreview || metaRec?.bodyPreview || '',
+    metaApproved: !!meta,
+  };
+}
+
+async function sendTemplateToLead(lead, template, sentBy, metaApproved) {
+  const resolved =
+    template.waTemplateName && template.metaApproved != null && Array.isArray(template.variables)
+      ? template
+      : resolveTemplateForSend(template, metaApproved || []);
+  if (Array.isArray(metaApproved) && metaApproved.length > 0 && !resolved.metaApproved) {
+    throw new Error(
+      `WhatsApp template "${template.waTemplateName || template.name}" is not approved on this account. Use the exact Meta name (lowercase_with_underscores), e.g. new_customer_no_answer.`,
+    );
+  }
+
+  const variables = templateVariablesForLead(resolved, lead);
+  const bodyPreview = previewBody(resolved, lead);
   const missingIdx = variables.findIndex((v) => !String(v ?? '').trim());
   if (missingIdx >= 0) {
-    const varName = template.variables?.[missingIdx] || `#${missingIdx + 1}`;
+    const varName = resolved.variables?.[missingIdx] || `#${missingIdx + 1}`;
     throw new Error(
       `Template parameter "${varName}" is empty. Fill the lead field or set a default in Leads → Templates.`,
     );
@@ -92,8 +146,8 @@ async function sendTemplateToLead(lead, template, sentBy) {
 
   const result = await sendTemplateMessage({
     to: lead.phone,
-    templateName: template.waTemplateName,
-    language: template.language || 'en',
+    templateName: resolved.waTemplateName,
+    language: resolved.language || 'en',
     variables,
   });
 
@@ -105,8 +159,8 @@ async function sendTemplateToLead(lead, template, sentBy) {
     phone: lead.phone,
     direction: 'outbound',
     messageType: 'template',
-    templateId: template.id,
-    waTemplateName: template.waTemplateName,
+    templateId: resolved.id,
+    waTemplateName: resolved.waTemplateName,
     body: bodyPreview,
     waMessageId: result.waMessageId,
     status: 'sent',
@@ -135,10 +189,6 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function templateKey(t) {
-  return `${t.waTemplateName}:${t.language || 'en'}`;
-}
-
 function metaTemplateToRecord(meta) {
   const bodyComp = meta.components?.find((c) => c.type === 'BODY');
   const headerComp = meta.components?.find((c) => c.type === 'HEADER' && c.format === 'TEXT');
@@ -165,26 +215,32 @@ function metaTemplateToRecord(meta) {
     isActive: true,
     source: 'meta',
     category: meta.category || null,
+    metaApproved: true,
   };
 }
 
 /** Meta-approved templates merged with local DB overrides (same name + language). */
 async function getMergedTemplates({ activeOnly = false } = {}) {
   const local = await readMessageTemplates();
-  let metaApproved = [];
-  try {
-    metaApproved = await fetchApprovedMessageTemplates();
-  } catch (err) {
-    console.error('Failed to fetch Meta templates:', err.message);
-  }
+  const metaApproved = (await loadApprovedMetaTemplates()) || [];
 
   const byKey = new Map();
+  for (const tpl of local) {
+    const resolved = resolveTemplateForSend(tpl, metaApproved);
+    const key = `${normalizeWaTemplateName(resolved.waTemplateName)}:${resolved.language}`;
+    byKey.set(key, {
+      ...resolved,
+      id: tpl.id,
+      name: tpl.name || resolved.waTemplateName,
+      isActive: tpl.isActive !== false,
+      source: resolved.metaApproved ? 'local+meta' : tpl.source || 'local',
+    });
+  }
   for (const meta of metaApproved) {
     const rec = metaTemplateToRecord(meta);
-    byKey.set(templateKey(rec), rec);
-  }
-  for (const tpl of local) {
-    byKey.set(templateKey(tpl), tpl);
+    const key = `${normalizeWaTemplateName(rec.waTemplateName)}:${rec.language}`;
+    if (byKey.has(key)) continue;
+    byKey.set(key, rec);
   }
 
   let merged = [...byKey.values()];
@@ -385,11 +441,13 @@ export function registerLeadsRoutes(app, { requireAdmin }) {
       let skipped = 0;
       for (const row of rows) {
         const phone = typeof row === 'string' ? row : row?.phone;
-        if (!phone) continue;
+        const phoneText = String(phone ?? '').trim().replace(/^['"]|['"]$/g, '');
+        if (!phoneText || /^(null|#null!|undefined|n\/a|na|none|-)$/i.test(phoneText)) continue;
         try {
           const lead = buildLeadRecord({
             phone,
             fullName: typeof row === 'object' ? row.fullName : '',
+            notes: typeof row === 'object' ? row.notes : '',
             source: 'import',
           });
           if (keys.has(lead.phoneKey)) {
@@ -469,7 +527,8 @@ export function registerLeadsRoutes(app, { requireAdmin }) {
       if (!template) return res.status(404).json({ error: 'Template not found or inactive' });
 
       const sentBy = req.user?.id || req.user?.username || null;
-      const result = await sendTemplateToLead(lead, template, sentBy);
+      const metaApproved = (await loadApprovedMetaTemplates()) || [];
+      const result = await sendTemplateToLead(lead, template, sentBy, metaApproved);
       res.json(result);
     } catch (err) {
       res.status(500).json({ error: err.message });
@@ -492,6 +551,14 @@ export function registerLeadsRoutes(app, { requireAdmin }) {
       const template = templates.find((t) => t.id === templateId);
       if (!template) return res.status(404).json({ error: 'Template not found or inactive' });
 
+      const metaApproved = (await loadApprovedMetaTemplates()) || [];
+      const resolved = resolveTemplateForSend(template, metaApproved);
+      if (metaApproved.length > 0 && !resolved.metaApproved) {
+        return res.status(400).json({
+          error: `WhatsApp template "${template.waTemplateName || template.name}" is not approved on this account. Use the exact Meta name (lowercase_with_underscores), e.g. new_customer_no_answer.`,
+        });
+      }
+
       const sentBy = req.user?.id || req.user?.username || null;
       const results = [];
       let sent = 0;
@@ -506,7 +573,7 @@ export function registerLeadsRoutes(app, { requireAdmin }) {
           continue;
         }
         try {
-          const out = await sendTemplateToLead(lead, template, sentBy);
+          const out = await sendTemplateToLead(lead, resolved, sentBy, metaApproved);
           results.push({
             leadId,
             ok: true,
@@ -611,9 +678,9 @@ export function registerLeadsRoutes(app, { requireAdmin }) {
       const tpl = {
         id: `TPL-${Date.now()}`,
         name: body.name.trim(),
-        waTemplateName: body.waTemplateName.trim(),
+        waTemplateName: normalizeWaTemplateName(body.waTemplateName) || body.waTemplateName.trim(),
         language: body.language || 'en',
-        variables: Array.isArray(body.variables) ? body.variables : ['fullName'],
+        variables: Array.isArray(body.variables) ? body.variables : [],
         bodyPreview: body.bodyPreview || '',
         isActive: body.isActive !== false,
         createdAt: new Date().toISOString(),
@@ -634,7 +701,9 @@ export function registerLeadsRoutes(app, { requireAdmin }) {
       const next = {
         ...prev,
         ...(body.name != null ? { name: String(body.name).trim() } : {}),
-        ...(body.waTemplateName != null ? { waTemplateName: String(body.waTemplateName).trim() } : {}),
+        ...(body.waTemplateName != null
+          ? { waTemplateName: normalizeWaTemplateName(body.waTemplateName) || String(body.waTemplateName).trim() }
+          : {}),
         ...(body.language != null ? { language: body.language } : {}),
         ...(body.variables != null ? { variables: body.variables } : {}),
         ...(body.bodyPreview != null ? { bodyPreview: body.bodyPreview } : {}),
