@@ -542,8 +542,8 @@ export function registerLeadsRoutes(app, { requireAdmin }) {
       if (!Array.isArray(leadIds) || leadIds.length === 0) {
         return res.status(400).json({ error: 'leadIds array is required' });
       }
-      if (leadIds.length > 100) {
-        return res.status(400).json({ error: 'Maximum 100 leads per bulk send' });
+      if (leadIds.length > 1000) {
+        return res.status(400).json({ error: 'Maximum 1000 leads per bulk send' });
       }
 
       const leads = await readLeads();

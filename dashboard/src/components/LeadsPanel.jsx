@@ -99,6 +99,43 @@ function parseLeadImportRow(row) {
   return { phone, fullName, notes };
 }
 
+function SelectLeadsScopeModal({ allCount, newCount, onSelectAll, onSelectNews, onClose }) {
+  return (
+    <div className="modal-overlay z-[60]" onClick={onClose}>
+      <div className="modal-content max-w-sm animate-slide-up" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2 className="font-bold text-slate-800 text-lg">Select leads</h2>
+          <button onClick={onClose} className="action-btn hover:bg-slate-100 text-slate-400">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+        <div className="modal-body space-y-3">
+          <p className="text-sm text-slate-600">Who should be selected?</p>
+          <button
+            type="button"
+            onClick={onSelectAll}
+            disabled={allCount === 0}
+            className="btn-primary w-full justify-center disabled:opacity-40"
+          >
+            Select all ({allCount})
+          </button>
+          <button
+            type="button"
+            onClick={onSelectNews}
+            disabled={newCount === 0}
+            className="btn-secondary w-full justify-center disabled:opacity-40"
+          >
+            Only news ({newCount})
+          </button>
+          <button type="button" onClick={onClose} className="w-full text-sm text-slate-500 hover:text-slate-700 py-1">
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function BulkSendWhatsAppModal({ leads, templates, onClose, onSent }) {
   const [templateId, setTemplateId] = useState('');
   const [sending, setSending] = useState(false);
@@ -681,6 +718,7 @@ export default function LeadsPanel({ authUser, openLeadId = null, onOpenLeadHand
   const [importError, setImportError] = useState('');
   const [selectedLeadIds, setSelectedLeadIds] = useState(() => new Set());
   const [showBulkSend, setShowBulkSend] = useState(false);
+  const [showSelectAll, setShowSelectAll] = useState(false);
   const fileInputRef = useRef(null);
 
   const load = useCallback(async (opts = {}) => {
@@ -772,7 +810,9 @@ export default function LeadsPanel({ authUser, openLeadId = null, onOpenLeadHand
     : leads;
 
   const selectedLeads = filteredLeads.filter((l) => selectedLeadIds.has(l.id));
-  const allFilteredSelected = filteredLeads.length > 0 && filteredLeads.every((l) => selectedLeadIds.has(l.id));
+  const newFilteredLeads = filteredLeads.filter((l) => l.status === 'new');
+  const allVisibleSelected =
+    filteredLeads.length > 0 && filteredLeads.every((l) => selectedLeadIds.has(l.id));
 
   const toggleLeadSelection = (leadId) => {
     setSelectedLeadIds((prev) => {
@@ -783,16 +823,32 @@ export default function LeadsPanel({ authUser, openLeadId = null, onOpenLeadHand
     });
   };
 
-  const toggleSelectAllFiltered = () => {
+  const clearVisibleSelection = () => {
     setSelectedLeadIds((prev) => {
       const next = new Set(prev);
-      if (allFilteredSelected) {
-        filteredLeads.forEach((l) => next.delete(l.id));
-      } else {
-        filteredLeads.forEach((l) => next.add(l.id));
-      }
+      filteredLeads.forEach((l) => next.delete(l.id));
       return next;
     });
+  };
+
+  const selectVisibleLeads = (onlyNew) => {
+    setSelectedLeadIds((prev) => {
+      const next = new Set(prev);
+      filteredLeads.forEach((l) => {
+        if (!onlyNew || l.status === 'new') next.add(l.id);
+        else next.delete(l.id);
+      });
+      return next;
+    });
+    setShowSelectAll(false);
+  };
+
+  const handleHeaderSelectClick = () => {
+    if (allVisibleSelected) {
+      clearVisibleSelection();
+      return;
+    }
+    setShowSelectAll(true);
   };
 
   const handleBulkSent = (data) => {
@@ -912,10 +968,11 @@ export default function LeadsPanel({ authUser, openLeadId = null, onOpenLeadHand
                   <th className="px-3 py-3 font-semibold w-10">
                     <input
                       type="checkbox"
-                      checked={allFilteredSelected}
-                      onChange={toggleSelectAllFiltered}
-                      className="w-4 h-4 accent-indigo-600 cursor-pointer rounded"
-                      title="Select all visible"
+                      checked={allVisibleSelected}
+                      onChange={handleHeaderSelectClick}
+                      disabled={filteredLeads.length === 0}
+                      className="w-4 h-4 accent-indigo-600 cursor-pointer rounded disabled:opacity-40"
+                      title="Select leads"
                     />
                   </th>
                   <th className="px-4 py-3 font-semibold">Phone</th>
@@ -1009,6 +1066,16 @@ export default function LeadsPanel({ authUser, openLeadId = null, onOpenLeadHand
             setSelectedLead(updated);
             setLeads((prev) => prev.map((l) => (l.id === updated.id ? updated : l)));
           }}
+        />
+      )}
+
+      {showSelectAll && (
+        <SelectLeadsScopeModal
+          allCount={filteredLeads.length}
+          newCount={newFilteredLeads.length}
+          onSelectAll={() => selectVisibleLeads(false)}
+          onSelectNews={() => selectVisibleLeads(true)}
+          onClose={() => setShowSelectAll(false)}
         />
       )}
 
