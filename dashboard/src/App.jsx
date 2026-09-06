@@ -527,7 +527,7 @@ function Dashboard({ authUser, onLogout }) {
       </div>
 
       <main className="px-2 py-4 sm:px-4 sm:py-5">
-        {activeTab === 'containers' && <ContainersPanel />}
+        {activeTab === 'containers' && <ContainersPanel authCountry={authUser.country} />}
         {activeTab === 'affiliates' && <AffiliatesPanel missions={missions} />}
         {activeTab === 'customers' && <CustomersPanel />}
         {showLeadsTab && activeTab === 'leads' && (
@@ -1010,6 +1010,7 @@ function Dashboard({ authUser, onLogout }) {
             <div className="modal-body">
               <MissionDetails
                 mission={editingMission}
+                authCountry={authUser.country}
                 onSave={() => { refetch(); refetchStats(); setEditingMission(null); }}
                 onClose={() => setEditingMission(null)}
                 onDelete={() => { refetch(); refetchStats(); setEditingMission(null); }}

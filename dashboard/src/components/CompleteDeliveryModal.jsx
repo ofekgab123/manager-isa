@@ -2,13 +2,21 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { X, Plus, Trash2, MapPin, CheckCircle, Truck, Package, AlertTriangle, Copy, Link2, Box, Pencil } from 'lucide-react';
 import AddressPicker from './AddressPicker';
 import PhoneInput from './PhoneInput';
-import { authCountryToDefaultPhoneCode } from '../authCountryUtils';
+import { authCountryToDefaultPhoneCode, authCountryToShippingDestination } from '../authCountryUtils';
 import EmptyBoxMissionPickerModal from './EmptyBoxMissionPickerModal';
 import CollapsibleParcelContent from './CollapsibleParcelContent';
 import { AddressVerificationImageField } from './AddressVerificationImage';
 import { API_BASE } from '../config';
 import { formatIls, sumAllDeliveriesContentsIls, valueIlsForTypeLabel } from '../parcelContentUtils';
 import { missionLwRegionId, PAYMENT_LOCATIONS } from '../shippingDestinations';
+
+function containerCountryKey(country) {
+  if (country == null || String(country).trim() === '') return '';
+  const s = String(country).trim().toLowerCase();
+  if (s === 'india') return 'india';
+  if (s === 'thailand' || s === 'th') return 'thailand';
+  return String(country).trim();
+}
 
 function resizeStringArray(prev, length) {
   return Array.from({ length }, (_, i) =>
@@ -493,6 +501,21 @@ export default function CompleteDeliveryModal({ isOpen, mission, onClose, onSave
     [deliveries]
   );
 
+  const userCountryKey = authCountryToShippingDestination(authCountry);
+  const visibleContainers = useMemo(() => {
+    if (!userCountryKey) return containers;
+    return containers.filter((c) => containerCountryKey(c.country) === userCountryKey);
+  }, [containers, userCountryKey]);
+
+  const containerOptions = useMemo(() => {
+    const list = [...visibleContainers];
+    if (containerId && !list.some((c) => c.id === containerId)) {
+      const extra = containers.find((c) => c.id === containerId);
+      if (extra) list.unshift(extra);
+    }
+    return list;
+  }, [visibleContainers, containers, containerId]);
+
   if (!isOpen) return null;
 
   const isThailand = missionLwRegionId(mission) === 'thailand';
@@ -543,6 +566,10 @@ export default function CompleteDeliveryModal({ isOpen, mission, onClose, onSave
     setDeliveries((prev) => prev.filter((_, i) => i !== idx));
 
   const handleSave = async () => {
+    if (visibleContainers.length > 0 && !containerId) {
+      setError('Select a container for this package');
+      return;
+    }
     setSaving(true); setError('');
     try {
       const normalizedDeliveries = deliveries.map((d, i) => ({
@@ -626,19 +653,25 @@ export default function CompleteDeliveryModal({ isOpen, mission, onClose, onSave
               <Box className="w-4 h-4" />
               Assign to container
             </label>
-            <p className="text-xs text-slate-500">Select which container this package belongs to</p>
+            <p className="text-xs text-slate-500">
+              Choose which container this package goes to
+              {authCountry ? ` (${authCountry})` : ''}
+            </p>
             <select
               value={containerId || ''}
               onChange={(e) => setContainerId(e.target.value || null)}
               className="select-field"
             >
-              <option value="">No container</option>
-              {containers.map((c) => (
+              <option value="">Select container…</option>
+              {containerOptions.map((c) => (
                 <option key={c.id} value={c.id}>
-                  {c.name || c.id} ({c.maxPackages} max packages)
+                  {c.name || c.id}{c.maxPackages != null ? ` (${c.maxPackages} max packages)` : ''}
                 </option>
               ))}
             </select>
+            {visibleContainers.length === 0 && (
+              <p className="text-xs text-amber-700">No containers available for this country.</p>
+            )}
           </div>
 
           {/* Link to empty box */}

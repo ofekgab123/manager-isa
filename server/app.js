@@ -55,18 +55,6 @@ function lionWheelWebhookProvidedSecret(req) {
 
 const app = express();
 
-function resolveDefaultPickupContainerId(containersList, bodyCountry) {
-  const key = containerCountryKey(bodyCountry);
-  if (key) {
-    const def = containersList.find(
-      (c) => c.isDefault && containerCountryKey(c.country) === key,
-    );
-    return def ? def.id : null;
-  }
-  const legacy = containersList.find((c) => c.isDefault);
-  return legacy ? legacy.id : null;
-}
-
 function defaultContainerForCountryKey(containersList, country) {
   const key = containerCountryKey(country);
   if (!key) return null;
@@ -93,8 +81,14 @@ async function movePickupMissionsToContainer(missionIds, targetContainerId, from
   for (const id of moveSet) {
     const m = missions.find((x) => x.id === id);
     if (!m || m.type !== 'pickup') throw new Error('Invalid moveMissionIds');
+    if (m.containerId === targetContainerId) continue;
     if (fromContainerId && m.containerId !== fromContainerId) {
       throw new Error('Invalid moveMissionIds');
+    }
+    const current = m.containerId ? containers.find((c) => c.id === m.containerId) : null;
+    if (!current) throw new Error('Invalid moveMissionIds');
+    if (containerCountryKey(current.country) !== containerCountryKey(target.country)) {
+      throw new Error('Packages can only be moved to a container in the same country');
     }
   }
 
@@ -714,13 +708,8 @@ app.post('/api/missions', async (req, res) => {
         ? lwRegionFromCustomerBody(body.country, body.shippingDestination)
         : null;
     let pickupContainerId = null;
-    if (missionType === 'pickup') {
-      if (Object.prototype.hasOwnProperty.call(body, 'containerId')) {
-        pickupContainerId = body.containerId || null;
-      } else {
-        const containersList = await readContainers();
-        pickupContainerId = resolveDefaultPickupContainerId(containersList, body.country);
-      }
+    if (missionType === 'pickup' && Object.prototype.hasOwnProperty.call(body, 'containerId')) {
+      pickupContainerId = body.containerId || null;
     }
     const newMission = {
       id: `MSN-${Date.now()}`,
@@ -2034,11 +2023,11 @@ app.patch('/api/containers/:id', async (req, res) => {
               : containers[i];
       }
       await writeContainers(containers);
-      if (Array.isArray(body.moveMissionIds) && body.moveMissionIds.length > 0 && body.moveFromContainerId) {
+      if (Array.isArray(body.moveMissionIds) && body.moveMissionIds.length > 0) {
         await movePickupMissionsToContainer(
           body.moveMissionIds,
           req.params.id,
-          String(body.moveFromContainerId).trim(),
+          body.moveFromContainerId ? String(body.moveFromContainerId).trim() : null,
         );
       }
       res.json(containers.find((c) => c.id === req.params.id));
@@ -2046,6 +2035,13 @@ app.patch('/api/containers/:id', async (req, res) => {
     }
     containers[idx] = updated;
     await writeContainers(containers);
+    if (Array.isArray(body.moveMissionIds) && body.moveMissionIds.length > 0) {
+      await movePickupMissionsToContainer(
+        body.moveMissionIds,
+        req.params.id,
+        body.moveFromContainerId ? String(body.moveFromContainerId).trim() : null,
+      );
+    }
     res.json(updated);
   } catch (err) {
     res.status(500).json({ error: err.message });

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { MapPin, User, Save, Trash2, AlertTriangle, Copy, Video, Image, X, Tag, Link2, Info, Plus, Globe, Box } from 'lucide-react';
 import AddressPicker from './AddressPicker';
 import PhoneInput from './PhoneInput';
@@ -29,12 +29,6 @@ function containerCountryKey(country) {
   if (s === 'india') return 'india';
   if (s === 'thailand' || s === 'th') return 'thailand';
   return String(country).trim();
-}
-
-function defaultContainerForCountry(containers, country) {
-  const key = containerCountryKey(country);
-  if (!key) return null;
-  return containers.find((c) => c.isDefault && containerCountryKey(c.country) === key) ?? null;
 }
 
 function EditableField({ label, value, onChange, type = 'text', placeholder, readOnly }) {
@@ -435,6 +429,7 @@ export default function MissionDetails({
   onClose,
   onDelete,
   onOpenPreview,
+  authCountry = null,
 }) {
   const [edit, setEdit] = useState({ ...mission, bringBoxes: mission.bringBoxes === true });
   const [saving, setSaving]   = useState(false);
@@ -446,10 +441,8 @@ export default function MissionDetails({
   const [linkedEmptyBoxMission, setLinkedEmptyBoxMission] = useState(null);
   const [parcelContentTypes, setParcelContentTypes] = useState([]);
   const [containers, setContainers] = useState([]);
-  const containerDefaultAppliedRef = useRef(null);
 
   useEffect(() => {
-    containerDefaultAppliedRef.current = null;
     setEdit({ ...mission, bringBoxes: mission.bringBoxes === true, containerId: mission.containerId ?? null });
   }, [mission.id]);
 
@@ -497,19 +490,12 @@ export default function MissionDetails({
   const missionRegion = missionLwRegionId(edit);
 
   const containersForMission = useMemo(() => {
+    const userKey = containerCountryKey(authCountry);
     const regionKey = containerCountryKey(missionRegion);
-    if (!regionKey) return containers;
-    return containers.filter((c) => containerCountryKey(c.country) === regionKey);
-  }, [containers, missionRegion]);
-
-  useEffect(() => {
-    if (!isPickup || containers.length === 0 || containerDefaultAppliedRef.current === mission.id) return;
-    containerDefaultAppliedRef.current = mission.id;
-    if (mission.containerId != null) return;
-    const def = defaultContainerForCountry(containers, missionLwRegionId(mission));
-    if (!def) return;
-    setEdit((prev) => (prev.id === mission.id ? { ...prev, containerId: def.id } : prev));
-  }, [containers, mission.id, mission.containerId, isPickup, mission]);
+    const filterKey = userKey || regionKey;
+    if (!filterKey) return containers;
+    return containers.filter((c) => containerCountryKey(c.country) === filterKey);
+  }, [containers, missionRegion, authCountry]);
 
   useEffect(() => {
     if (!isPickup) setAffiliatePickerOpen(false);
@@ -737,7 +723,6 @@ export default function MissionDetails({
               <option key={c.id} value={c.id}>
                 {c.name || c.id}
                 {c.maxPackages != null ? ` (${c.maxPackages} max packages)` : ''}
-                {c.isDefault ? ' — Default' : ''}
               </option>
             ))}
           </select>
