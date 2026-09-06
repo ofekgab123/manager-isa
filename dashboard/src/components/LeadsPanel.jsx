@@ -16,6 +16,7 @@ import * as XLSX from 'xlsx';
 import PhoneInput from './PhoneInput';
 import MessageTemplatesPanel from './MessageTemplatesPanel';
 import { API_BASE } from '../config';
+import { useBulkSend } from '../BulkSendContext';
 
 const STATUS_OPTIONS = [
   { value: 'new', label: 'New', className: 'bg-slate-100 text-slate-700 border-slate-200' },
@@ -136,11 +137,9 @@ function SelectLeadsScopeModal({ allCount, newCount, onSelectAll, onSelectNews, 
   );
 }
 
-function BulkSendWhatsAppModal({ leads, templates, onClose, onSent }) {
+function BulkSendWhatsAppModal({ leads, templates, onClose, onStart }) {
   const [templateId, setTemplateId] = useState('');
-  const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
-  const [progress, setProgress] = useState(null);
 
   const activeTemplates = templates.filter((t) => t.isActive !== false);
   const selectedTemplate = activeTemplates.find((t) => t.id === templateId);
@@ -162,32 +161,23 @@ function BulkSendWhatsAppModal({ leads, templates, onClose, onSent }) {
     return body;
   })();
 
-  const handleSend = async () => {
+  const handleSend = () => {
     if (!templateId) {
       setError('Select a template');
       return;
     }
-    setSending(true);
-    setError('');
-    setProgress({ done: 0, total: leads.length });
-    try {
-      const res = await fetch(`${API_BASE}/leads/bulk-send-message`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          templateId,
-          leadIds: leads.map((l) => l.id),
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Bulk send failed');
-      setProgress({ done: data.total, total: data.total });
-      onSent(data);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setSending(false);
+    const result = onStart({
+      templateId,
+      leadIds: leads.map((l) => l.id),
+      templateName: selectedTemplate
+        ? `${selectedTemplate.name}${selectedTemplate.language ? ` (${selectedTemplate.language})` : ''}`
+        : 'template',
+    });
+    if (!result?.ok) {
+      setError(result?.error || 'Could not start send');
+      return;
     }
+    onClose();
   };
 
   return (
@@ -222,7 +212,6 @@ function BulkSendWhatsAppModal({ leads, templates, onClose, onSent }) {
                   className="input-field"
                   value={templateId}
                   onChange={(e) => setTemplateId(e.target.value)}
-                  disabled={sending}
                 >
                   <option value="">Select template…</option>
                   {activeTemplates.map((t) => (
@@ -241,11 +230,6 @@ function BulkSendWhatsAppModal({ leads, templates, onClose, onSent }) {
               )}
             </>
           )}
-          {sending && progress && (
-            <p className="text-sm text-indigo-600 font-medium">
-              Sending… please wait ({progress.total} recipients)
-            </p>
-          )}
           {error && (
             <div className="flex items-center gap-2 text-red-600 bg-red-50 rounded-xl px-4 py-2.5 text-sm border border-red-100">
               <AlertCircle className="w-4 h-4 shrink-0" />
@@ -253,15 +237,15 @@ function BulkSendWhatsAppModal({ leads, templates, onClose, onSent }) {
             </div>
           )}
           <div className="flex justify-end gap-2 pt-2">
-            <button type="button" onClick={onClose} disabled={sending} className="btn-secondary">Cancel</button>
+            <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
             <button
               type="button"
               onClick={handleSend}
-              disabled={sending || activeTemplates.length === 0}
+              disabled={activeTemplates.length === 0}
               className="btn-primary flex items-center gap-2"
             >
               <Send className="w-4 h-4" />
-              {sending ? 'Sending…' : `Send to ${leads.length}`}
+              Send to {leads.length}
             </button>
           </div>
         </div>
@@ -705,6 +689,7 @@ function AddLeadModal({ onClose, onCreated }) {
 }
 
 export default function LeadsPanel({ authUser, openLeadId = null, onOpenLeadHandled }) {
+  const { job, startBulkSend } = useBulkSend();
   const [subTab, setSubTab] = useState('leads');
   const [leads, setLeads] = useState([]);
   const [templates, setTemplates] = useState([]);
@@ -851,21 +836,20 @@ export default function LeadsPanel({ authUser, openLeadId = null, onOpenLeadHand
     setShowSelectAll(true);
   };
 
-  const handleBulkSent = (data) => {
-    setShowBulkSend(false);
-    setSelectedLeadIds(new Set());
-    load({ silent: true });
-    const failedLines = (data.results || []).filter((r) => !r.ok).slice(0, 5);
-    let msg = `Sent: ${data.sent}\nFailed: ${data.failed}`;
-    if (failedLines.length > 0) {
-      msg += '\n\nFailed:';
-      for (const row of failedLines) {
-        msg += `\n• ${row.phone || row.leadId}: ${row.error}`;
-      }
-      if (data.failed > failedLines.length) msg += `\n… and ${data.failed - failedLines.length} more`;
+  const handleBulkSendStart = (payload) => {
+    const result = startBulkSend(payload);
+    if (result?.ok) {
+      setShowBulkSend(false);
+      setSelectedLeadIds(new Set());
     }
-    alert(msg);
+    return result;
   };
+
+  useEffect(() => {
+    if (!job || job.done === 0) return undefined;
+    load({ silent: true });
+    return undefined;
+  }, [job?.done, job?.status, load]);
 
   const counts = STATUS_OPTIONS.reduce((acc, s) => {
     acc[s.value] = leads.filter((l) => l.status === s.value).length;
@@ -945,7 +929,9 @@ export default function LeadsPanel({ authUser, openLeadId = null, onOpenLeadHand
               <button
                 type="button"
                 onClick={() => setShowBulkSend(true)}
-                className="btn-success flex items-center gap-2"
+                disabled={job?.status === 'running'}
+                title={job?.status === 'running' ? 'A send is already running' : undefined}
+                className="btn-success flex items-center gap-2 disabled:opacity-50"
               >
                 <Send className="w-4 h-4" />
                 Send template ({selectedLeads.length})
@@ -1084,7 +1070,7 @@ export default function LeadsPanel({ authUser, openLeadId = null, onOpenLeadHand
           leads={selectedLeads}
           templates={templates}
           onClose={() => setShowBulkSend(false)}
-          onSent={handleBulkSent}
+          onStart={handleBulkSendStart}
         />
       )}
     </div>

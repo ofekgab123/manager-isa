@@ -39,6 +39,7 @@ import ContainersPanel from './components/ContainersPanel';
 import SettingsPanel from './components/SettingsPanel';
 import LeadsPanel from './components/LeadsPanel';
 import LeadReplyAlertLayer from './components/LeadReplyAlertLayer';
+import { BulkSendProvider } from './BulkSendContext';
 import TableHorizontalScroll from './components/TableHorizontalScroll';
 import LoginPage from './components/LoginPage';
 import { API_BASE } from './config';
@@ -195,7 +196,11 @@ export default function App() {
     return <LoginPage onLogin={handleLogin} />;
   }
 
-  return <Dashboard authUser={authUser} onLogout={handleLogout} />;
+  return (
+    <BulkSendProvider>
+      <Dashboard authUser={authUser} onLogout={handleLogout} />
+    </BulkSendProvider>
+  );
 }
 
 function Dashboard({ authUser, onLogout }) {
