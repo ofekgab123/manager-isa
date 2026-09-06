@@ -255,6 +255,14 @@ export async function deleteLeadById(id) {
   if (rowCount === 0) throw new Error('Lead not found');
 }
 
+export async function deleteLeadsByIds(ids) {
+  const unique = [...new Set((ids || []).map((id) => String(id).trim()).filter(Boolean))];
+  if (unique.length === 0) return { deleted: 0 };
+  await pool.query(`DELETE FROM messages WHERE data->>'leadId' = ANY($1::text[])`, [unique]);
+  const { rowCount } = await pool.query('DELETE FROM leads WHERE id = ANY($1::text[])', [unique]);
+  return { deleted: rowCount };
+}
+
 export async function findLeadByPhoneKey(phoneKey) {
   if (!phoneKey) return null;
   const { rows } = await pool.query(`SELECT id, data FROM leads`);

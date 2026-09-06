@@ -3,6 +3,7 @@ import {
   insertLeadData,
   updateLeadData,
   deleteLeadById,
+  deleteLeadsByIds,
   findLeadByPhoneKey,
   readMessageTemplates,
   insertMessageTemplateData,
@@ -523,6 +524,22 @@ export function registerLeadsRoutes(app, { requireAdmin }) {
       res.json({ ok: true });
     } catch (err) {
       res.status(404).json({ error: err.message });
+    }
+  });
+
+  app.post('/api/leads/bulk-delete', requireLeadsAccess, async (req, res) => {
+    try {
+      const { leadIds } = req.body || {};
+      if (!Array.isArray(leadIds) || leadIds.length === 0) {
+        return res.status(400).json({ error: 'leadIds array is required' });
+      }
+      if (leadIds.length > 1000) {
+        return res.status(400).json({ error: 'Maximum 1000 leads per delete' });
+      }
+      const result = await deleteLeadsByIds(leadIds);
+      res.json({ ok: true, deleted: result.deleted });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
     }
   });
 

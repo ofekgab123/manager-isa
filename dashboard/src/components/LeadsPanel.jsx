@@ -11,6 +11,7 @@ import {
   AlertCircle,
   UserPlus,
   List,
+  Trash2,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import PhoneInput from './PhoneInput';
@@ -704,6 +705,7 @@ export default function LeadsPanel({ authUser, openLeadId = null, onOpenLeadHand
   const [selectedLeadIds, setSelectedLeadIds] = useState(() => new Set());
   const [showBulkSend, setShowBulkSend] = useState(false);
   const [showSelectAll, setShowSelectAll] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const fileInputRef = useRef(null);
 
   const load = useCallback(async (opts = {}) => {
@@ -836,6 +838,34 @@ export default function LeadsPanel({ authUser, openLeadId = null, onOpenLeadHand
     setShowSelectAll(true);
   };
 
+  const handleBulkDelete = async () => {
+    const ids = selectedLeads.map((l) => l.id);
+    if (ids.length === 0) return;
+    if (!window.confirm(
+      `Delete ${ids.length} selected lead${ids.length === 1 ? '' : 's'}? This cannot be undone.`,
+    )) {
+      return;
+    }
+    setDeleting(true);
+    setError('');
+    try {
+      const res = await fetch(`${API_BASE}/leads/bulk-delete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ leadIds: ids }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Delete failed');
+      setSelectedLeadIds(new Set());
+      if (selectedLead && ids.includes(selectedLead.id)) setSelectedLead(null);
+      await load();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   const handleBulkSendStart = (payload) => {
     const result = startBulkSend(payload);
     if (result?.ok) {
@@ -926,16 +956,27 @@ export default function LeadsPanel({ authUser, openLeadId = null, onOpenLeadHand
               {importing ? 'Importing…' : 'Import Excel'}
             </button>
             {selectedLeads.length > 0 && (
-              <button
-                type="button"
-                onClick={() => setShowBulkSend(true)}
-                disabled={job?.status === 'running'}
-                title={job?.status === 'running' ? 'A send is already running' : undefined}
-                className="btn-success flex items-center gap-2 disabled:opacity-50"
-              >
-                <Send className="w-4 h-4" />
-                Send template ({selectedLeads.length})
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={() => setShowBulkSend(true)}
+                  disabled={job?.status === 'running'}
+                  title={job?.status === 'running' ? 'A send is already running' : undefined}
+                  className="btn-success flex items-center gap-2 disabled:opacity-50"
+                >
+                  <Send className="w-4 h-4" />
+                  Send template ({selectedLeads.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={handleBulkDelete}
+                  disabled={deleting}
+                  className="btn-primary bg-red-600 hover:bg-red-700 flex items-center gap-2 disabled:opacity-50"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  {deleting ? 'Deleting…' : `Delete (${selectedLeads.length})`}
+                </button>
+              </>
             )}
             <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleFileChange} />
           </div>
