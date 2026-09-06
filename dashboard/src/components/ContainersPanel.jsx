@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   Box,
   Plus,
@@ -17,6 +17,7 @@ import {
   ImagePlus,
   Video,
   Star,
+  Search,
 } from 'lucide-react';
 import { API_BASE } from '../config';
 import { formatIls, sumBoxContentsIls } from '../parcelContentUtils';
@@ -85,6 +86,14 @@ function formatContainerLabel(c) {
   return name ? `${name} (${c.id})` : c.id;
 }
 
+function packageTrackingIds(m) {
+  const deliveries = m.deliveries?.length > 0 ? m.deliveries : [];
+  return deliveries
+    .flatMap((d) => [...(d.boxTrackingIds ?? []), ...(d.boxThailandRefs ?? [])])
+    .map((t) => String(t).trim())
+    .filter(Boolean);
+}
+
 function PackageMovePicker({
   packages,
   wantsMovePackages,
@@ -101,6 +110,20 @@ function PackageMovePicker({
   yesLabel = 'Yes — select packages to move',
   radioName = 'wantsMovePackages',
 }) {
+  const [trackingQuery, setTrackingQuery] = useState('');
+
+  useEffect(() => {
+    if (!wantsMovePackages) setTrackingQuery('');
+  }, [wantsMovePackages]);
+
+  const filteredPackages = useMemo(() => {
+    const q = trackingQuery.trim().toLowerCase();
+    if (!q) return packages;
+    return packages.filter((m) =>
+      packageTrackingIds(m).some((tid) => tid.toLowerCase().includes(q))
+    );
+  }, [packages, trackingQuery]);
+
   if (packages.length === 0) return null;
 
   return (
@@ -159,12 +182,27 @@ function PackageMovePicker({
               <span className="font-semibold">{formatContainerLabel(moveTargetContainer)}</span> after you confirm.
             </p>
           )}
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+            <input
+              type="search"
+              value={trackingQuery}
+              onChange={(e) => setTrackingQuery(e.target.value)}
+              placeholder="Search by tracking ID"
+              className="w-full rounded-lg border border-slate-200 bg-white pl-8 pr-3 py-2 text-sm"
+            />
+          </div>
           <div className="flex items-center justify-between gap-2">
             <span className="text-xs font-medium text-slate-600">
               {selectedMissionIds.size} of {packages.length} selected
+              {trackingQuery.trim() ? ` · ${filteredPackages.length} match` : ''}
             </span>
             <div className="flex gap-2">
-              <button type="button" onClick={onSelectAll} className="text-xs font-medium text-indigo-600 hover:text-indigo-800">
+              <button
+                type="button"
+                onClick={() => onSelectAll(filteredPackages)}
+                className="text-xs font-medium text-indigo-600 hover:text-indigo-800"
+              >
                 Select all
               </button>
               <button type="button" onClick={onClearAll} className="text-xs font-medium text-slate-500 hover:text-slate-700">
@@ -173,31 +211,41 @@ function PackageMovePicker({
             </div>
           </div>
           <div className="max-h-64 overflow-y-auto rounded-lg border border-slate-200 bg-white divide-y divide-slate-100">
-            {packages.map((m) => {
-              const name = m.fullName
-                || [m.firstName, m.lastName].filter(Boolean).join(' ')
-                || '—';
-              return (
-                <label
-                  key={m.id}
-                  className="flex items-start gap-3 px-3 py-2.5 hover:bg-slate-50 cursor-pointer text-left"
-                >
-                  <input
-                    type="checkbox"
-                    checked={selectedMissionIds.has(m.id)}
-                    onChange={() => onToggleMission(m.id)}
-                    className="mt-0.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
-                  />
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-sm font-medium text-slate-800 truncate">{name}</span>
-                    <span className="block text-xs text-slate-500 truncate">
-                      {m.id}
-                      {m.customerPhone ? ` · ${m.customerPhone}` : ''}
+            {filteredPackages.length === 0 ? (
+              <p className="text-sm text-slate-500 text-center py-6 px-3">No packages match this tracking ID</p>
+            ) : (
+              filteredPackages.map((m) => {
+                const name = m.fullName
+                  || [m.firstName, m.lastName].filter(Boolean).join(' ')
+                  || '—';
+                const tids = packageTrackingIds(m);
+                return (
+                  <label
+                    key={m.id}
+                    className="flex items-start gap-3 px-3 py-2.5 hover:bg-slate-50 cursor-pointer text-left"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedMissionIds.has(m.id)}
+                      onChange={() => onToggleMission(m.id)}
+                      className="mt-0.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                    />
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-sm font-medium text-slate-800 truncate">{name}</span>
+                      <span className="block text-xs text-slate-500 truncate">
+                        {m.id}
+                        {m.customerPhone ? ` · ${m.customerPhone}` : ''}
+                      </span>
+                      {tids.length > 0 && (
+                        <span className="block text-xs text-indigo-700 font-mono truncate mt-0.5">
+                          {tids.join(' · ')}
+                        </span>
+                      )}
                     </span>
-                  </span>
-                </label>
-              );
-            })}
+                  </label>
+                );
+              })
+            )}
           </div>
         </div>
       )}
@@ -1186,7 +1234,7 @@ function ContainerFormModal({ container, onSave, onClose, containers = [], missi
                   }}
                   selectedMissionIds={selectedMissionIds}
                   onToggleMission={toggleMission}
-                  onSelectAll={() => setSelectedMissionIds(new Set(packagesFromOldDefault.map((m) => m.id)))}
+                  onSelectAll={(list) => setSelectedMissionIds(new Set(list.map((m) => m.id)))}
                   onClearAll={() => setSelectedMissionIds(new Set())}
                   moveTargetContainer={isEdit ? container : { name: form.name || 'New container', id: '' }}
                   headerTitle={`Packages in ${formatContainerLabel(defaultContainer)}`}
@@ -1405,7 +1453,7 @@ function DeleteContainerModal({ container, containers, packages, onConfirm, onCl
     });
   };
 
-  const selectAllMissions = () => setSelectedMissionIds(new Set(packages.map((m) => m.id)));
+  const selectAllMissions = (list = packages) => setSelectedMissionIds(new Set(list.map((m) => m.id)));
   const clearAllMissions = () => setSelectedMissionIds(new Set());
 
   const handleConfirm = () => {
