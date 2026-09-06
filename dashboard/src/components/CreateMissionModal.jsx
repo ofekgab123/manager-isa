@@ -134,6 +134,20 @@ function SuggestionDropdown({ suggestions, onSelect }) {
   );
 }
 
+function containerCountryKey(country) {
+  if (country == null || String(country).trim() === '') return '';
+  const s = String(country).trim().toLowerCase();
+  if (s === 'india') return 'india';
+  if (s === 'thailand' || s === 'th') return 'thailand';
+  return String(country).trim();
+}
+
+function formatContainerOption(c) {
+  const name = (c.name || '').trim();
+  const label = name ? `${name} (${c.id})` : c.id;
+  return c.maxPackages != null ? `${label} · ${c.maxPackages} max` : label;
+}
+
 function SummaryRow({ label, value }) {
   if (!value) return null;
   return (
@@ -226,12 +240,19 @@ export default function CreateMissionModal({ isOpen, onClose, onCreated, authCou
   const [notes, setNotes] = useState('');
   /** When user has no india/thailand on profile (e.g. admin), pick region manually for empty_box and pickup. */
   const [manualShippingDestination, setManualShippingDestination] = useState('');
+  const [containers, setContainers] = useState([]);
+  const [containerId, setContainerId] = useState('');
 
   const impliedShippingDestination = authCountryToShippingDestination(authCountry);
   /** india | thailand for LionWheel + server country (empty_box + pickup when user must pick region). */
   const effectiveLwRegion =
     impliedShippingDestination ||
     (manualShippingDestination === 'india' || manualShippingDestination === 'thailand' ? manualShippingDestination : null);
+
+  const visibleContainers = containers.filter((c) => {
+    if (!effectiveLwRegion) return false;
+    return containerCountryKey(c.country) === effectiveLwRegion;
+  });
 
   /* ─── User autocomplete ──────────────────────────────── */
   const [allUsers, setAllUsers]           = useState([]);
@@ -242,11 +263,26 @@ export default function CreateMissionModal({ isOpen, onClose, onCreated, authCou
   useEffect(() => {
     if (!isOpen) return;
     fetch(`${API_BASE}/users`).then((r) => r.json()).then(setAllUsers).catch(() => {});
+    fetch(`${API_BASE}/containers`)
+      .then((r) => (r.ok ? r.json() : []))
+      .then((data) => setContainers(Array.isArray(data) ? data : []))
+      .catch(() => setContainers([]));
   }, [isOpen]);
 
   useEffect(() => {
     if (missionType !== 'pickup') setAffiliatePickerOpen(false);
   }, [missionType]);
+
+  useEffect(() => {
+    setContainerId((current) => {
+      if (!current) return '';
+      if (!effectiveLwRegion) return '';
+      const stillValid = containers.some(
+        (c) => c.id === current && containerCountryKey(c.country) === effectiveLwRegion,
+      );
+      return stillValid ? current : '';
+    });
+  }, [effectiveLwRegion, containers]);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -322,6 +358,7 @@ export default function CreateMissionModal({ isOpen, onClose, onCreated, authCou
     if (step === 3) {
       if (missionType === 'pickup') {
         if (!impliedShippingDestination && !effectiveLwRegion) return false;
+        if (!containerId) return false;
         // sub-step 1: entering pickup box count
         if (pickupBoxCount === null) {
           const raw = pickupBoxCountInput.trim();
@@ -365,6 +402,10 @@ export default function CreateMissionModal({ isOpen, onClose, onCreated, authCou
       setError('Choose ship-to: India or Thailand');
       return;
     }
+    if (missionType === 'pickup' && !containerId) {
+      setError('Select a container for this pickup');
+      return;
+    }
     setSubmitting(true); setError('');
     try {
       const coords = mapAddress ? { lat: mapAddress.lat, lng: mapAddress.lng } : await geocodeAddress({ city: form.senderCity, street: form.senderStreet, houseNumber: form.senderHouseNumber });
@@ -390,6 +431,7 @@ export default function CreateMissionModal({ isOpen, onClose, onCreated, authCou
           bringBoxes: bringBoxes !== false,
           pickupBoxCount: missionType === 'pickup' ? (pickupBoxCount ?? 0) : null,
           linkedEmptyBoxMissionId: missionType === 'pickup' && linkedEmptyBoxMission ? linkedEmptyBoxMission.id : null,
+          ...(missionType === 'pickup' ? { containerId } : {}),
           createdBy: 'customer_service',
           affiliateName: missionType === 'pickup' && viaAffiliate && selectedAffiliate ? selectedAffiliate.name : null,
           discountAmount: missionType === 'pickup' && viaAffiliate && selectedAffiliate ? selectedAffiliate.discountAmount : null,
@@ -399,7 +441,14 @@ export default function CreateMissionModal({ isOpen, onClose, onCreated, authCou
           notes: notes.trim() || undefined,
         }),
       });
-      if (!res.ok) throw new Error('Save error');
+      if (!res.ok) {
+        let msg = 'Save error';
+        try {
+          const j = await res.json();
+          if (j.error) msg = j.error;
+        } catch {}
+        throw new Error(msg);
+      }
       const mission = await res.json();
       // Save sender as a user (fire-and-forget)
       fetch(`${API_BASE}/users`, {
@@ -431,6 +480,7 @@ export default function CreateMissionModal({ isOpen, onClose, onCreated, authCou
     setViaAffiliate(false); setSelectedAffiliate(null);
     setNotes('');
     setManualShippingDestination('');
+    setContainerId('');
     onClose();
   };
 
@@ -703,6 +753,32 @@ export default function CreateMissionModal({ isOpen, onClose, onCreated, authCou
                         </select>
                       </div>
                     )}
+                    {missionType === 'pickup' && (
+                      <div className="rounded-xl border-2 border-dashed border-slate-200 bg-slate-50/40 p-4 space-y-2">
+                        <h3 className="text-base font-bold text-slate-800 flex items-center gap-2">
+                          <Box className="w-4 h-4 text-indigo-600" />
+                          Container
+                        </h3>
+                        <p className="text-sm text-slate-600">Required — choose which container this pickup goes to.</p>
+                        <select
+                          value={containerId}
+                          onChange={(e) => { setContainerId(e.target.value); setError(''); }}
+                          className="select-field w-full"
+                          required
+                        >
+                          <option value="">Select container…</option>
+                          {visibleContainers.map((c) => (
+                            <option key={c.id} value={c.id}>{formatContainerOption(c)}</option>
+                          ))}
+                        </select>
+                        {effectiveLwRegion && visibleContainers.length === 0 && (
+                          <p className="text-xs text-amber-700">No containers available for this country.</p>
+                        )}
+                        {!effectiveLwRegion && (
+                          <p className="text-xs text-slate-500">Choose India or Thailand first to see containers.</p>
+                        )}
+                      </div>
+                    )}
                     {missionType === 'pickup' && pickupBoxCount === null ? (
                       <>
                         <div className="flex items-center gap-2 flex-wrap">
@@ -736,7 +812,12 @@ export default function CreateMissionModal({ isOpen, onClose, onCreated, authCou
                           </button>
                           <button
                             type="button"
-                            onClick={() => { setBringBoxes(false); setBoxCounts({ large: 0, small: 0 }); setStep(4); }}
+                            onClick={() => {
+                              if (!containerId) { setError('Select a container for this pickup'); return; }
+                              setBringBoxes(false);
+                              setBoxCounts({ large: 0, small: 0 });
+                              setStep(4);
+                            }}
                             className="p-5 rounded-2xl border-2 border-slate-200 hover:border-slate-400 hover:bg-slate-50 flex flex-col items-center gap-2 transition-all duration-200 hover:shadow-md"
                           >
                             <Truck className="w-8 h-8 text-slate-400" />
@@ -806,6 +887,12 @@ export default function CreateMissionModal({ isOpen, onClose, onCreated, authCou
                       <SummaryRow label="Type"  value={missionType === 'pickup' ? 'Pickup Box' : 'Empty Box'} />
                       {effectiveLwRegion && (missionType === 'empty_box' || missionType === 'pickup') && (
                         <SummaryRow label="Ship to" value={shippingDestinationLabel(effectiveLwRegion)} />
+                      )}
+                      {missionType === 'pickup' && (
+                        <SummaryRow
+                          label="Container"
+                          value={containerId ? formatContainerOption(containers.find((c) => c.id === containerId) || { id: containerId }) : ''}
+                        />
                       )}
                     </div>
                     <div className="card p-4 space-y-2">
@@ -925,7 +1012,7 @@ export default function CreateMissionModal({ isOpen, onClose, onCreated, authCou
             ) : (
               <button
                 type="button"
-                disabled={submitting}
+                disabled={submitting || (missionType === 'pickup' && !containerId)}
                 onClick={handleSubmit}
                 className="btn-success flex-1"
               >

@@ -711,6 +711,20 @@ app.post('/api/missions', async (req, res) => {
     if (missionType === 'pickup' && Object.prototype.hasOwnProperty.call(body, 'containerId')) {
       pickupContainerId = body.containerId || null;
     }
+    const createdBy = body.createdBy || 'customer';
+    if (missionType === 'pickup' && createdBy !== 'customer') {
+      if (!pickupContainerId) {
+        return res.status(400).json({ error: 'containerId is required' });
+      }
+      const containersList = await readContainers();
+      const target = containersList.find((c) => c.id === pickupContainerId);
+      if (!target) {
+        return res.status(400).json({ error: 'Invalid containerId' });
+      }
+      if (lwRegionFromBody && containerCountryKey(target.country) !== lwRegionFromBody) {
+        return res.status(400).json({ error: 'Container country does not match mission country' });
+      }
+    }
     const newMission = {
       id: `MSN-${Date.now()}`,
       type: missionType,
