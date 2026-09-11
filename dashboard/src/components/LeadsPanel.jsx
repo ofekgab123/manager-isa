@@ -79,7 +79,7 @@ function pickExcelField(row, aliases) {
   return '';
 }
 
-/** Map a spreadsheet row to a lead — supports simple phone lists and the India worker export. */
+/** Map a spreadsheet row to a lead — supports simple phone lists and shipping/worker exports. */
 function parseLeadImportRow(row) {
   const workerPhone = getExcelField(row, ['WorkerPhone', 'worker_phone']);
   // Literal NULL / empty in WorkerPhone → skip the row, do not fall back to other columns.
@@ -89,16 +89,32 @@ function parseLeadImportRow(row) {
 
   const phone = workerPhone.found
     ? excelCell(workerPhone.value)
-    : pickExcelField(row, ['phone', 'Phone', 'mobile', 'Mobile', 'מספר טלפון', 'טלפון']);
+    : pickExcelField(row, [
+        'phone',
+        'Phone',
+        'mobile',
+        'Mobile',
+        'מספר טלפון',
+        'טלפון',
+        'טלפון איש קשר ביעד',
+      ]);
   const firstName = pickExcelField(row, ['FirstName', 'first_name', 'first name', 'שם פרטי']);
   const lastName = pickExcelField(row, ['LastName', 'last_name', 'last name', 'שם משפחה']);
-  const fullName =
-    pickExcelField(row, ['fullName', 'Full Name', 'name', 'שם']) ||
-    [firstName, lastName].filter(Boolean).join(' ').trim();
+  const importedFullName = pickExcelField(row, [
+    'fullName',
+    'Full Name',
+    'name',
+    'שם',
+    'שם איש קשר ביעד',
+  ]);
+  const fullName = importedFullName || [firstName, lastName].filter(Boolean).join(' ').trim();
+  const nameParts = fullName.split(/\s+/).filter(Boolean);
+  const resolvedFirstName = firstName || nameParts[0] || '';
+  const resolvedLastName = lastName || nameParts.slice(1).join(' ');
   const passport = pickExcelField(row, ['pasportNo', 'passportNo', 'passport', 'Passport', 'דרכון']);
   const country = pickExcelField(row, ['country_name_EN', 'country_name', 'country', 'Country', 'מדינה']);
   const notes = [passport && `passport ${passport}`, country].filter(Boolean).join(' · ');
-  return { phone, fullName, notes };
+  return { phone, firstName: resolvedFirstName, lastName: resolvedLastName, fullName, notes };
 }
 
 function SelectLeadsScopeModal({ allCount, newCount, onSelectAll, onSelectNews, onClose }) {
@@ -781,7 +797,7 @@ export default function LeadsPanel({ authUser, openLeadId = null, onOpenLeadHand
       const skippedEmpty = mapped.length - parsed.length;
 
       if (parsed.length === 0) {
-        setImportError('No valid phone rows found. Expected WorkerPhone / phone / Phone / מספר טלפון');
+        setImportError('No valid phone rows found. Expected WorkerPhone / phone / מספר טלפון / טלפון איש קשר ביעד');
         return;
       }
 
@@ -961,7 +977,7 @@ export default function LeadsPanel({ authUser, openLeadId = null, onOpenLeadHand
               type="button"
               onClick={handleImportClick}
               disabled={importing}
-              title="Supports WorkerPhone + FirstName/LastName, or a phone / fullName column"
+              title="Supports shipping exports with destination contact name/phone, WorkerPhone + FirstName/LastName, or phone / fullName columns"
               className="btn-primary flex items-center gap-2"
             >
               <Upload className="w-4 h-4" />

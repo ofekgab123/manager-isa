@@ -42,7 +42,15 @@ export function isConversationWindowOpen(lead) {
 const WHATSAPP_WEBHOOK_VERIFY_TOKEN = (process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN || '').trim();
 const WHATSAPP_APP_SECRET = (process.env.WHATSAPP_APP_SECRET || '').trim();
 
-function buildLeadRecord({ phone, fullName = '', status = 'new', notes = '', source = 'manual' }) {
+function buildLeadRecord({
+  phone,
+  firstName = '',
+  lastName = '',
+  fullName = '',
+  status = 'new',
+  notes = '',
+  source = 'manual',
+}) {
   const phoneKey = israeliMobileKey(phone);
   if (!phoneKey || phoneKey.length < 7) throw new Error('Invalid phone number');
   const now = new Date().toISOString();
@@ -50,6 +58,8 @@ function buildLeadRecord({ phone, fullName = '', status = 'new', notes = '', sou
     id: `LED-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
     phone: String(phone).trim(),
     phoneKey,
+    firstName: String(firstName || '').trim(),
+    lastName: String(lastName || '').trim(),
     fullName: String(fullName || '').trim(),
     status: LEAD_STATUSES.includes(status) ? status : 'new',
     notes: String(notes || '').trim(),
@@ -625,6 +635,8 @@ export function registerLeadsRoutes(app, { requireAdmin }) {
         try {
           const lead = buildLeadRecord({
             phone,
+            firstName: typeof row === 'object' ? row.firstName : '',
+            lastName: typeof row === 'object' ? row.lastName : '',
             fullName: typeof row === 'object' ? row.fullName : '',
             notes: typeof row === 'object' ? row.notes : '',
             source: 'import',
