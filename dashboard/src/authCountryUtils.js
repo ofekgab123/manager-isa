@@ -27,9 +27,7 @@ export function authCountryToDefaultPhoneCode(country) {
   return n ? AUTH_COUNTRY[n].defaultPhoneCode : '+972';
 }
 
-/** Leads tab + API: admins and India country users only. */
+/** Leads tab: available to every authenticated user; the API scopes data by country. */
 export function canAccessLeads(authUser) {
-  if (!authUser) return false;
-  if (authUser.isAdmin) return true;
-  return normalizeAuthCountryKey(authUser.country) === 'india';
+  return !!authUser;
 }

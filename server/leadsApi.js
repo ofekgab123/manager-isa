@@ -43,6 +43,13 @@ export function isConversationWindowOpen(lead) {
 const WHATSAPP_WEBHOOK_VERIFY_TOKEN = (process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN || '').trim();
 const WHATSAPP_APP_SECRET = (process.env.WHATSAPP_APP_SECRET || '').trim();
 
+function normalizeLeadCountry(country) {
+  const value = String(country || '').trim().toLowerCase();
+  if (value === 'th' || value === 'thailand') return 'thailand';
+  if (value === 'in' || value === 'india') return 'india';
+  return null;
+}
+
 function buildLeadRecord({
   phone,
   firstName = '',
@@ -51,6 +58,7 @@ function buildLeadRecord({
   status = 'new',
   notes = '',
   source = 'manual',
+  country = null,
 }) {
   const phoneKey = israeliMobileKey(phone);
   if (!phoneKey || phoneKey.length < 7) throw new Error('Invalid phone number');
@@ -65,6 +73,7 @@ function buildLeadRecord({
     status: LEAD_STATUSES.includes(status) ? status : 'new',
     notes: String(notes || '').trim(),
     source,
+    country: normalizeLeadCountry(country),
     createdAt: now,
     updatedAt: now,
     lastContactedAt: null,
@@ -566,10 +575,25 @@ export function registerWhatsAppWebhook(app) {
 /** Register authenticated leads + templates routes — call AFTER app.use('/api', requireAuth). */
 export function registerLeadsRoutes(app, { requireAdmin }) {
   function canAccessLeads(user) {
-    if (!user) return false;
-    if (user.isAdmin) return true;
-    const country = user.country == null ? '' : String(user.country).trim().toLowerCase();
-    return country === 'india';
+    return !!user;
+  }
+
+  function leadCountryForRequest(req) {
+    if (!req.user?.isAdmin) return normalizeLeadCountry(req.user?.country);
+    return normalizeLeadCountry(req.body?.country);
+  }
+
+  function leadVisibleToUser(lead, user) {
+    if (user?.isAdmin) return true;
+    const userCountry = normalizeLeadCountry(user?.country);
+    if (!userCountry) return false;
+    const leadCountry = normalizeLeadCountry(lead?.country);
+    // Leads created before country scoping belonged to the original India-only view.
+    return leadCountry ? leadCountry === userCountry : userCountry === 'india';
+  }
+
+  function visibleLeadsForUser(leads, user) {
+    return leads.filter((lead) => leadVisibleToUser(lead, user));
   }
 
   function requireLeadsAccess(req, res, next) {
@@ -580,6 +604,7 @@ export function registerLeadsRoutes(app, { requireAdmin }) {
   app.get('/api/leads', requireLeadsAccess, async (req, res) => {
     try {
       let leads = await readLeads();
+      leads = visibleLeadsForUser(leads, req.user);
       const { status, q } = req.query;
       if (status) leads = leads.filter((l) => l.status === status);
       if (q) {
@@ -608,8 +633,8 @@ export function registerLeadsRoutes(app, { requireAdmin }) {
   app.post('/api/leads', requireLeadsAccess, async (req, res) => {
     try {
       const leads = await readLeads();
-      const lead = buildLeadRecord(req.body);
-      if (leads.some((l) => l.phoneKey === lead.phoneKey)) {
+      const lead = buildLeadRecord({ ...req.body, country: leadCountryForRequest(req) });
+      if (visibleLeadsForUser(leads, req.user).some((l) => l.phoneKey === lead.phoneKey)) {
         return res.status(409).json({ error: 'Lead with this phone already exists' });
       }
       await insertLeadData(lead.id, lead);
@@ -625,7 +650,9 @@ export function registerLeadsRoutes(app, { requireAdmin }) {
       if (!Array.isArray(rows) || rows.length === 0) {
         return res.status(400).json({ error: 'Expected { leads: [{ phone, fullName? }] }' });
       }
-      const existing = await readLeads();
+      const allLeads = await readLeads();
+      const existing = visibleLeadsForUser(allLeads, req.user);
+      const country = leadCountryForRequest(req);
       const keys = new Set(existing.map((l) => l.phoneKey));
       const leadsToInsert = [];
       let skipped = 0;
@@ -641,6 +668,7 @@ export function registerLeadsRoutes(app, { requireAdmin }) {
             fullName: typeof row === 'object' ? row.fullName : '',
             notes: typeof row === 'object' ? row.notes : '',
             source: 'import',
+            country,
           });
           if (keys.has(lead.phoneKey)) {
             skipped++;
@@ -666,7 +694,9 @@ export function registerLeadsRoutes(app, { requireAdmin }) {
   app.patch('/api/leads/:id', requireLeadsAccess, async (req, res) => {
     try {
       const leads = await readLeads();
-      const idx = leads.findIndex((l) => l.id === req.params.id);
+      const idx = leads.findIndex(
+        (l) => l.id === req.params.id && leadVisibleToUser(l, req.user),
+      );
       if (idx === -1) return res.status(404).json({ error: 'Lead not found' });
       const prev = leads[idx];
       const body = req.body || {};
@@ -686,6 +716,11 @@ export function registerLeadsRoutes(app, { requireAdmin }) {
 
   app.delete('/api/leads/:id', requireLeadsAccess, async (req, res) => {
     try {
+      const leads = await readLeads();
+      const lead = leads.find(
+        (item) => item.id === req.params.id && leadVisibleToUser(item, req.user),
+      );
+      if (!lead) return res.status(404).json({ error: 'Lead not found' });
       await deleteLeadById(req.params.id);
       res.json({ ok: true });
     } catch (err) {
@@ -702,7 +737,12 @@ export function registerLeadsRoutes(app, { requireAdmin }) {
       if (leadIds.length > 1000) {
         return res.status(400).json({ error: 'Maximum 1000 leads per delete' });
       }
-      const result = await deleteLeadsByIds(leadIds);
+      const leads = await readLeads();
+      const allowedIds = new Set(
+        visibleLeadsForUser(leads, req.user).map((lead) => lead.id),
+      );
+      const visibleIds = leadIds.filter((id) => allowedIds.has(id));
+      const result = await deleteLeadsByIds(visibleIds);
       res.json({ ok: true, deleted: result.deleted });
     } catch (err) {
       res.status(500).json({ error: err.message });
@@ -712,7 +752,9 @@ export function registerLeadsRoutes(app, { requireAdmin }) {
   app.get('/api/leads/:id/messages', requireLeadsAccess, async (req, res) => {
     try {
       const leads = await readLeads();
-      const lead = leads.find((l) => l.id === req.params.id);
+      const lead = leads.find(
+        (l) => l.id === req.params.id && leadVisibleToUser(l, req.user),
+      );
       if (!lead) return res.status(404).json({ error: 'Lead not found' });
       const messages = await readMessagesForLead(req.params.id);
       res.json({
@@ -731,7 +773,9 @@ export function registerLeadsRoutes(app, { requireAdmin }) {
       if (!templateId) return res.status(400).json({ error: 'templateId is required' });
 
       const leads = await readLeads();
-      const lead = leads.find((l) => l.id === req.params.id);
+      const lead = leads.find(
+        (l) => l.id === req.params.id && leadVisibleToUser(l, req.user),
+      );
       if (!lead) return res.status(404).json({ error: 'Lead not found' });
 
       const templates = await getMergedTemplates({ activeOnly: true });
@@ -758,7 +802,7 @@ export function registerLeadsRoutes(app, { requireAdmin }) {
         return res.status(400).json({ error: 'Maximum 1000 leads per bulk send' });
       }
 
-      const leads = await readLeads();
+      const leads = visibleLeadsForUser(await readLeads(), req.user);
       const templates = await getMergedTemplates({ activeOnly: true });
       const template = templates.find((t) => t.id === templateId);
       if (!template) return res.status(404).json({ error: 'Template not found or inactive' });
@@ -820,7 +864,9 @@ export function registerLeadsRoutes(app, { requireAdmin }) {
       if (!body) return res.status(400).json({ error: 'text is required' });
 
       const leads = await readLeads();
-      const lead = leads.find((l) => l.id === req.params.id);
+      const lead = leads.find(
+        (l) => l.id === req.params.id && leadVisibleToUser(l, req.user),
+      );
       if (!lead) return res.status(404).json({ error: 'Lead not found' });
 
       if (!isConversationWindowOpen(lead)) {
