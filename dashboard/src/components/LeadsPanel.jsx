@@ -806,7 +806,17 @@ export default function LeadsPanel({ authUser, openLeadId = null, onOpenLeadHand
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ leads: parsed }),
       });
-      const result = await res.json();
+      const responseText = await res.text();
+      let result = {};
+      try {
+        result = responseText ? JSON.parse(responseText) : {};
+      } catch {
+        throw new Error(
+          res.ok
+            ? 'Import failed: the server returned an invalid response'
+            : `Import failed (${res.status}). Please try again`,
+        );
+      }
       if (!res.ok) throw new Error(result.error || 'Import failed');
       await load();
       const parts = [`Imported ${result.imported} leads`];

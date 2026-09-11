@@ -245,6 +245,17 @@ export async function insertLeadData(id, data) {
   await pool.query(`INSERT INTO leads (id, data) VALUES ($1, $2::jsonb)`, [id, data]);
 }
 
+/** Insert an import batch in one database round trip. */
+export async function insertLeadsData(leads) {
+  if (!Array.isArray(leads) || leads.length === 0) return;
+  await pool.query(
+    `INSERT INTO leads (id, data)
+     SELECT item->>'id', item
+     FROM jsonb_array_elements($1::jsonb) AS item`,
+    [JSON.stringify(leads)],
+  );
+}
+
 export async function updateLeadData(id, data) {
   const { rowCount } = await pool.query(`UPDATE leads SET data = $2::jsonb WHERE id = $1`, [id, data]);
   if (rowCount === 0) throw new Error('Lead not found');

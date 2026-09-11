@@ -1,6 +1,7 @@
 import {
   readLeads,
   insertLeadData,
+  insertLeadsData,
   updateLeadData,
   deleteLeadById,
   deleteLeadsByIds,
@@ -626,7 +627,7 @@ export function registerLeadsRoutes(app, { requireAdmin }) {
       }
       const existing = await readLeads();
       const keys = new Set(existing.map((l) => l.phoneKey));
-      let imported = 0;
+      const leadsToInsert = [];
       let skipped = 0;
       for (const row of rows) {
         const phone = typeof row === 'string' ? row : row?.phone;
@@ -645,14 +646,18 @@ export function registerLeadsRoutes(app, { requireAdmin }) {
             skipped++;
             continue;
           }
-          await insertLeadData(lead.id, lead);
           keys.add(lead.phoneKey);
-          imported++;
+          leadsToInsert.push(lead);
         } catch {
           skipped++;
         }
       }
-      res.json({ imported, skipped, total: (await readLeads()).length });
+      await insertLeadsData(leadsToInsert);
+      res.json({
+        imported: leadsToInsert.length,
+        skipped,
+        total: existing.length + leadsToInsert.length,
+      });
     } catch (err) {
       res.status(500).json({ error: err.message });
     }
