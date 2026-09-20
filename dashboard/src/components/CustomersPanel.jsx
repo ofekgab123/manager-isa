@@ -15,8 +15,9 @@ import {
 import AddressPicker from './AddressPicker';
 import PhoneInput from './PhoneInput';
 import { API_BASE } from '../config';
+import { authCountryToDefaultPhoneCode } from '../authCountryUtils';
 
-function CustomerFormModal({ type, customer, onSave, onClose }) {
+function CustomerFormModal({ type, customer, onSave, onClose, authCountry = null }) {
   const isSender = type === 'sender';
   const isEdit = !!customer;
   const [form, setForm] = useState({
@@ -138,6 +139,7 @@ function CustomerFormModal({ type, customer, onSave, onClose }) {
           <div>
             <label className="label">Phone *</label>
             <PhoneInput
+              defaultCode={authCountryToDefaultPhoneCode(authCountry)}
               value={form.phone}
               onChange={handlePhoneChange}
               placeholder="501234567"
@@ -258,7 +260,7 @@ function CustomerFormModal({ type, customer, onSave, onClose }) {
   );
 }
 
-export default function CustomersPanel() {
+export default function CustomersPanel({ authCountry = null }) {
   const [activeTab, setActiveTab] = useState('senders');
   const [senders, setSenders] = useState([]);
   const [receivers, setReceivers] = useState([]);
@@ -464,11 +466,12 @@ export default function CustomersPanel() {
         </div>
       )}
 
-      {showAdd && <CustomerFormModal type={activeTab === 'senders' ? 'sender' : 'receiver'} onSave={handleSaved} onClose={() => setShowAdd(false)} />}
+      {showAdd && <CustomerFormModal type={activeTab === 'senders' ? 'sender' : 'receiver'} authCountry={authCountry} onSave={handleSaved} onClose={() => setShowAdd(false)} />}
       {editingItem && (
         <CustomerFormModal
           type={activeTab === 'senders' ? 'sender' : 'receiver'}
           customer={editingItem}
+          authCountry={authCountry}
           onSave={handleSaved}
           onClose={() => setEditingItem(null)}
         />

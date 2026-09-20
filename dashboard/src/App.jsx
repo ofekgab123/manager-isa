@@ -529,7 +529,7 @@ function Dashboard({ authUser, onLogout }) {
       <main className="px-2 py-4 sm:px-4 sm:py-5">
         {activeTab === 'containers' && <ContainersPanel authCountry={authUser.country} />}
         {activeTab === 'affiliates' && <AffiliatesPanel missions={missions} />}
-        {activeTab === 'customers' && <CustomersPanel />}
+        {activeTab === 'customers' && <CustomersPanel authCountry={authUser.country} />}
         {showLeadsTab && activeTab === 'leads' && (
           <LeadsPanel
             authUser={authUser}

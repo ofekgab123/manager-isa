@@ -21,9 +21,15 @@ export function authCountryToShippingDestination(country) {
   return n ? AUTH_COUNTRY[n].shippingDestination : null;
 }
 
-/** Default international dial code for UIs (receiver overseas); Israeli sender flows keep +972. */
+/** Default international dial code from the logged-in user's country (Thailand → +66, India → +91). */
 export function authCountryToDefaultPhoneCode(country) {
   const n = normalizeAuthCountryKey(country);
+  return n ? AUTH_COUNTRY[n].defaultPhoneCode : '+972';
+}
+
+/** Prefer the staff user's country, then the mission/region country. */
+export function defaultPhoneCode(authCountry, fallbackCountry = null) {
+  const n = normalizeAuthCountryKey(authCountry) || normalizeAuthCountryKey(fallbackCountry);
   return n ? AUTH_COUNTRY[n].defaultPhoneCode : '+972';
 }
 

@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { X, Plus, Trash2, MapPin, CheckCircle, Truck, Package, AlertTriangle, Copy, Link2, Box, Pencil } from 'lucide-react';
 import AddressPicker from './AddressPicker';
 import PhoneInput from './PhoneInput';
-import { authCountryToDefaultPhoneCode, authCountryToShippingDestination } from '../authCountryUtils';
+import { defaultPhoneCode, authCountryToShippingDestination } from '../authCountryUtils';
 import EmptyBoxMissionPickerModal from './EmptyBoxMissionPickerModal';
 import CollapsibleParcelContent from './CollapsibleParcelContent';
 import { AddressVerificationImageField } from './AddressVerificationImage';
@@ -380,7 +380,7 @@ function DeliveryRow({
 
 /* ─── Main modal ─────────────────────────────────────────────── */
 export default function CompleteDeliveryModal({ isOpen, mission, onClose, onSaved, authCountry = null }) {
-  const receiverDefaultCode = authCountryToDefaultPhoneCode(authCountry);
+  const receiverDefaultCode = defaultPhoneCode(authCountry, missionLwRegionId(mission));
 
   const initialBoxCount =
     mission.pickupBoxCount ||
@@ -431,6 +431,7 @@ export default function CompleteDeliveryModal({ isOpen, mission, onClose, onSave
 
   const [saving, setSaving] = useState(false);
   const [error, setError]   = useState('');
+  const containerSelectRef = useRef(null);
   const [linkedEmptyBoxMissionId, setLinkedEmptyBoxMissionId] = useState(mission.linkedEmptyBoxMissionId ?? null);
   const [linkedEmptyBoxMission, setLinkedEmptyBoxMission] = useState(null);
   const [emptyBoxMissionPickerOpen, setEmptyBoxMissionPickerOpen] = useState(false);
@@ -568,6 +569,8 @@ export default function CompleteDeliveryModal({ isOpen, mission, onClose, onSave
   const handleSave = async () => {
     if (visibleContainers.length > 0 && !containerId) {
       setError('Select a container for this package');
+      containerSelectRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      containerSelectRef.current?.focus();
       return;
     }
     setSaving(true); setError('');
@@ -576,42 +579,34 @@ export default function CompleteDeliveryModal({ isOpen, mission, onClose, onSave
         ...d,
         id: mission?.id ? `PKG-${(mission.id || '').replace(/^MSN-/, '')}-${i}` : `PKG-${Date.now()}`,
       }));
-      // Save receivers for future auto-fill
-      await Promise.all(
-        normalizedDeliveries
-          .filter((d) => (d.receiverPhone || '').replace(/\D/g, '').length >= 7)
-          .map((d) =>
-            fetch(`${API_BASE}/receivers`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                fullName: d.receiverName || '',
-                phone: d.receiverPhone || '',
-                address: d.address || null,
-              }),
-            }).catch(() => {})
-          )
-      );
-      const res = await fetch(`${API_BASE}/missions/${mission.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          pickupBoxCount,
-          pickupBoxWeights: pickupBoxCount > 0 ? deliveries.flatMap((d) => (d.boxWeights ?? []).map((w) => parseFloat(w) || 0)) : null,
-          bringBoxes,
-          boxSelection: bringBoxes ? boxSelection : { large: 0, small: 0 },
-          deliveries: normalizedDeliveries,
-          linkedEmptyBoxMissionId,
-          containerId: containerId || null,
-          paymentLocation: isThailand ? paymentLocation : null,
-          // keep first delivery as the primary receiver for backwards compat
-          receiverName:    normalizedDeliveries[0]?.receiverName  || '',
-          receiverPhone:   normalizedDeliveries[0]?.receiverPhone || '',
-          receiverPhone2:  isThailand ? (normalizedDeliveries[0]?.receiverPhone2 || '') : null,
-          receiverAddress: normalizedDeliveries[0]?.address       || null,
-          notes: notes.trim() || null,
-        }),
-      });
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 45000);
+      let res;
+      try {
+        res = await fetch(`${API_BASE}/missions/${mission.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          signal: controller.signal,
+          body: JSON.stringify({
+            pickupBoxCount,
+            pickupBoxWeights: pickupBoxCount > 0 ? deliveries.flatMap((d) => (d.boxWeights ?? []).map((w) => parseFloat(w) || 0)) : null,
+            bringBoxes,
+            boxSelection: bringBoxes ? boxSelection : { large: 0, small: 0 },
+            deliveries: normalizedDeliveries,
+            linkedEmptyBoxMissionId,
+            containerId: containerId || null,
+            paymentLocation: isThailand ? paymentLocation : null,
+            // keep first delivery as the primary receiver for backwards compat
+            receiverName:    normalizedDeliveries[0]?.receiverName  || '',
+            receiverPhone:   normalizedDeliveries[0]?.receiverPhone || '',
+            receiverPhone2:  isThailand ? (normalizedDeliveries[0]?.receiverPhone2 || '') : null,
+            receiverAddress: normalizedDeliveries[0]?.address       || null,
+            notes: notes.trim() || null,
+          }),
+        });
+      } finally {
+        clearTimeout(timeoutId);
+      }
       if (!res.ok) {
         let msg = 'Save error';
         try {
@@ -620,10 +615,32 @@ export default function CompleteDeliveryModal({ isOpen, mission, onClose, onSave
         } catch {}
         throw new Error(msg);
       }
-      onSaved?.(await res.json());
+      const saved = await res.json();
+      // Autofill cache — do not block closing the modal if this is slow
+      Promise.all(
+        normalizedDeliveries
+          .filter((d) => (d.receiverPhone || '').replace(/\D/g, '').length >= 7)
+          .map((d) => {
+            const addr = d.address && typeof d.address === 'object'
+              ? Object.fromEntries(
+                  Object.entries(d.address).filter(([key]) => key !== 'imageUrl' && key !== 'videoUrl'),
+                )
+              : (d.address || null);
+            return fetch(`${API_BASE}/receivers`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                fullName: d.receiverName || '',
+                phone: d.receiverPhone || '',
+                address: addr,
+              }),
+            }).catch(() => {});
+          })
+      ).catch(() => {});
+      onSaved?.(saved);
       onClose();
     } catch (e) {
-      setError(e.message || 'Error saving');
+      setError(e.name === 'AbortError' ? 'Save timed out — try again' : (e.message || 'Error saving'));
     } finally {
       setSaving(false);
     }
@@ -648,7 +665,11 @@ export default function CompleteDeliveryModal({ isOpen, mission, onClose, onSave
         <div className="modal-body space-y-5">
 
           {/* Container assignment */}
-          <div className="card p-4 border-2 border-dashed border-slate-200 bg-slate-50/20 space-y-2">
+          <div className={`card p-4 border-2 border-dashed space-y-2 ${
+            error === 'Select a container for this package'
+              ? 'border-red-300 bg-red-50/40'
+              : 'border-slate-200 bg-slate-50/20'
+          }`}>
             <label className="label flex items-center gap-2">
               <Box className="w-4 h-4" />
               Assign to container
@@ -658,9 +679,13 @@ export default function CompleteDeliveryModal({ isOpen, mission, onClose, onSave
               {authCountry ? ` (${authCountry})` : ''}
             </p>
             <select
+              ref={containerSelectRef}
               value={containerId || ''}
-              onChange={(e) => setContainerId(e.target.value || null)}
-              className="select-field"
+              onChange={(e) => {
+                setContainerId(e.target.value || null);
+                if (error === 'Select a container for this package') setError('');
+              }}
+              className={`select-field ${error === 'Select a container for this package' ? 'border-red-400' : ''}`}
             >
               <option value="">Select container…</option>
               {containerOptions.map((c) => (
@@ -923,6 +948,12 @@ export default function CompleteDeliveryModal({ isOpen, mission, onClose, onSave
 
         {/* Footer */}
         <div className="modal-footer flex-shrink-0 flex-col sm:flex-row gap-2">
+          {error && (
+            <p className="w-full sm:order-first text-xs text-red-600 flex items-center gap-1.5 px-1">
+              <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+              {error}
+            </p>
+          )}
           {missingPayment && (
             <p className="w-full sm:order-first text-xs text-amber-700 flex items-center gap-1.5 px-1">
               <AlertTriangle className="w-3.5 h-3.5 shrink-0" />

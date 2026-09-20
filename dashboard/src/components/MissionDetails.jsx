@@ -7,6 +7,7 @@ import EmptyBoxMissionPickerModal from './EmptyBoxMissionPickerModal';
 import CollapsibleParcelContent from './CollapsibleParcelContent';
 import { AddressVerificationImageField } from './AddressVerificationImage';
 import { SHIPPING_DESTINATIONS, missionLwRegionId, PAYMENT_LOCATIONS } from '../shippingDestinations';
+import { defaultPhoneCode } from '../authCountryUtils';
 import { formatIls, sumAllDeliveriesContentsIls, valueIlsForTypeLabel } from '../parcelContentUtils';
 
 const TYPE_OPTIONS = [
@@ -136,7 +137,7 @@ function AddressBlock({ addr, onChange, title = 'Address', missing = false }) {
   );
 }
 
-function DeliveryEditCard({ delivery, idx, onChange, totalPickup, otherAssigned, parcelContentTypes }) {
+function DeliveryEditCard({ delivery, idx, onChange, totalPickup, otherAssigned, parcelContentTypes, defaultCode = '+972' }) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const addr = delivery.address || {};
   const maxForRow = (totalPickup ?? 1) - (otherAssigned ?? 0);
@@ -191,11 +192,11 @@ function DeliveryEditCard({ delivery, idx, onChange, totalPickup, otherAssigned,
         </div>
         <div>
           <label className="label">Receiver phone</label>
-          <input
+          <PhoneInput
+            defaultCode={defaultCode}
             value={delivery.receiverPhone || ''}
-            onChange={(e) => onChange({ ...delivery, receiverPhone: e.target.value })}
-            placeholder="050..."
-            className="input-field"
+            onChange={(v) => onChange({ ...delivery, receiverPhone: v })}
+            placeholder="501234567"
           />
         </div>
       </div>
@@ -441,6 +442,7 @@ export default function MissionDetails({
   const [linkedEmptyBoxMission, setLinkedEmptyBoxMission] = useState(null);
   const [parcelContentTypes, setParcelContentTypes] = useState([]);
   const [containers, setContainers] = useState([]);
+  const phoneDefaultCode = defaultPhoneCode(authCountry, missionLwRegionId(mission));
 
   useEffect(() => {
     setEdit({ ...mission, bringBoxes: mission.bringBoxes === true, containerId: mission.containerId ?? null });
@@ -618,7 +620,7 @@ export default function MissionDetails({
         </div>
         <div>
           <label className="label">Customer phone</label>
-          <PhoneInput value={edit.customerPhone} onChange={(v) => update('customerPhone', v)} />
+          <PhoneInput defaultCode={phoneDefaultCode} value={edit.customerPhone} onChange={(v) => update('customerPhone', v)} />
         </div>
       </div>
 
@@ -631,7 +633,7 @@ export default function MissionDetails({
           <EditableField label="Full name" value={edit.fullName} onChange={(v) => update('fullName', v)} placeholder="Full name" />
           <div>
             <label className="label">Phone</label>
-            <PhoneInput value={edit.customerPhone} onChange={(v) => update('customerPhone', v)} placeholder="501234567" />
+            <PhoneInput defaultCode={phoneDefaultCode} value={edit.customerPhone} onChange={(v) => update('customerPhone', v)} placeholder="501234567" />
           </div>
         </div>
       </div>
@@ -782,6 +784,7 @@ export default function MissionDetails({
               totalPickup={totalPickup}
               otherAssigned={otherAssigned}
               parcelContentTypes={parcelContentTypes}
+              defaultCode={phoneDefaultCode}
               onChange={(updated) => {
                 if (edit.deliveries?.length > 0) {
                   const arr = edit.deliveries.map((r, i) => i === idx ? updated : r);

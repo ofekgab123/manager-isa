@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { X, Package, Truck, MapPin, User, Home, CheckCircle, ChevronRight, ChevronLeft, Box, Plus, Minus, Link2, Loader2 } from 'lucide-react';
 import AddressPicker from './AddressPicker';
 import PhoneInput from './PhoneInput';
-import { authCountryToShippingDestination } from '../authCountryUtils';
+import { authCountryToShippingDestination, authCountryToDefaultPhoneCode } from '../authCountryUtils';
 import { SHIPPING_DESTINATIONS, shippingDestinationLabel, missionLwRegionId } from '../shippingDestinations';
 import { geocodeAddress } from '../utils/geocode';
 import { API_BASE } from '../config';
@@ -680,7 +680,7 @@ export default function CreateMissionModal({ isOpen, onClose, onCreated, authCou
                     <Field label="Phone" required>
                       <div className="relative">
                         <PhoneInput
-                          defaultCode="+972"
+                          defaultCode={authCountryToDefaultPhoneCode(authCountry)}
                           value={form.israeliPhone}
                           onChange={(v) => {
                             setForm((p) => ({ ...p, israeliPhone: v }));

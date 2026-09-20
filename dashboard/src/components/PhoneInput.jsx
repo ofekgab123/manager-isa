@@ -132,7 +132,12 @@ function parsePhone(value, defaultCode = '+972') {
   const str = String(value);
   if (str.startsWith('+')) {
     const match = SORTED_COUNTRIES.find((c) => str.startsWith(c.code));
-    if (match) return { code: match.code, local: str.slice(match.code.length) };
+    if (match) {
+      const local = str.slice(match.code.length);
+      // Prefix only (e.g. leftover +972) — use the country default instead
+      if (!local.replace(/\D/g, '')) return { code: defaultCode, local: '' };
+      return { code: match.code, local };
+    }
   }
   return { code: defaultCode, local: str };
 }

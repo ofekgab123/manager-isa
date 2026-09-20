@@ -3,7 +3,7 @@ import cors from 'cors';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import pool from './db.js';
-import { readOrders, writeOrders, readAffiliates, writeAffiliates, readMissions, writeMissions, insertMissionData, updateMissionsData, deleteMissionsById, readUsers, writeUsers, readReceivers, writeReceivers, readContainers, writeContainers, readParcelContentTypes, writeParcelContentTypes, containerCountryKey } from './storage.js';
+import { readOrders, writeOrders, readAffiliates, writeAffiliates, readMissions, writeMissions, insertMissionData, updateMissionsData, readMissionById, countPickupLinksForEmptyBox, deleteMissionsById, readUsers, writeUsers, readReceivers, writeReceivers, upsertReceiverByPhone, readContainers, writeContainers, readParcelContentTypes, writeParcelContentTypes, containerCountryKey } from './storage.js';
 import { israeliMobileKey } from './phoneKey.js';
 import {
   createLionWheelTaskForEmptyBoxMission,
@@ -304,6 +304,7 @@ function isWebhookJsonSnapshotRoute(req) {
 }
 
 app.use(express.json({
+  limit: '10mb',
   verify: (req, res, buf, encoding) => {
     if (req.method !== 'POST' || !isWebhookJsonSnapshotRoute(req)) return;
     try {
@@ -1687,8 +1688,7 @@ app.get('/api/missions', async (req, res) => {
 
 app.get('/api/missions/:id', async (req, res) => {
   try {
-    const missions = await readMissions();
-    const mission = missions.find((m) => m.id === req.params.id);
+    const mission = await readMissionById(req.params.id);
     if (!mission) return res.status(404).json({ error: 'Mission not found' });
     await assertMissionAccessForCountryUser(mission, req.user);
     res.json(mission);
@@ -1706,15 +1706,14 @@ function maxPickupLinksForEmptyBox(emptyBoxMission) {
 
 app.patch('/api/missions/:id', async (req, res) => {
   try {
-    const missions = await readMissions();
-    const idx = missions.findIndex((m) => m.id === req.params.id);
-    if (idx === -1) return res.status(404).json({ error: 'Mission not found' });
-    await assertMissionAccessForCountryUser(missions[idx], req.user);
+    const prevMission = await readMissionById(req.params.id);
+    if (!prevMission) return res.status(404).json({ error: 'Mission not found' });
+    await assertMissionAccessForCountryUser(prevMission, req.user);
     const updates = { ...req.body };
-    if (updates.containerId !== undefined && missions[idx].type !== 'pickup') {
+    if (updates.containerId !== undefined && prevMission.type !== 'pickup') {
       updates.containerId = null;
     }
-    const merged = { ...missions[idx], ...updates };
+    const merged = { ...prevMission, ...updates };
     if (merged.type === 'pickup') {
       merged.shippingDestination = null;
     } else if (merged.type === 'empty_box') {
@@ -1738,23 +1737,18 @@ app.patch('/api/missions/:id', async (req, res) => {
     }
     if (merged.type === 'pickup' && merged.linkedEmptyBoxMissionId) {
       const ebId = merged.linkedEmptyBoxMissionId;
-      const emptyBox = missions.find((m) => m.id === ebId && m.type === 'empty_box');
-      if (!emptyBox) {
+      const emptyBox = await readMissionById(ebId);
+      if (!emptyBox || emptyBox.type !== 'empty_box') {
         return res.status(400).json({ error: 'Linked empty box mission not found' });
       }
       const maxLinks = maxPickupLinksForEmptyBox(emptyBox);
-      const countAfter = missions.reduce((acc, m, i) => {
-        const eff = i === idx ? merged : m;
-        return acc + (eff.type === 'pickup' && eff.linkedEmptyBoxMissionId === ebId ? 1 : 0);
-      }, 0);
-      if (countAfter > maxLinks) {
+      const others = await countPickupLinksForEmptyBox(ebId, merged.id);
+      if (others + 1 > maxLinks) {
         return res.status(400).json({
           error: `Maximum ${maxLinks} pickup link(s) allowed for this empty box (by box count).`,
         });
       }
     }
-    const prevMission = missions[idx];
-    missions[idx] = merged;
     await creditAffiliateIfPickupJustCompletedLionWheel(prevMission, merged);
     await updateMissionsData(merged.id, merged);
     res.json(merged);
@@ -2448,34 +2442,13 @@ app.get('/api/receivers/by-phone', async (req, res) => {
 
 app.post('/api/receivers', async (req, res) => {
   try {
-    const receivers = await readReceivers();
-    const body = req.body;
-    const key = israeliMobileKey(body.phone);
-
-    if (key) {
-      const existingIdx = receivers.findIndex((r) => israeliMobileKey(r.phone) === key);
-      if (existingIdx !== -1) {
-        const updated = {
-          ...receivers[existingIdx],
-          fullName: body.fullName || receivers[existingIdx].fullName,
-          address: body.address || receivers[existingIdx].address,
-        };
-        receivers[existingIdx] = updated;
-        await writeReceivers(receivers);
-        return res.status(200).json(updated);
-      }
-    }
-
-    const newReceiver = {
-      id: `RCV-${Date.now()}`,
+    const body = req.body || {};
+    const saved = await upsertReceiverByPhone({
       fullName: body.fullName || '',
       phone: body.phone || '',
       address: body.address || null,
-      createdAt: new Date().toISOString(),
-    };
-    receivers.unshift(newReceiver);
-    await writeReceivers(receivers);
-    res.status(201).json(newReceiver);
+    });
+    res.status(200).json(saved);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

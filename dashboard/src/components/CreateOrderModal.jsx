@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { X, Package, Truck, MapPin, User, Home, CheckCircle, ChevronRight, ChevronLeft, ClipboardList, Box, Plus, Minus } from 'lucide-react';
 import AddressPicker from './AddressPicker';
 import PhoneInput from './PhoneInput';
-import { authCountryToShippingDestination } from '../authCountryUtils';
+import { authCountryToShippingDestination, authCountryToDefaultPhoneCode } from '../authCountryUtils';
 import { SHIPPING_DESTINATIONS, shippingDestinationLabel } from '../shippingDestinations';
 import { geocodeAddress } from '../utils/geocode';
 import { API_BASE } from '../config';
@@ -489,6 +489,7 @@ export default function CreateOrderModal({ isOpen, onClose, onCreated, authCount
                       <Field label="Israeli phone" required>
                         <div className="relative">
                           <PhoneInput
+                            defaultCode={authCountryToDefaultPhoneCode(authCountry)}
                             value={pickupForm.israeliPhone}
                             onChange={(v) => {
                               setPickupForm((p) => ({ ...p, israeliPhone: v }));
@@ -619,7 +620,12 @@ export default function CreateOrderModal({ isOpen, onClose, onCreated, authCount
                         <input className={inputCls} name="receiverName" value={pickupForm.receiverName} onChange={handlePickupChange} placeholder="Receiver name" />
                       </Field>
                       <Field label="Phone">
-                        <input className={inputCls} name="receiverPhone" type="tel" value={pickupForm.receiverPhone} onChange={handlePickupChange} placeholder="050-9876543" />
+                        <PhoneInput
+                          defaultCode={authCountryToDefaultPhoneCode(authCountry)}
+                          value={pickupForm.receiverPhone}
+                          onChange={(v) => handlePickupChange({ target: { name: 'receiverPhone', value: v } })}
+                          placeholder="501234567"
+                        />
                       </Field>
                     </div>
                   )}

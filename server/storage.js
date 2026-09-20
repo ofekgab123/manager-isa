@@ -69,6 +69,64 @@ export async function updateMissionsData(id, data) {
   if (rowCount === 0) throw new Error('Mission not found');
 }
 
+export async function readMissionById(id) {
+  const { rows } = await pool.query(`SELECT data FROM missions WHERE id = $1`, [id]);
+  return rows[0]?.data ?? null;
+}
+
+export async function countPickupLinksForEmptyBox(emptyBoxId, excludeMissionId = null) {
+  const { rows } = await pool.query(
+    `SELECT COUNT(*)::int AS n
+     FROM missions
+     WHERE data->>'type' = 'pickup'
+       AND data->>'linkedEmptyBoxMissionId' = $1
+       AND ($2::text IS NULL OR id <> $2)`,
+    [emptyBoxId, excludeMissionId],
+  );
+  return rows[0]?.n ?? 0;
+}
+
+function slimReceiverAddress(address) {
+  if (!address || typeof address !== 'object') return address || null;
+  const rest = Object.fromEntries(
+    Object.entries(address).filter(([key]) => key !== 'imageUrl' && key !== 'videoUrl'),
+  );
+  return Object.keys(rest).length ? rest : null;
+}
+
+/** Single-row receiver upsert — avoids DELETE + re-insert of the entire receivers table. */
+export async function upsertReceiverByPhone({ fullName, phone, address }) {
+  const key = israeliMobileKey(phone);
+  const slimAddress = slimReceiverAddress(address);
+
+  if (key) {
+    const { rows } = await pool.query(`SELECT id, data->>'phone' AS phone FROM receivers`);
+    const existing = rows.find((r) => israeliMobileKey(r.phone) === key);
+    if (existing) {
+      const { rows: full } = await pool.query(`SELECT data FROM receivers WHERE id = $1`, [existing.id]);
+      const prev = full[0]?.data || {};
+      const updated = {
+        ...prev,
+        fullName: fullName || prev.fullName,
+        phone: phone || prev.phone,
+        address: slimAddress || slimReceiverAddress(prev.address) || prev.address || null,
+      };
+      await pool.query(`UPDATE receivers SET data = $2::jsonb WHERE id = $1`, [existing.id, updated]);
+      return updated;
+    }
+  }
+
+  const created = {
+    id: `RCV-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    fullName: fullName || '',
+    phone: phone || '',
+    address: slimAddress,
+    createdAt: new Date().toISOString(),
+  };
+  await pool.query(`INSERT INTO receivers (id, data) VALUES ($1, $2::jsonb)`, [created.id, created]);
+  return created;
+}
+
 export async function deleteMissionsById(id) {
   const { rowCount } = await pool.query('DELETE FROM missions WHERE id = $1', [id]);
   if (rowCount === 0) throw new Error('Mission not found');

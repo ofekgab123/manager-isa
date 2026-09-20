@@ -17,6 +17,7 @@ import * as XLSX from 'xlsx';
 import PhoneInput from './PhoneInput';
 import MessageTemplatesPanel from './MessageTemplatesPanel';
 import { API_BASE } from '../config';
+import { authCountryToDefaultPhoneCode } from '../authCountryUtils';
 import { useBulkSend } from '../BulkSendContext';
 
 const STATUS_OPTIONS = [
@@ -658,7 +659,7 @@ function LeadDetailModal({ lead, templates, onClose, onUpdated }) {
   );
 }
 
-function AddLeadModal({ onClose, onCreated }) {
+function AddLeadModal({ onClose, onCreated, authCountry = null }) {
   const [phone, setPhone] = useState('');
   const [fullName, setFullName] = useState('');
   const [saving, setSaving] = useState(false);
@@ -700,7 +701,7 @@ function AddLeadModal({ onClose, onCreated }) {
         <form onSubmit={handleSubmit} className="modal-body space-y-4">
           <div>
             <label className="label">Phone *</label>
-            <PhoneInput value={phone} onChange={setPhone} />
+            <PhoneInput defaultCode={authCountryToDefaultPhoneCode(authCountry)} value={phone} onChange={setPhone} />
           </div>
           <div>
             <label className="label">Full name</label>
@@ -1113,6 +1114,7 @@ export default function LeadsPanel({ authUser, openLeadId = null, onOpenLeadHand
 
       {showAdd && (
         <AddLeadModal
+          authCountry={authUser?.country}
           onClose={() => setShowAdd(false)}
           onCreated={(created) => {
             setShowAdd(false);
