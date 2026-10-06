@@ -14,6 +14,7 @@ import {
   updateMessageByWaMessageId,
 } from './storage.js';
 import { israeliMobileKey } from './phoneKey.js';
+import { whatsAppFirstTouch } from './waAttribution.js';
 import {
   sendTemplateMessage,
   sendTextMessage,
@@ -523,9 +524,14 @@ export function registerWhatsAppWebhook(app) {
 
               let lead = await findLeadByPhoneKey(phoneKey);
               if (!lead) {
-                const created = buildLeadRecord({ phone: from, source: 'whatsapp_inbound' });
+                const created = {
+                  ...buildLeadRecord({ phone: from, source: 'whatsapp_inbound' }),
+                  ...whatsAppFirstTouch({}, msg, value.metadata),
+                };
                 await insertLeadData(created.id, created);
                 lead = created;
+              } else {
+                lead = { ...lead, ...whatsAppFirstTouch(lead, msg, value.metadata) };
               }
 
               const inboundBody = inboundMessageText(msg);

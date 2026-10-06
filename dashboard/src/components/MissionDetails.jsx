@@ -624,6 +624,47 @@ export default function MissionDetails({
         </div>
       </div>
 
+      {(edit.capi_status || edit.capiAttribution?.channel || edit.utm_campaign) && (
+        <div className="card p-4 space-y-2 border border-slate-200">
+          <h4 className="font-semibold text-slate-800 text-sm">Meta Purchase</h4>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
+            <div>
+              <div className="text-xs text-slate-500">Send status</div>
+              <div className="font-medium text-slate-800">{edit.capi_status || '—'}</div>
+            </div>
+            <div>
+              <div className="text-xs text-slate-500">Channel</div>
+              <div className="font-medium text-slate-800">{edit.capiAttribution?.channel || '—'}</div>
+            </div>
+            <div>
+              <div className="text-xs text-slate-500">Ad id</div>
+              <div className="font-medium text-slate-800 break-all">{edit.capiAttribution?.sourceId || '—'}</div>
+            </div>
+            <div>
+              <div className="text-xs text-slate-500">Business number</div>
+              <div className="font-medium text-slate-800">{edit.capiAttribution?.businessPhone || '—'}</div>
+            </div>
+            {(edit.capiAttribution?.utmCampaign || edit.utm_campaign) && (
+              <div>
+                <div className="text-xs text-slate-500">Campaign</div>
+                <div className="font-medium text-slate-800">{edit.capiAttribution?.utmCampaign || edit.utm_campaign}</div>
+              </div>
+            )}
+            {edit.capi_response?.fbtrace_id && (
+              <div>
+                <div className="text-xs text-slate-500">Meta trace</div>
+                <div className="font-mono text-xs text-slate-700 break-all">{edit.capi_response.fbtrace_id}</div>
+              </div>
+            )}
+          </div>
+          {(edit.capi_response?.error || edit.capi_response?.reason) && (
+            <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+              {edit.capi_response.error || (edit.capi_response.reason === 'no_value' ? 'Skipped: parcel content total is 0' : edit.capi_response.reason)}
+            </p>
+          )}
+        </div>
+      )}
+
       {/* Sender details */}
       <div className="card p-4 space-y-3">
         <h4 className="font-semibold text-slate-800 flex items-center gap-2 text-sm">

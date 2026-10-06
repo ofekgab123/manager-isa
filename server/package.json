@@ -8,6 +8,7 @@
     "mock-webhook": "node scripts/sendMockMissionWebhook.mjs"
   },
   "dependencies": {
+    "@vercel/functions": "^3.9.9",
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.5",
     "express": "^4.21.0",

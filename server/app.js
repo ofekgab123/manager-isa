@@ -5,6 +5,7 @@ import jwt from 'jsonwebtoken';
 import pool from './db.js';
 import { readOrders, writeOrders, readAffiliates, writeAffiliates, readMissions, writeMissions, insertMissionData, updateMissionsData, readMissionById, countPickupLinksForEmptyBox, deleteMissionsById, readUsers, writeUsers, readReceivers, writeReceivers, upsertReceiverByPhone, readContainers, writeContainers, readParcelContentTypes, writeParcelContentTypes, containerCountryKey } from './storage.js';
 import { israeliMobileKey } from './phoneKey.js';
+import { listCapiOutboxByStatus, listMissionsByCapiStatus } from './storage.js';
 import {
   createLionWheelTaskForEmptyBoxMission,
   createLionWheelTaskForPickupMission,
@@ -19,6 +20,14 @@ import {
 } from './lionwheel.js';
 import { notifyEmptyBoxMissionWebhook } from './missionWebhook.js';
 import { registerWhatsAppWebhook, registerLeadsRoutes } from './leadsApi.js';
+import { clientIpFromRequest, isCapiCronRequest, redactPurchaseBody, websiteAttributionFromBody } from './capi.js';
+import {
+  insertCapiOutbox,
+  kickCapiRetries,
+  preparePurchaseForMission,
+  processDueCapiOutbox,
+  scheduleCapiProcessing,
+} from './capiOutbox.js';
 import {
   snapshotMakeWebhookRequest,
   pushMakeWebhookInbound,
@@ -321,10 +330,14 @@ function requireAuth(req, res, next) {
   // Under app.use('/api', …) req.path is e.g. /missions, not /api/missions
   if (req.method === 'POST' && req.path === '/missions') {
     const createdBy = req.body?.createdBy ?? 'customer';
-    if (createdBy === 'customer') return next();
+    if (createdBy === 'customer') {
+      kickCapiRetries();
+      return next();
+    }
   }
   // Public: orders filtered by customer phone (last 9 digits) — customer home / login checks (isa-express-web)
   if (req.method === 'GET' && req.path === '/orders' && req.query.customerPhone) {
+    kickCapiRetries();
     return next();
   }
   const header = req.headers['authorization'];
@@ -340,10 +353,12 @@ function requireAuth(req, res, next) {
       country: null,
       service: true,
     };
+    kickCapiRetries();
     return next();
   }
   try {
     req.user = jwt.verify(token, JWT_SECRET);
+    kickCapiRetries();
     next();
   } catch {
     return res.status(401).json({ error: 'Invalid or expired token' });
@@ -757,6 +772,12 @@ app.post('/api/missions', async (req, res) => {
           ? lwRegionFromBody ?? body.country ?? null
           : body.country ?? null,
       shippingDestination: null,
+      ...(() => {
+        const attribution = websiteAttributionFromBody(body);
+        const ip = clientIpFromRequest(req);
+        if (ip) attribution.client_ip_address = ip;
+        return attribution;
+      })(),
     };
 
     let missionForLw = newMission;
@@ -1310,9 +1331,72 @@ app.post('/api/integrations/lionwheel/create', requireIntegrationApiKey, async (
   }
 });
 
+// ─── Meta CAPI retry — Vercel Cron (user-agent vercel-cron). CRON_SECRET is optional. ──
+
+app.get('/api/capi/process', async (req, res) => {
+  if (!isCapiCronRequest(req)) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const result = await processDueCapiOutbox();
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    console.error('[capi] cron', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── Apply auth to all other /api routes ──────────────────────────────────────
 
 app.use('/api', requireAuth);
+
+function capiOutboxEvent(row) {
+  return {
+    id: row.id,
+    missionId: row.missionId,
+    status: row.status,
+    eventId: row.eventId,
+    at: row.sentAt || row.createdAt || null,
+    error: row.lastError || null,
+    fbtraceId: row.fbtraceId || null,
+    eventsReceived: row.eventsReceived ?? null,
+    attempts: row.attempts ?? 0,
+    attribution: row.attribution || null,
+    payload: redactPurchaseBody(row.payload),
+  };
+}
+
+function capiMissionEvent(mission) {
+  const response = mission.capi_response || {};
+  return {
+    id: mission.id,
+    missionId: mission.id,
+    status: mission.capi_status,
+    eventId: mission.capi_event_id || null,
+    at: mission.capi_sent_at || mission.updatedAt || mission.createdAt || null,
+    error: response.error || response.reason || null,
+    fbtraceId: response.fbtrace_id || null,
+    eventsReceived: response.events_received ?? null,
+    attempts: null,
+    attribution: mission.capiAttribution || null,
+    payload: null,
+  };
+}
+
+app.get('/api/capi/events', requireAdmin, async (req, res) => {
+  try {
+    const outbox = await listCapiOutboxByStatus(['failed', 'pending', 'sending']);
+    const missions = await listMissionsByCapiStatus(['failed', 'skipped']);
+    const covered = new Set(outbox.map((row) => row.missionId));
+    const items = [
+      ...outbox.map(capiOutboxEvent),
+      ...missions
+        .filter((mission) => mission.capi_status === 'skipped' || !covered.has(mission.id))
+        .map(capiMissionEvent),
+    ];
+    res.json({ items });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 app.get('/api/integrations/lionwheel/logs', async (req, res) => {
   try {
@@ -1710,6 +1794,9 @@ app.patch('/api/missions/:id', async (req, res) => {
     if (!prevMission) return res.status(404).json({ error: 'Mission not found' });
     await assertMissionAccessForCountryUser(prevMission, req.user);
     const updates = { ...req.body };
+    for (const key of ['capi_status', 'capi_sent_at', 'capi_event_id', 'capi_response', 'capiAttribution']) {
+      delete updates[key];
+    }
     if (updates.containerId !== undefined && prevMission.type !== 'pickup') {
       updates.containerId = null;
     }
@@ -1750,8 +1837,18 @@ app.patch('/api/missions/:id', async (req, res) => {
       }
     }
     await creditAffiliateIfPickupJustCompletedLionWheel(prevMission, merged);
-    await updateMissionsData(merged.id, merged);
-    res.json(merged);
+    const purchase = await preparePurchaseForMission(prevMission, merged);
+    if (purchase.outbox) await insertCapiOutbox(purchase.outbox);
+    try {
+      await updateMissionsData(purchase.mission.id, purchase.mission);
+    } catch (err) {
+      if (purchase.outbox) {
+        await pool.query('DELETE FROM capi_outbox WHERE id = $1', [purchase.outbox.id]);
+      }
+      throw err;
+    }
+    res.json(purchase.mission);
+    if (purchase.outbox) await scheduleCapiProcessing();
   } catch (err) {
     if (err.message === 'FORBIDDEN_MISSION') return res.status(404).json({ error: 'Mission not found' });
     if (err.message === 'Mission not found') return res.status(404).json({ error: 'Mission not found' });

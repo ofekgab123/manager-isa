@@ -371,6 +371,45 @@ export async function insertMessageData(id, data) {
   await pool.query(`INSERT INTO messages (id, data) VALUES ($1, $2::jsonb)`, [id, data]);
 }
 
+export async function findUserIdByPhone(phone) {
+  const key = israeliMobileKey(phone);
+  if (!key || key.length < 7) return null;
+  const { rows } = await pool.query(`SELECT id, data FROM users`);
+  const match = rows.find((r) => israeliMobileKey(r.data?.phone) === key);
+  return match?.id || null;
+}
+
+export async function updateMissionCapiFields(id, fields) {
+  const { rowCount } = await pool.query(
+    `UPDATE missions
+     SET data = data || $2::jsonb
+     WHERE id = $1`,
+    [id, fields],
+  );
+  if (rowCount === 0) return null;
+  return readMissionById(id);
+}
+
+export async function listMissionsByCapiStatus(statuses) {
+  const { rows } = await pool.query(
+    `SELECT data FROM missions
+     WHERE data->>'capi_status' = ANY($1::text[])
+     ORDER BY COALESCE(data->>'capi_sent_at', data->>'updatedAt', data->>'createdAt') DESC`,
+    [statuses],
+  );
+  return rows.map((r) => r.data);
+}
+
+export async function listCapiOutboxByStatus(statuses) {
+  const { rows } = await pool.query(
+    `SELECT data FROM capi_outbox
+     WHERE data->>'status' = ANY($1::text[])
+     ORDER BY COALESCE(data->>'createdAt', '') DESC`,
+    [statuses],
+  );
+  return rows.map((r) => r.data);
+}
+
 export async function updateMessageByWaMessageId(waMessageId, patch) {
   const { rows } = await pool.query(`SELECT id, data FROM messages WHERE data->>'waMessageId' = $1`, [
     waMessageId,

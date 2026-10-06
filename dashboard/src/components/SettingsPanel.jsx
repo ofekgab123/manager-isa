@@ -1,11 +1,13 @@
 import { useState } from 'react';
-import { Settings, List, Plug } from 'lucide-react';
+import { Settings, List, Plug, Radio } from 'lucide-react';
 import ParcelContentTypesPanel from './ParcelContentTypesPanel';
 import IntegrationsPanel from './IntegrationsPanel';
+import MetaCapiEventsPanel from './MetaCapiEventsPanel';
 
 const SUB_TABS = [
   { id: 'parcel-types', label: 'Parcel Content Types', icon: List },
   { id: 'integrations', label: 'Integrations', icon: Plug },
+  { id: 'meta', label: 'Meta events', icon: Radio, adminOnly: true },
 ];
 
 export default function SettingsPanel({ authUser }) {
@@ -19,7 +21,7 @@ export default function SettingsPanel({ authUser }) {
           Settings
         </h2>
         <div className="flex flex-wrap gap-2">
-          {SUB_TABS.map(({ id, label, icon: Icon }) => (
+          {SUB_TABS.filter((tab) => !tab.adminOnly || authUser?.isAdmin).map(({ id, label, icon: Icon }) => (
             <button
               key={id}
               type="button"
@@ -39,6 +41,7 @@ export default function SettingsPanel({ authUser }) {
 
       {subTab === 'parcel-types' && <ParcelContentTypesPanel embedded />}
       {subTab === 'integrations' && <IntegrationsPanel authUser={authUser} />}
+      {subTab === 'meta' && authUser?.isAdmin && <MetaCapiEventsPanel />}
     </div>
   );
 }

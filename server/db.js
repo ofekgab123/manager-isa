@@ -61,6 +61,10 @@ export async function initDb() {
       id TEXT PRIMARY KEY,
       data JSONB NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS capi_outbox (
+      id TEXT PRIMARY KEY,
+      data JSONB NOT NULL
+    );
   `);
 
   const { rows: adminRows } = await pool.query(
