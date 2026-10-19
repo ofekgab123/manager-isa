@@ -445,13 +445,6 @@ export default function StatisticsPanel({ missions = [], affiliates = [], onRefr
     [filtered],
   );
 
-  const completedCount = useMemo(
-    () => filtered.filter((m) => m.status === 'completed').length,
-    [filtered],
-  );
-
-  const completionRate = filtered.length > 0 ? ((completedCount / filtered.length) * 100).toFixed(1) : 0;
-
   const activeFiltersCount = [
     filterType, filterStatus, filterCreatedBy, filterAffiliate, filterDateFrom, filterDateTo,
   ].filter(Boolean).length;
@@ -710,12 +703,6 @@ export default function StatisticsPanel({ missions = [], affiliates = [], onRefr
           label="Total boxes"
           color="text-cyan-600"
           accent="border-cyan-500"
-        />
-        <KpiCard
-          value={`${completionRate}%`}
-          label="Completion rate"
-          color="text-green-600"
-          accent="border-green-500"
         />
         <KpiCard
           value={affiliateOrderCount}
