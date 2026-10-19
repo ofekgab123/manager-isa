@@ -5,10 +5,18 @@ import {
 } from 'recharts';
 import {
   TrendingUp, Package, Truck, Users, Tag, Filter, X, AlertTriangle,
-  BarChart2, Calendar, RefreshCw, Activity,
+  BarChart2, Calendar, RefreshCw, Activity, Phone,
 } from 'lucide-react';
 import { API_BASE } from '../config';
 import { isAffiliatePickupCompletedInLionWheel } from '../lionwheelStatus';
+import {
+  firstMissionsByPhone, selectNewCustomers, inIsraelRange, missionCountryId,
+  seriesByBuckets, COUNTRY_LABELS, COUNTRY_COLORS,
+} from '../customerCohort';
+import {
+  periodRange, resolveCompareRange, bucketUnitFor, bucketUnitLabel, buildBuckets,
+  formatRange, presetLabel, changePct,
+} from '../periods';
 
 const STATUS_LABELS = {
   received: 'Received',
@@ -33,6 +41,128 @@ const TYPE_COLORS = { pickup: '#6366f1', empty_box: '#3b82f6' };
 
 const CREATOR_LABELS = { customer: 'Customer', customer_service: 'CS' };
 const CREATOR_COLORS = { customer: '#f59e0b', customer_service: '#22c55e' };
+
+const PERIOD_CHIPS = [
+  { id: '', label: 'All time' },
+  { id: 'this_week', label: 'This week' },
+  { id: 'this_month', label: 'This month' },
+  { id: 'this_quarter', label: 'This quarter' },
+  { id: 'this_year', label: 'This year' },
+];
+
+const PREVIOUS_LABEL = {
+  this_week: 'Last week',
+  this_month: 'Last month',
+  this_quarter: 'Last quarter',
+  this_year: 'Last year',
+};
+
+const SUMMARY_METRICS = [
+  { key: 'missions', label: 'Missions' },
+  { key: 'pickup', label: 'Pickups' },
+  { key: 'empty', label: 'Empty boxes' },
+  { key: 'boxes', label: 'Boxes' },
+  { key: 'phones', label: 'New phones' },
+];
+
+function matchesAttributes(mission, filters) {
+  if (filters.type && mission.type !== filters.type) return false;
+  if (filters.status && mission.status !== filters.status) return false;
+  if (filters.createdBy && mission.createdBy !== filters.createdBy) return false;
+  if (filters.affiliate && (mission.affiliateName !== filters.affiliate || mission.type !== 'pickup')) return false;
+  return true;
+}
+
+function summarizeScope(list, allMissions, filters, from, to, country) {
+  const scoped = country ? list.filter((mission) => missionCountryId(mission) === country) : list;
+  const phones = selectNewCustomers(firstMissionsByPhone(allMissions), {
+    type: filters.type,
+    status: filters.status,
+    createdBy: filters.createdBy,
+    affiliate: filters.affiliate,
+    country: country || '',
+    from: from || '0000-01-01',
+    to: to || '9999-12-31',
+  }).length;
+  return {
+    missions: scoped.length,
+    pickup: scoped.filter((mission) => mission.type === 'pickup').length,
+    empty: scoped.filter((mission) => mission.type === 'empty_box').length,
+    boxes: scoped.reduce(
+      (sum, mission) => sum + (mission.boxSelection?.large || 0) + (mission.boxSelection?.small || 0),
+      0,
+    ),
+    phones,
+  };
+}
+
+function Delta({ current, previous }) {
+  const pct = changePct(current, previous);
+  if (pct == null) return <span className="text-xs font-semibold text-emerald-600">New</span>;
+  if (pct === 0) return <span className="text-xs font-semibold text-slate-400">0%</span>;
+  const up = pct > 0;
+  return (
+    <span className={`text-xs font-semibold ${up ? 'text-emerald-600' : 'text-rose-600'}`}>
+      {up ? '↑' : '↓'} {Math.abs(pct)}%
+    </span>
+  );
+}
+
+function CompareMetric({ label, current, previous }) {
+  return (
+    <div className="rounded-xl bg-slate-50 px-3 py-3">
+      <div className="text-xs font-medium text-slate-500">{label}</div>
+      <div className="text-2xl font-extrabold text-slate-800 mt-1">{current}</div>
+      {previous != null && (
+        <div className="mt-1 flex items-center gap-2 text-xs text-slate-400">
+          <span>{previous} before</span>
+          <Delta current={current} previous={previous} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CountryStatCard({ country, current, previous }) {
+  const color = COUNTRY_COLORS[country];
+  return (
+    <div className="card p-5">
+      <div className="flex items-center gap-2 mb-4">
+        <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: color }} />
+        <h3 className="text-sm font-bold text-slate-800">{COUNTRY_LABELS[country]}</h3>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        {SUMMARY_METRICS.map((metric) => (
+          <CompareMetric
+            key={metric.key}
+            label={metric.label}
+            current={current[metric.key]}
+            previous={previous ? previous[metric.key] : null}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+const CompareBarTooltip = ({ active, payload, label }) => {
+  if (!active || !payload?.length) return null;
+  const row = payload[0]?.payload;
+  return (
+    <div className="bg-white border border-slate-200 rounded-xl shadow-lg px-3 py-2 text-sm">
+      {label && <div className="font-medium text-slate-700 mb-1">{label}</div>}
+      {payload.map((item, index) => (
+        <div key={index} className="flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full" style={{ background: item.color || item.fill }} />
+          <span className="text-slate-600">{item.name}:</span>
+          <span className="font-bold text-slate-800">{item.value}</span>
+        </div>
+      ))}
+      {row?.primaryHint && <div className="text-xs text-slate-400 mt-1">{row.primaryHint}</div>}
+      {row?.compareHint && <div className="text-xs text-slate-400">{row.compareHint}</div>}
+    </div>
+  );
+};
 
 function KpiCard({ value, label, color = 'text-slate-800', icon, accent }) {
   return (
@@ -125,9 +255,11 @@ function ProgressBar({ label, count, pct, color }) {
 }
 
 export default function StatisticsPanel({ missions = [], affiliates = [], onRefresh, loading }) {
+  const openingPeriod = periodRange('this_month');
   const [userCount, setUserCount] = useState(0);
-  const [filterDateFrom, setFilterDateFrom] = useState('');
-  const [filterDateTo, setFilterDateTo] = useState('');
+  const [periodId, setPeriodId] = useState('this_month');
+  const [filterDateFrom, setFilterDateFrom] = useState(openingPeriod?.from || '');
+  const [filterDateTo, setFilterDateTo] = useState(openingPeriod?.to || '');
   const [filterType, setFilterType] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
   const [filterCreatedBy, setFilterCreatedBy] = useState('');
@@ -140,23 +272,64 @@ export default function StatisticsPanel({ missions = [], affiliates = [], onRefr
       .catch(() => {});
   }, []);
 
-  const filtered = useMemo(() => {
-    return missions.filter((m) => {
-      if (filterType && m.type !== filterType) return false;
-      if (filterStatus && m.status !== filterStatus) return false;
-      if (filterCreatedBy && m.createdBy !== filterCreatedBy) return false;
-      if (filterAffiliate && (m.affiliateName !== filterAffiliate || m.type !== 'pickup')) return false;
-      if (filterDateFrom && m.createdAt && new Date(m.createdAt) < new Date(filterDateFrom))
-        return false;
-      if (
-        filterDateTo &&
-        m.createdAt &&
-        new Date(m.createdAt) > new Date(filterDateTo + 'T23:59:59')
-      )
-        return false;
-      return true;
-    });
-  }, [missions, filterType, filterStatus, filterCreatedBy, filterAffiliate, filterDateFrom, filterDateTo]);
+  const attributeFilters = useMemo(() => ({
+    type: filterType,
+    status: filterStatus,
+    createdBy: filterCreatedBy,
+    affiliate: filterAffiliate,
+  }), [filterType, filterStatus, filterCreatedBy, filterAffiliate]);
+
+  const attributeFiltered = useMemo(
+    () => missions.filter((mission) => matchesAttributes(mission, attributeFilters)),
+    [missions, attributeFilters],
+  );
+
+  const filtered = useMemo(
+    () => attributeFiltered.filter((mission) => inIsraelRange(mission, filterDateFrom, filterDateTo)),
+    [attributeFiltered, filterDateFrom, filterDateTo],
+  );
+
+  const comparison = useMemo(() => {
+    if (!filterDateFrom || !filterDateTo) return null;
+    const named = periodId && periodId !== 'custom' ? periodRange(periodId) : null;
+    const aligned = Boolean(named && named.from === filterDateFrom && named.to === filterDateTo);
+    const primary = {
+      from: filterDateFrom,
+      to: filterDateTo,
+      partial: aligned ? named.partial : false,
+      unit: aligned ? named.unit : 'custom',
+    };
+    const compare = resolveCompareRange(periodId || 'custom', primary, 'previous');
+    if (!compare?.from || !compare?.to) return null;
+    const compared = attributeFiltered.filter((mission) => inIsraelRange(mission, compare.from, compare.to));
+    const unit = bucketUnitFor(primary);
+    const rows = seriesByBuckets(
+      attributeFiltered,
+      attributeFiltered,
+      buildBuckets(primary.from, primary.to, unit),
+      buildBuckets(compare.from, compare.to, unit),
+      () => 'count',
+      ['count'],
+    );
+    return {
+      primary,
+      compare,
+      unit,
+      rows,
+      current: summarizeScope(filtered, missions, attributeFilters, primary.from, primary.to),
+      previous: summarizeScope(compared, missions, attributeFilters, compare.from, compare.to),
+      countries: {
+        india: {
+          current: summarizeScope(filtered, missions, attributeFilters, primary.from, primary.to, 'india'),
+          previous: summarizeScope(compared, missions, attributeFilters, compare.from, compare.to, 'india'),
+        },
+        thailand: {
+          current: summarizeScope(filtered, missions, attributeFilters, primary.from, primary.to, 'thailand'),
+          previous: summarizeScope(compared, missions, attributeFilters, compare.from, compare.to, 'thailand'),
+        },
+      },
+    };
+  }, [filterDateFrom, filterDateTo, periodId, attributeFiltered, attributeFilters, filtered, missions]);
 
   const byStatus = useMemo(() => {
     const counts = {};
@@ -256,6 +429,17 @@ export default function StatisticsPanel({ missions = [], affiliates = [], onRefr
     [filtered],
   );
 
+  const newPhoneCount = useMemo(() => {
+    return selectNewCustomers(firstMissionsByPhone(missions), {
+      type: filterType,
+      status: filterStatus,
+      createdBy: filterCreatedBy,
+      affiliate: filterAffiliate,
+      from: filterDateFrom || '0000-01-01',
+      to: filterDateTo || '9999-12-31',
+    }).length;
+  }, [missions, filterType, filterStatus, filterCreatedBy, filterAffiliate, filterDateFrom, filterDateTo]);
+
   const affiliateOrderCount = useMemo(
     () => filtered.filter(isAffiliatePickupCompletedInLionWheel).length,
     [filtered],
@@ -272,11 +456,48 @@ export default function StatisticsPanel({ missions = [], affiliates = [], onRefr
     filterType, filterStatus, filterCreatedBy, filterAffiliate, filterDateFrom, filterDateTo,
   ].filter(Boolean).length;
 
+  const countryStats = useMemo(() => ({
+    india: summarizeScope(filtered, missions, attributeFilters, filterDateFrom, filterDateTo, 'india'),
+    thailand: summarizeScope(filtered, missions, attributeFilters, filterDateFrom, filterDateTo, 'thailand'),
+    unknown: summarizeScope(filtered, missions, attributeFilters, filterDateFrom, filterDateTo, 'unknown'),
+  }), [filtered, missions, attributeFilters, filterDateFrom, filterDateTo]);
+
+  const choosePeriod = (id) => {
+    setPeriodId(id);
+    if (!id) {
+      setFilterDateFrom('');
+      setFilterDateTo('');
+      return;
+    }
+    const range = periodRange(id);
+    setFilterDateFrom(range?.from || '');
+    setFilterDateTo(range?.to || '');
+  };
+
+  const editDateFrom = (value) => {
+    if (periodId && periodId !== 'custom') {
+      const range = periodRange(periodId);
+      setFilterDateTo(range?.to || filterDateTo);
+    }
+    setPeriodId('custom');
+    setFilterDateFrom(value);
+  };
+
+  const editDateTo = (value) => {
+    if (periodId && periodId !== 'custom') {
+      const range = periodRange(periodId);
+      setFilterDateFrom(range?.from || filterDateFrom);
+    }
+    setPeriodId('custom');
+    setFilterDateTo(value);
+  };
+
   const clearFilters = () => {
     setFilterType('');
     setFilterStatus('');
     setFilterCreatedBy('');
     setFilterAffiliate('');
+    setPeriodId('');
     setFilterDateFrom('');
     setFilterDateTo('');
   };
@@ -316,13 +537,32 @@ export default function StatisticsPanel({ missions = [], affiliates = [], onRefr
             </button>
           </div>
         </div>
+        <div className="flex flex-wrap gap-2 mb-4">
+          {PERIOD_CHIPS.map((chip) => {
+            const active = chip.id ? chip.id === periodId : periodId === '';
+            return (
+              <button
+                key={chip.id || 'all'}
+                type="button"
+                onClick={() => choosePeriod(chip.id)}
+                className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
+                  active
+                    ? 'bg-indigo-600 text-white shadow-sm'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                {chip.label}
+              </button>
+            );
+          })}
+        </div>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
           <div>
             <label className="label">From date</label>
             <input
               type="date"
               value={filterDateFrom}
-              onChange={(e) => setFilterDateFrom(e.target.value)}
+              onChange={(e) => editDateFrom(e.target.value)}
               className="input-field"
             />
           </div>
@@ -331,7 +571,7 @@ export default function StatisticsPanel({ missions = [], affiliates = [], onRefr
             <input
               type="date"
               value={filterDateTo}
-              onChange={(e) => setFilterDateTo(e.target.value)}
+              onChange={(e) => editDateTo(e.target.value)}
               className="input-field"
             />
           </div>
@@ -395,8 +635,56 @@ export default function StatisticsPanel({ missions = [], affiliates = [], onRefr
         )}
       </div>
 
+      {comparison && (
+        <div className="card p-5">
+          <div className="flex flex-wrap items-end justify-between gap-3 mb-4">
+            <div>
+              <h3 className="text-sm font-bold text-slate-800">
+                {presetLabel(periodId)} vs {PREVIOUS_LABEL[periodId] || 'Previous period'}
+              </h3>
+              <p className="text-xs text-slate-400 mt-1">
+                {formatRange(comparison.primary.from, comparison.primary.to)}
+                {' vs '}
+                {formatRange(comparison.compare.from, comparison.compare.to)}
+              </p>
+            </div>
+            {comparison.primary.partial && (
+              <p className="text-xs font-medium text-amber-600">Same number of days so far</p>
+            )}
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+            {SUMMARY_METRICS.map((metric) => (
+              <CompareMetric
+                key={metric.key}
+                label={metric.label}
+                current={comparison.current[metric.key]}
+                previous={comparison.previous[metric.key]}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <CountryStatCard
+          country="india"
+          current={comparison ? comparison.countries.india.current : countryStats.india}
+          previous={comparison ? comparison.countries.india.previous : null}
+        />
+        <CountryStatCard
+          country="thailand"
+          current={comparison ? comparison.countries.thailand.current : countryStats.thailand}
+          previous={comparison ? comparison.countries.thailand.previous : null}
+        />
+      </div>
+      {countryStats.unknown.missions > 0 && (
+        <p className="text-xs text-slate-400 -mt-3">
+          {countryStats.unknown.missions} missions have no India or Thailand destination.
+        </p>
+      )}
+
       {/* KPI Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
         <KpiCard
           value={filtered.length}
           label="Total missions"
@@ -449,6 +737,13 @@ export default function StatisticsPanel({ missions = [], affiliates = [], onRefr
           color="text-teal-600"
           icon={<Users className="w-5 h-5" />}
           accent="border-teal-500"
+        />
+        <KpiCard
+          value={newPhoneCount}
+          label="New phones"
+          color="text-rose-600"
+          icon={<Phone className="w-5 h-5" />}
+          accent="border-rose-500"
         />
       </div>
 
@@ -639,10 +934,54 @@ export default function StatisticsPanel({ missions = [], affiliates = [], onRefr
       <ChartCard
         title="Missions Over Time"
         icon={<Calendar className="w-4 h-4 text-indigo-500" />}
-        subtitle={timeChartSubtitle}
+        subtitle={comparison
+          ? `${bucketUnitLabel(comparison.unit)} · ${formatRange(comparison.primary.from, comparison.primary.to)} vs ${formatRange(comparison.compare.from, comparison.compare.to)}`
+          : timeChartSubtitle}
         className="w-full"
       >
-        {!hasTimeData ? (
+        {comparison ? (
+          comparison.rows.every((row) => !row.count && !row.compareCount) ? (
+            <EmptyState />
+          ) : (
+            <ResponsiveContainer width="100%" height={260}>
+              <BarChart
+                data={comparison.rows}
+                margin={{ top: 4, right: 10, left: -25, bottom: 4 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                <XAxis
+                  dataKey="label"
+                  tick={{ fontSize: 11, fill: '#94a3b8' }}
+                  tickLine={false}
+                  axisLine={false}
+                  interval={comparison.rows.length > 12 ? Math.floor(comparison.rows.length / 12) : 0}
+                />
+                <YAxis
+                  tick={{ fontSize: 11, fill: '#94a3b8' }}
+                  tickLine={false}
+                  axisLine={false}
+                  allowDecimals={false}
+                />
+                <Tooltip content={<CompareBarTooltip />} cursor={{ fill: '#f1f5f9' }} />
+                <Legend wrapperStyle={{ fontSize: 12 }} />
+                <Bar
+                  dataKey="count"
+                  name={presetLabel(periodId)}
+                  fill="#6366f1"
+                  radius={[3, 3, 0, 0]}
+                  maxBarSize={28}
+                />
+                <Bar
+                  dataKey="compareCount"
+                  name={PREVIOUS_LABEL[periodId] || 'Previous period'}
+                  fill="#cbd5e1"
+                  radius={[3, 3, 0, 0]}
+                  maxBarSize={28}
+                />
+              </BarChart>
+            </ResponsiveContainer>
+          )
+        ) : !hasTimeData ? (
           <EmptyState />
         ) : (
           <ResponsiveContainer width="100%" height={220}>
