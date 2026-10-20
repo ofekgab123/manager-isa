@@ -90,9 +90,20 @@ function useMissions() {
 
   useEffect(() => {
     fetchMissions();
-    /** Pick up DB changes (e.g. LionWheel webhooks) without full page refresh. */
-    const interval = setInterval(() => fetchMissions({ silent: true }), 60_000);
-    return () => clearInterval(interval);
+    /** Pick up DB changes (e.g. LionWheel webhooks) without full page refresh. Hidden tabs do not poll. */
+    const tick = () => {
+      if (document.visibilityState !== 'visible') return;
+      fetchMissions({ silent: true });
+    };
+    const interval = setInterval(tick, 180_000);
+    const onVis = () => {
+      if (document.visibilityState === 'visible') fetchMissions({ silent: true });
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVis);
+    };
   }, []);
 
   return {
@@ -255,6 +266,18 @@ function Dashboard({ authUser, onLogout }) {
     }
   };
 
+  const openFullMission = useCallback(async (mission, setter) => {
+    if (!mission?.id) return;
+    try {
+      const res = await fetch(`${API_BASE}/missions/${encodeURIComponent(mission.id)}`);
+      if (res.ok) {
+        setter(await res.json());
+        return;
+      }
+    } catch {}
+    setter(mission);
+  }, []);
+
   const [containers, setContainers] = useState([]);
   const [capacityAlertDismissed, setCapacityAlertDismissed] = useState(false);
   const fetchContainers = useCallback(async () => {
@@ -264,9 +287,20 @@ function Dashboard({ authUser, onLogout }) {
     } catch {}
   }, []);
   useEffect(() => {
-    fetchContainers();
-    const interval = setInterval(fetchContainers, 10000);
-    return () => clearInterval(interval);
+    const tick = () => {
+      if (document.visibilityState !== 'visible') return;
+      fetchContainers();
+    };
+    tick();
+    const interval = setInterval(tick, 60_000);
+    const onVis = () => {
+      if (document.visibilityState === 'visible') fetchContainers();
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVis);
+    };
   }, [fetchContainers]);
 
   useEffect(() => {
@@ -927,7 +961,7 @@ function Dashboard({ authUser, onLogout }) {
                             <td>
                               <div className="table-actions">
                                 <button
-                                  onClick={() => setPreviewMission(mission)}
+                                  onClick={() => openFullMission(mission, setPreviewMission)}
                                   className="action-btn text-slate-400 hover:bg-indigo-50 hover:text-indigo-600"
                                   title="Mission preview"
                                 >
@@ -945,7 +979,7 @@ function Dashboard({ authUser, onLogout }) {
                                 )}
                                 {mission.type === 'pickup' && (
                                   <button
-                                    onClick={() => setCompletingMission(mission)}
+                                    onClick={() => openFullMission(mission, setCompletingMission)}
                                     className={`action-btn ${
                                       needsDeliveryDetails(mission)
                                         ? 'text-red-400 hover:text-red-600 hover:bg-red-50'
@@ -963,7 +997,7 @@ function Dashboard({ authUser, onLogout }) {
                                   </button>
                                 )}
                                 <button
-                                  onClick={() => setEditingMission(mission)}
+                                  onClick={() => openFullMission(mission, setEditingMission)}
                                   className="action-btn text-slate-400 hover:bg-slate-100 hover:text-slate-700"
                                   title="Edit mission"
                                 >
@@ -1038,7 +1072,7 @@ function Dashboard({ authUser, onLogout }) {
               <MissionPreviewModal
                 mission={previewMission}
                 onClose={() => setPreviewMission(null)}
-                onOpenLinkedPreview={setPreviewMissionSecondary}
+                onOpenLinkedPreview={(m) => openFullMission(m, setPreviewMissionSecondary)}
                 onRequestLinkEmptyBox={setLinkingMission}
                 onRequestLinkPickup={setLinkingPickupToEmptyBoxMission}
                 pickupLinkRefreshKey={pickupLinkRefreshKey}
@@ -1050,7 +1084,7 @@ function Dashboard({ authUser, onLogout }) {
               <MissionPreviewModal
                 mission={previewMissionSecondary}
                 onClose={() => setPreviewMissionSecondary(null)}
-                onOpenLinkedPreview={setPreviewMissionSecondary}
+                onOpenLinkedPreview={(m) => openFullMission(m, setPreviewMissionSecondary)}
                 onRequestLinkEmptyBox={setLinkingMission}
                 onRequestLinkPickup={setLinkingPickupToEmptyBoxMission}
                 pickupLinkRefreshKey={pickupLinkRefreshKey}
@@ -1092,7 +1126,7 @@ function Dashboard({ authUser, onLogout }) {
         emptyBoxMissionId={linkingPickupToEmptyBoxMission?.id}
         dataRefreshKey={pickupPickerDataKey}
         onPreviewPickup={(m) => {
-          setPreviewMission(m);
+          openFullMission(m, setPreviewMission);
           setLinkingPickupToEmptyBoxMission(null);
         }}
         onLinksChanged={() => {

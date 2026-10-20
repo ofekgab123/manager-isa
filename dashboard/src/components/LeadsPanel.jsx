@@ -434,8 +434,19 @@ function LeadDetailModal({ lead, templates, onClose, onUpdated }) {
   useEffect(() => { loadMessages(); }, [loadMessages]);
 
   useEffect(() => {
-    const interval = setInterval(() => loadMessages(true), 8000);
-    return () => clearInterval(interval);
+    const tick = () => {
+      if (document.visibilityState !== 'visible') return;
+      loadMessages(true);
+    };
+    const interval = setInterval(tick, 30_000);
+    const onVis = () => {
+      if (document.visibilityState === 'visible') loadMessages(true);
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVis);
+    };
   }, [loadMessages]);
 
   useEffect(() => {
@@ -764,8 +775,19 @@ export default function LeadsPanel({ authUser, openLeadId = null, onOpenLeadHand
   useEffect(() => { load(); }, [load]);
 
   useEffect(() => {
-    const interval = setInterval(() => load({ silent: true }), 15_000);
-    return () => clearInterval(interval);
+    const tick = () => {
+      if (document.visibilityState !== 'visible') return;
+      load({ silent: true });
+    };
+    const interval = setInterval(tick, 60_000);
+    const onVis = () => {
+      if (document.visibilityState === 'visible') load({ silent: true });
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVis);
+    };
   }, [load]);
 
   useEffect(() => {

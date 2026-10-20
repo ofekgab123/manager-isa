@@ -8,6 +8,191 @@ async function readTable(table) {
   return rows.map((r) => r.data);
 }
 
+const STRIP_HEAVY_MEDIA_SQL = `
+CREATE OR REPLACE FUNCTION isa_strip_heavy_media(j jsonb)
+RETURNS jsonb
+LANGUAGE plpgsql
+IMMUTABLE
+AS $fn$
+DECLARE
+  k text;
+  v jsonb;
+  result jsonb;
+  elem jsonb;
+  arr jsonb := '[]'::jsonb;
+  txt text;
+BEGIN
+  IF j IS NULL THEN
+    RETURN NULL;
+  END IF;
+  IF jsonb_typeof(j) = 'object' THEN
+    result := '{}'::jsonb;
+    FOR k, v IN SELECT key, value FROM jsonb_each(j)
+    LOOP
+      IF k IN ('imageUrl', 'videoUrl') THEN
+        CONTINUE;
+      END IF;
+      IF jsonb_typeof(v) = 'string' THEN
+        txt := v #>> '{}';
+        IF txt LIKE 'data:image/%' OR txt LIKE 'data:video/%' THEN
+          CONTINUE;
+        END IF;
+        result := result || jsonb_build_object(k, v);
+      ELSE
+        result := result || jsonb_build_object(k, isa_strip_heavy_media(v));
+      END IF;
+    END LOOP;
+    RETURN result;
+  ELSIF jsonb_typeof(j) = 'array' THEN
+    FOR elem IN SELECT value FROM jsonb_array_elements(j)
+    LOOP
+      arr := arr || jsonb_build_array(isa_strip_heavy_media(elem));
+    END LOOP;
+    RETURN arr;
+  ELSE
+    RETURN j;
+  END IF;
+END;
+$fn$;
+`;
+
+let stripMediaReady = null;
+
+async function ensureStripHeavyMedia() {
+  if (!stripMediaReady) {
+    stripMediaReady = pool.query(STRIP_HEAVY_MEDIA_SQL).catch((err) => {
+      stripMediaReady = null;
+      throw err;
+    });
+  }
+  return stripMediaReady;
+}
+
+/** List payload without address photos/videos. Stripping runs in Postgres so those bytes never leave the pooler. */
+export async function readMissionsList() {
+  try {
+    await ensureStripHeavyMedia();
+    const { rows } = await pool.query(
+      `SELECT isa_strip_heavy_media(data) AS data
+       FROM missions
+       ORDER BY (data->>'createdAt') DESC NULLS LAST`
+    );
+    return rows.map((r) => r.data);
+  } catch (err) {
+    console.error('[db] slim mission list failed', err?.message || err);
+    return readTable('missions');
+  }
+}
+
+export async function readMissionByIdCI(id) {
+  const { rows } = await pool.query(
+    `SELECT data FROM missions WHERE upper(id) = upper($1) LIMIT 1`,
+    [id],
+  );
+  return rows[0]?.data ?? null;
+}
+
+export async function findMissionByDeliveryToken(tokenUpper) {
+  const { rows } = await pool.query(
+    `SELECT data FROM missions
+     WHERE EXISTS (
+       SELECT 1
+       FROM jsonb_array_elements(
+         CASE
+           WHEN jsonb_typeof(data->'deliveries') = 'array' THEN data->'deliveries'
+           ELSE '[]'::jsonb
+         END
+       ) AS d
+       WHERE upper(COALESCE(d->>'id', '')) = $1
+          OR (
+            jsonb_typeof(d->'boxTrackingIds') = 'array'
+            AND EXISTS (
+              SELECT 1
+              FROM jsonb_array_elements_text(d->'boxTrackingIds') AS t
+              WHERE upper(t) = $1
+            )
+          )
+     )
+     LIMIT 1`,
+    [tokenUpper],
+  );
+  return rows[0]?.data ?? null;
+}
+
+export async function findMissionByLionwheelTaskId(taskId) {
+  const { rows } = await pool.query(
+    `SELECT data FROM missions
+     WHERE data->'lionwheel'->>'taskId' = $1
+     LIMIT 1`,
+    [String(taskId)],
+  );
+  return rows[0]?.data ?? null;
+}
+
+export async function listCompletedPickupAffiliates(completedStatus) {
+  const { rows } = await pool.query(
+    `SELECT data->>'customerPhone' AS phone,
+            data->>'affiliateName' AS affiliate
+     FROM missions
+     WHERE data->>'type' = 'pickup'
+       AND COALESCE(data->>'affiliateName', '') <> ''
+       AND data->'lionwheel'->>'taskStatus' = $1`,
+    [String(completedStatus)],
+  );
+  return rows;
+}
+
+export async function readOrderById(id) {
+  const { rows } = await pool.query(`SELECT data FROM orders WHERE id = $1`, [id]);
+  return rows[0]?.data ?? null;
+}
+
+export async function updateOrderData(id, data) {
+  const { rowCount } = await pool.query(
+    `UPDATE orders SET data = $2::jsonb WHERE id = $1`,
+    [id, data],
+  );
+  if (rowCount === 0) throw new Error('Order not found');
+}
+
+export async function findOrderByLionwheelTaskId(taskId) {
+  const { rows } = await pool.query(
+    `SELECT data FROM orders
+     WHERE data->'lionwheel'->>'taskId' = $1
+     LIMIT 1`,
+    [String(taskId)],
+  );
+  return rows[0]?.data ?? null;
+}
+
+export async function readOrdersForPhoneKey(phoneKey) {
+  if (!phoneKey) return [];
+  const { rows } = await pool.query(`SELECT id, data->>'customerPhone' AS phone FROM orders`);
+  const ids = rows.filter((r) => israeliMobileKey(r.phone) === phoneKey).map((r) => r.id);
+  if (ids.length === 0) return [];
+  const { rows: full } = await pool.query(
+    `SELECT data FROM orders
+     WHERE id = ANY($1::text[])
+     ORDER BY (data->>'createdAt') DESC NULLS LAST`,
+    [ids],
+  );
+  return full.map((r) => r.data);
+}
+
+async function findUserIdByPhoneKey(phoneKey) {
+  if (!phoneKey) return null;
+  const { rows } = await pool.query(`SELECT id, data->>'phone' AS phone FROM users`);
+  const hit = rows.find((r) => israeliMobileKey(r.phone) === phoneKey);
+  return hit?.id || null;
+}
+
+export async function findUserByPhoneKey(phoneKey) {
+  const id = await findUserIdByPhoneKey(phoneKey);
+  if (!id) return null;
+  const { rows } = await pool.query(`SELECT data FROM users WHERE id = $1`, [id]);
+  return rows[0]?.data ?? null;
+}
+
 async function writeTable(table, items) {
   const client = await pool.connect();
   try {
@@ -156,13 +341,12 @@ export async function upsertCustomerProfileByPhone(phone, { fullName, address })
   if (!key || key.length < 7) return;
   if (!address || typeof address !== 'object') return;
 
-  const { rows } = await pool.query(`SELECT id, data FROM users`);
-  const existing = rows.find((r) => israeliMobileKey(r.data?.phone) === key);
+  const existing = await findUserByPhoneKey(key);
 
   if (existing) {
     const next = {
-      ...existing.data,
-      fullName: fullName || existing.data.fullName,
+      ...existing,
+      fullName: fullName || existing.fullName,
       address: { ...address },
     };
     await updateUserData(existing.id, next);
@@ -258,6 +442,12 @@ function migrateContainerStatusTimestamps(c) {
   return { record: c, dirty: false };
 }
 
+export async function readContainerById(id) {
+  if (!id) return null;
+  const { rows } = await pool.query(`SELECT data FROM containers WHERE id = $1`, [id]);
+  return rows[0]?.data ?? null;
+}
+
 export async function readContainers() {
   const raw = await readTable('containers');
   if (!Array.isArray(raw)) return raw;
@@ -334,9 +524,11 @@ export async function deleteLeadsByIds(ids) {
 
 export async function findLeadByPhoneKey(phoneKey) {
   if (!phoneKey) return null;
-  const { rows } = await pool.query(`SELECT id, data FROM leads`);
-  const match = rows.find((r) => r.data?.phoneKey === phoneKey);
-  return match ? match.data : null;
+  const { rows } = await pool.query(
+    `SELECT data FROM leads WHERE data->>'phoneKey' = $1 LIMIT 1`,
+    [phoneKey],
+  );
+  return rows[0]?.data ?? null;
 }
 
 export async function readMessageTemplates() {
@@ -374,9 +566,7 @@ export async function insertMessageData(id, data) {
 export async function findUserIdByPhone(phone) {
   const key = israeliMobileKey(phone);
   if (!key || key.length < 7) return null;
-  const { rows } = await pool.query(`SELECT id, data FROM users`);
-  const match = rows.find((r) => israeliMobileKey(r.data?.phone) === key);
-  return match?.id || null;
+  return findUserIdByPhoneKey(key);
 }
 
 export async function updateMissionCapiFields(id, fields) {

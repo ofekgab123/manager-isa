@@ -3,7 +3,7 @@ import cors from 'cors';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import pool from './db.js';
-import { readOrders, writeOrders, readAffiliates, writeAffiliates, readMissions, writeMissions, insertMissionData, updateMissionsData, readMissionById, countPickupLinksForEmptyBox, deleteMissionsById, readUsers, writeUsers, readReceivers, writeReceivers, upsertReceiverByPhone, readContainers, writeContainers, readParcelContentTypes, writeParcelContentTypes, containerCountryKey } from './storage.js';
+import { readOrders, writeOrders, readOrdersForPhoneKey, readOrderById, updateOrderData, findOrderByLionwheelTaskId, readAffiliates, writeAffiliates, readMissions, readMissionsList, writeMissions, insertMissionData, updateMissionsData, readMissionById, readMissionByIdCI, findMissionByDeliveryToken, findMissionByLionwheelTaskId, listCompletedPickupAffiliates, countPickupLinksForEmptyBox, deleteMissionsById, readUsers, writeUsers, findUserByPhoneKey, upsertCustomerProfileByPhone, readReceivers, writeReceivers, upsertReceiverByPhone, readContainers, readContainerById, writeContainers, readParcelContentTypes, writeParcelContentTypes, containerCountryKey } from './storage.js';
 import { israeliMobileKey } from './phoneKey.js';
 import { listCapiOutboxByStatus, listMissionsByCapiStatus } from './storage.js';
 import {
@@ -563,8 +563,7 @@ app.get('/api/customers/by-phone', async (req, res) => {
     if (qDigits.length < 7) return res.json(null);
     const qKey = israeliMobileKey(req.query.phone);
     if (!qKey) return res.json(null);
-    const users = await readUsers();
-    const match = users.find((u) => israeliMobileKey(u.phone) === qKey);
+    const match = await findUserByPhoneKey(qKey);
     res.json(match || null);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -626,7 +625,10 @@ app.post('/api/affiliates/auto-for-phone', async (req, res) => {
     const tail = phoneTailDigits(req.body?.phone);
     if (!tail) return res.json({ match: false });
 
-    const [affiliates, missions] = await Promise.all([readAffiliates(), readMissions()]);
+    const [affiliates, pickups] = await Promise.all([
+      readAffiliates(),
+      listCompletedPickupAffiliates(LIONWHEEL_TASK_STATUS_COMPLETED),
+    ]);
 
     const payload = (aff) => ({
       match: true,
@@ -636,11 +638,9 @@ app.post('/api/affiliates/auto-for-phone', async (req, res) => {
       slug: aff.slug,
     });
 
-    for (const m of missions) {
-      if (phoneTailDigits(m.customerPhone) !== tail) continue;
-      if (m.type !== 'pickup' || !m.affiliateName) continue;
-      if (Number(m.lionwheel?.taskStatus) !== LIONWHEEL_TASK_STATUS_COMPLETED) continue;
-      const aff = affiliates.find((a) => a.name === m.affiliateName && a.active !== false);
+    for (const m of pickups) {
+      if (phoneTailDigits(m.phone) !== tail) continue;
+      const aff = affiliates.find((a) => a.name === m.affiliate && a.active !== false);
       if (aff) return res.json(payload(aff));
     }
 
@@ -678,25 +678,7 @@ async function mergeCustomerAddressFromCustomerMission(body, missionType) {
     [body.firstName, body.lastName].filter(Boolean).join(' ').trim() ||
     '';
 
-  const users = await readUsers();
-  const idx = users.findIndex((u) => israeliMobileKey(u.phone) === key);
-  if (idx !== -1) {
-    users[idx] = {
-      ...users[idx],
-      fullName: fullName || users[idx].fullName,
-      address: { ...addr },
-    };
-  } else {
-    users.unshift({
-      id: `USR-${Date.now()}`,
-      fullName: fullName,
-      phone: body.customerPhone,
-      address: { ...addr },
-      notes: '',
-      createdAt: new Date().toISOString(),
-    });
-  }
-  await writeUsers(users);
+  await upsertCustomerProfileByPhone(phone, { fullName, address: addr });
 }
 
 // Affiliate discount applies only to pickup missions
@@ -964,54 +946,52 @@ app.post('/api/lionwheel/sync-status', requireAuth, async (req, res) => {
 
 // ─── Public: GET /api/track/:id — lookup by package ID (PKG-…) or mission ID (MSN-…) ─
 
+function matchTrackedDelivery(mission, rawId) {
+  const upper = rawId.toUpperCase();
+  const deliveries = mission.deliveries?.length > 0 ? mission.deliveries : [];
+  for (const d of deliveries) {
+    const tids = (d.boxTrackingIds ?? []).map((t) => (t || '').trim().toUpperCase());
+    if (tids.includes(upper)) return { delivery: d, packageId: upper };
+  }
+  const byId = deliveries.find((dv) => dv.id && dv.id.toUpperCase() === upper);
+  if (byId) return { delivery: byId, packageId: byId.id };
+  return null;
+}
+
 app.get('/api/track/:id', async (req, res) => {
   try {
     const rawId = req.params.id.trim();
-    const missions = await readMissions();
+    const upper = rawId.toUpperCase();
     let mission = null;
     let delivery = null;
     let packageId = null;
 
-    if (rawId.toUpperCase().startsWith('MSN-')) {
-      // Direct mission lookup
-      mission = missions.find((m) => m.id.toUpperCase() === rawId.toUpperCase());
+    if (upper.startsWith('MSN-')) {
+      mission = await readMissionByIdCI(rawId);
     } else {
-      // 1. Search by boxTrackingId inside deliveries
-      for (const m of missions) {
-        const deliveries = m.deliveries?.length > 0 ? m.deliveries : [];
-        for (const d of deliveries) {
-          const tids = (d.boxTrackingIds ?? []).map((t) => (t || '').trim().toUpperCase());
-          if (tids.includes(rawId.toUpperCase())) {
-            mission = m; delivery = d; packageId = rawId.toUpperCase(); break;
-          }
+      mission = await findMissionByDeliveryToken(upper);
+      if (mission) {
+        const matched = matchTrackedDelivery(mission, rawId);
+        if (matched) {
+          delivery = matched.delivery;
+          packageId = matched.packageId;
         }
-        if (mission) break;
       }
 
-      // 2. Try synthesized PKG-{missionNum}-{idx}
       if (!mission) {
         const synthMatch = rawId.match(/^PKG-(\d+)-(\d+)$/i);
         if (synthMatch) {
           const msnId = `MSN-${synthMatch[1]}`;
           const idx = parseInt(synthMatch[2], 10);
-          const m = missions.find((ms) => ms.id === msnId);
+          const m = await readMissionById(msnId);
           if (m) {
             const deliveries = m.deliveries?.length > 0
               ? m.deliveries
               : [{ receiverName: m.receiverName || '', receiverPhone: m.receiverPhone || '', address: m.receiverAddress || null, boxCount: m.pickupBoxCount ?? 1 }];
             if (idx < deliveries.length) {
-              mission = m; delivery = deliveries[idx]; packageId = rawId.toUpperCase();
+              mission = m; delivery = deliveries[idx]; packageId = upper;
             }
           }
-        }
-      }
-
-      // 3. Fallback: explicit d.id match
-      if (!mission) {
-        for (const m of missions) {
-          const deliveries = m.deliveries?.length > 0 ? m.deliveries : [];
-          const d = deliveries.find((dv) => dv.id && dv.id.toUpperCase() === rawId.toUpperCase());
-          if (d) { mission = m; delivery = d; packageId = d.id; break; }
         }
       }
     }
@@ -1020,8 +1000,7 @@ app.get('/api/track/:id', async (req, res) => {
 
     let container = null;
     if (mission.containerId) {
-      const containers = await readContainers();
-      const c = containers.find((cnt) => cnt.id === mission.containerId);
+      const c = await readContainerById(mission.containerId);
       if (c) {
         const ts =
           c.statusTimestamps && typeof c.statusTimestamps === 'object' && !Array.isArray(c.statusTimestamps)
@@ -1091,29 +1070,26 @@ async function handleLionWheelTaskStatusWebhook(req, res, opts) {
       return res.status(400).json({ error: 'Missing or unknown LionWheel status in payload' });
     }
 
-    const missions = await readMissions();
-    let idx = -1;
+    let mission = null;
     if (fields.taskId != null) {
-      idx = missions.findIndex((m) => Number(m.lionwheel?.taskId) === Number(fields.taskId));
+      mission = await findMissionByLionwheelTaskId(fields.taskId);
     }
-    if (idx === -1 && fields.missionIdHint) {
-      idx = missions.findIndex((m) => m.id === fields.missionIdHint);
+    if (!mission && fields.missionIdHint) {
+      mission = await readMissionById(fields.missionIdHint);
     }
 
-    let ordersList = null;
-    let oidx = -1;
-    if (idx === -1) {
-      ordersList = await readOrders();
+    let order = null;
+    if (!mission) {
       if (fields.taskId != null) {
-        oidx = ordersList.findIndex((o) => Number(o.lionwheel?.taskId) === Number(fields.taskId));
+        order = await findOrderByLionwheelTaskId(fields.taskId);
       }
-      if (oidx === -1 && fields.missionIdHint) {
-        oidx = ordersList.findIndex((o) => o.id === fields.missionIdHint);
+      if (!order && fields.missionIdHint) {
+        order = await readOrderById(fields.missionIdHint);
       }
     }
 
-    if (idx === -1 && oidx !== -1) {
-      const prevOrder = ordersList[oidx];
+    if (!mission && order) {
+      const prevOrder = order;
       const prevLwOrder = prevOrder.lionwheel || {};
       const mergedOrder = {
         ...prevOrder,
@@ -1128,8 +1104,7 @@ async function handleLionWheelTaskStatusWebhook(req, res, opts) {
           lastWebhookAt: new Date().toISOString(),
         },
       };
-      ordersList[oidx] = mergedOrder;
-      await writeOrders(ordersList);
+      await updateOrderData(mergedOrder.id, mergedOrder);
       outcome = {
         httpStatus: 200,
         phase: 'ok_order',
@@ -1149,7 +1124,7 @@ async function handleLionWheelTaskStatusWebhook(req, res, opts) {
       });
     }
 
-    if (idx === -1) {
+    if (!mission) {
       /** 200 so Make/Zapier-style queues stop retrying; mission/order may be missing on this env or test task. */
       outcome = {
         httpStatus: 200,
@@ -1169,10 +1144,10 @@ async function handleLionWheelTaskStatusWebhook(req, res, opts) {
       });
     }
 
-    const prevMission = missions[idx];
-    const prevLw = missions[idx].lionwheel || {};
+    const prevMission = mission;
+    const prevLw = mission.lionwheel || {};
     const merged = {
-      ...missions[idx],
+      ...mission,
       lionwheel: {
         ...prevLw,
         /** Webhooks often arrive after create; persist LW task id whenever the payload includes it (was missing → UI had status but no LW ID). */
@@ -1457,20 +1432,19 @@ const normalizeStatus = (s) => {
 
 app.get('/api/orders', async (req, res) => {
   try {
-    const orders = await readOrders();
     const { status, type, createdBy, contacted, customerPhone } = req.query;
-    let filtered = orders;
+    let filtered;
+    if (customerPhone) {
+      const qk = israeliMobileKey(customerPhone);
+      filtered = qk ? await readOrdersForPhoneKey(qk) : [];
+    } else {
+      filtered = await readOrders();
+    }
     if (status) filtered = filtered.filter((o) => o.status === status);
     if (type) filtered = filtered.filter((o) => o.type === type);
     if (createdBy) filtered = filtered.filter((o) => o.createdBy === createdBy);
     if (contacted === 'true') filtered = filtered.filter((o) => o.contacted === true);
     if (contacted === 'false') filtered = filtered.filter((o) => !o.contacted);
-    if (customerPhone) {
-      const qk = israeliMobileKey(customerPhone);
-      filtered = filtered.filter(
-        (o) => israeliMobileKey(o.customerPhone) === qk
-      );
-    }
     res.json(filtered);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1721,7 +1695,7 @@ const VALID_MISSION_TOP_TYPES = ['empty_box', 'pickup'];
 
 app.get('/api/missions/stats', async (req, res) => {
   try {
-    let missions = await readMissions();
+    let missions = await readMissionsList();
     missions = await filterMissionsForCountryUser(missions, req.user);
     const byStatus = {};
     const byType = {};
@@ -1744,7 +1718,7 @@ app.get('/api/missions/stats', async (req, res) => {
 
 app.get('/api/missions', async (req, res) => {
   try {
-    let missions = await readMissions();
+    let missions = await readMissionsList();
     missions = await filterMissionsForCountryUser(missions, req.user);
     const { status, type, createdBy, customerPhone, affiliate, linkedEmptyBoxMissionId, containerId } = req.query;
     let filtered = missions;

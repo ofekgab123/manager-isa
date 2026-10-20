@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { MessageSquare, X, Phone, ChevronRight } from 'lucide-react';
 import { API_BASE } from '../config';
 
-const POLL_MS = 15_000;
+const POLL_MS = 60_000;
 const TOAST_TTL_MS = 45_000;
 const MAX_TOASTS = 5;
 
@@ -77,6 +77,7 @@ export default function LeadReplyAlertLayer({ enabled, onOpenLead, onReplyCountC
     let cancelled = false;
 
     const poll = async () => {
+      if (document.visibilityState !== 'visible') return;
       try {
         const res = await fetch(`${API_BASE}/leads`);
         if (!res.ok || cancelled) return;
@@ -108,9 +109,14 @@ export default function LeadReplyAlertLayer({ enabled, onOpenLead, onReplyCountC
 
     poll();
     const interval = setInterval(poll, POLL_MS);
+    const onVis = () => {
+      if (document.visibilityState === 'visible') poll();
+    };
+    document.addEventListener('visibilitychange', onVis);
     return () => {
       cancelled = true;
       clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVis);
     };
   }, [enabled, addToast, onReplyCountChange]);
 
