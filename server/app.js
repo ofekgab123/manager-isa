@@ -3,7 +3,7 @@ import cors from 'cors';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import pool from './db.js';
-import { readOrders, writeOrders, readOrdersForPhoneKey, readOrderById, updateOrderData, findOrderByLionwheelTaskId, readAffiliates, writeAffiliates, readMissions, readMissionsList, writeMissions, insertMissionData, updateMissionsData, readMissionById, readMissionByIdCI, findMissionByDeliveryToken, findMissionByLionwheelTaskId, listCompletedPickupAffiliates, countPickupLinksForEmptyBox, deleteMissionsById, readUsers, writeUsers, findUserByPhoneKey, upsertCustomerProfileByPhone, readReceivers, writeReceivers, upsertReceiverByPhone, readContainers, readContainerById, writeContainers, readParcelContentTypes, writeParcelContentTypes, containerCountryKey } from './storage.js';
+import { readOrders, writeOrders, readOrdersForPhoneKey, readOrderById, updateOrderData, findOrderByLionwheelTaskId, readAffiliates, writeAffiliates, readMissions, readMissionsList, writeMissions, insertMissionData, updateMissionsData, readMissionById, readMissionByIdCI, findMissionByDeliveryToken, findMissionByLionwheelTaskId, listCompletedPickupAffiliates, countPickupLinksForEmptyBox, deleteMissionsById, readUsers, writeUsers, findUserByPhoneKey, upsertCustomerProfileByPhone, readReceivers, writeReceivers, upsertReceiverByPhone, readContainers, readContainerById, writeContainers, readParcelContentTypes, writeParcelContentTypes, containerCountryKey, readMissionRevision, readMissionStats } from './storage.js';
 import { israeliMobileKey } from './phoneKey.js';
 import { listCapiOutboxByStatus, listMissionsByCapiStatus } from './storage.js';
 import {
@@ -1693,24 +1693,17 @@ app.delete('/api/orders/:id/missions/:missionId', async (req, res) => {
 
 const VALID_MISSION_TOP_TYPES = ['empty_box', 'pickup'];
 
+app.get('/api/missions/revision', async (req, res) => {
+  try {
+    res.json(await readMissionRevision(req.user));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get('/api/missions/stats', async (req, res) => {
   try {
-    let missions = await readMissionsList();
-    missions = await filterMissionsForCountryUser(missions, req.user);
-    const byStatus = {};
-    const byType = {};
-    const byCreatedBy = {};
-    let totalBoxes = 0;
-    let missingAddress = 0;
-    missions.forEach((m) => {
-      const status = normalizeStatus(m.status);
-      byStatus[status] = (byStatus[status] || 0) + 1;
-      byType[m.type] = (byType[m.type] || 0) + 1;
-      byCreatedBy[m.createdBy || 'unknown'] = (byCreatedBy[m.createdBy || 'unknown'] || 0) + 1;
-      totalBoxes += (m.boxSelection?.large || 0) + (m.boxSelection?.small || 0);
-      if (m.type === 'pickup' ? !m.receiverAddress?.lat : !m.address?.lat) missingAddress++;
-    });
-    res.json({ total: missions.length, totalBoxes, missingAddress, byStatus, byType, byCreatedBy });
+    res.json(await readMissionStats(req.user));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

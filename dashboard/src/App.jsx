@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Package,
   Box,
@@ -66,13 +66,27 @@ function lwStatusBadgeClasses(code) {
   return 'bg-indigo-50 text-indigo-800 border border-indigo-200';
 }
 
+async function fetchRevision(path) {
+  try {
+    const res = await fetch(path);
+    if (!res.ok) return null;
+    const data = await res.json();
+    return typeof data?.revision === 'string' ? data.revision : null;
+  } catch {
+    return null;
+  }
+}
+
 function useMissions() {
   const [missions, setMissions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const revisionRef = useRef(null);
 
   const fetchMissions = async (opts = {}) => {
     const silent = opts.silent === true;
+    const revision = await fetchRevision(`${API_BASE}/missions/revision`);
+    if (silent && revision && revisionRef.current === revision) return;
     if (!silent) setLoading(true);
     setError(null);
     try {
@@ -80,6 +94,7 @@ function useMissions() {
       if (!res.ok) throw new Error('Failed to fetch');
       const data = await res.json();
       setMissions(data);
+      if (revision) revisionRef.current = revision;
     } catch (e) {
       setError(e.message);
       setMissions([]);

@@ -9,6 +9,9 @@ import {
   readMessageTemplates,
   insertMessageTemplateData,
   updateMessageTemplateData,
+  readLeadById,
+  readLeadsRevision,
+  readLeadsAwaitingReply,
   readMessagesForLead,
   insertMessageData,
   updateMessageByWaMessageId,
@@ -607,6 +610,22 @@ export function registerLeadsRoutes(app, { requireAdmin }) {
     return res.status(403).json({ error: 'Forbidden' });
   }
 
+  app.get('/api/leads/revision', requireLeadsAccess, async (req, res) => {
+    try {
+      res.json(await readLeadsRevision(req.user));
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get('/api/leads/reply-watch', requireLeadsAccess, async (req, res) => {
+    try {
+      res.json(await readLeadsAwaitingReply(req.user));
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   app.get('/api/leads', requireLeadsAccess, async (req, res) => {
     try {
       let leads = await readLeads();
@@ -757,11 +776,10 @@ export function registerLeadsRoutes(app, { requireAdmin }) {
 
   app.get('/api/leads/:id/messages', requireLeadsAccess, async (req, res) => {
     try {
-      const leads = await readLeads();
-      const lead = leads.find(
-        (l) => l.id === req.params.id && leadVisibleToUser(l, req.user),
-      );
-      if (!lead) return res.status(404).json({ error: 'Lead not found' });
+      const lead = await readLeadById(req.params.id);
+      if (!lead || !leadVisibleToUser(lead, req.user)) {
+        return res.status(404).json({ error: 'Lead not found' });
+      }
       const messages = await readMessagesForLead(req.params.id);
       res.json({
         messages,

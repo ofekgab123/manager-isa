@@ -489,6 +489,192 @@ export async function readLeads() {
   return readTable('leads');
 }
 
+export async function readLeadById(id) {
+  const { rows } = await pool.query(`SELECT data FROM leads WHERE id = $1`, [id]);
+  return rows[0]?.data ?? null;
+}
+
+/** Region stored on a mission: shippingDestination, then country. Only india | thailand. */
+const MISSION_REGION_SQL = `
+CASE
+  WHEN lower(btrim(coalesce(data->>'shippingDestination', ''))) IN ('india', 'thailand')
+    THEN lower(btrim(data->>'shippingDestination'))
+  WHEN lower(btrim(coalesce(data->>'country', ''))) IN ('india', 'thailand')
+    THEN lower(btrim(data->>'country'))
+  ELSE NULL
+END
+`;
+
+const LEAD_COUNTRY_SQL = `
+CASE lower(btrim(coalesce(data->>'country', '')))
+  WHEN 'th' THEN 'thailand'
+  WHEN 'thailand' THEN 'thailand'
+  WHEN 'in' THEN 'india'
+  WHEN 'india' THEN 'india'
+  ELSE NULL
+END
+`;
+
+function normalizeAudienceCountry(country) {
+  const s = String(country || '').trim().toLowerCase();
+  if (s === 'india' || s === 'in') return 'india';
+  if (s === 'thailand' || s === 'th') return 'thailand';
+  return null;
+}
+
+/** Same visibility as filterMissionsForCountryUser. Admins and users without a country see every row. */
+function missionAudience(user) {
+  if (!user?.country || user.isAdmin) return { where: 'TRUE', params: [] };
+  const region = containerCountryKey(user.country);
+  const dest = normalizeAudienceCountry(user.country);
+  const where = `
+    (
+      data->>'type' = 'empty_box'
+      AND $2::text IS NOT NULL
+      AND (${MISSION_REGION_SQL}) = $2
+    )
+    OR (
+      data->>'type' = 'pickup'
+      AND (
+        data->>'containerId' IN (
+          SELECT c.id FROM containers c
+          WHERE CASE
+            WHEN lower(btrim(coalesce(c.data->>'country', ''))) IN ('th', 'thailand') THEN 'thailand'
+            WHEN lower(btrim(coalesce(c.data->>'country', ''))) IN ('in', 'india') THEN 'india'
+            ELSE btrim(c.data->>'country')
+          END = $1
+        )
+        OR ($2::text IS NOT NULL AND (${MISSION_REGION_SQL}) = $2)
+      )
+    )
+  `;
+  return { where, params: [region, dest] };
+}
+
+/** Same visibility as leadVisibleToUser. A non-admin without a country sees nothing. */
+function leadAudience(user) {
+  if (user?.isAdmin) return { where: 'TRUE', params: [] };
+  const country = normalizeAudienceCountry(user?.country);
+  if (!country) return { where: 'FALSE', params: [] };
+  const where = `
+    (${LEAD_COUNTRY_SQL}) = $1
+    OR ($1 = 'india' AND (${LEAD_COUNTRY_SQL}) IS NULL)
+  `;
+  return { where, params: [country] };
+}
+
+async function readJsonRevision(table, audience) {
+  const { rows } = await pool.query(
+    `SELECT count(*)::int AS count,
+            md5(coalesce(string_agg(md5(data::text), '' ORDER BY id), '')) AS revision
+     FROM ${table}
+     WHERE (${audience.where})`,
+    audience.params,
+  );
+  return { count: rows[0]?.count ?? 0, revision: rows[0]?.revision || '' };
+}
+
+/** A few dozen bytes. The dashboard polls this and downloads mission JSON only when it changes. */
+export async function readMissionRevision(user) {
+  return readJsonRevision('missions', missionAudience(user));
+}
+
+/** A few dozen bytes. The leads table polls this instead of every lead document. */
+export async function readLeadsRevision(user) {
+  return readJsonRevision('leads', leadAudience(user));
+}
+
+/**
+ * Header counts without shipping mission documents out of Postgres.
+ * Status aliases match normalizeStatus in app.js.
+ */
+export async function readMissionStats(user) {
+  const { where, params } = missionAudience(user);
+  const latSql = `
+    CASE WHEN data->>'type' = 'pickup'
+      THEN data->'receiverAddress'->>'lat'
+      ELSE data->'address'->>'lat'
+    END
+  `;
+  const { rows } = await pool.query(
+    `WITH visible AS (
+       SELECT
+         CASE
+           WHEN data->>'status' = 'recorded' THEN 'received'
+           WHEN data->>'status' = 'pending' THEN 'linewhel_transferred'
+           ELSE coalesce(data->>'status', '')
+         END AS status,
+         coalesce(data->>'type', '') AS type,
+         coalesce(nullif(btrim(data->>'createdBy'), ''), 'unknown') AS created_by,
+         (
+           CASE WHEN coalesce(data->'boxSelection'->>'large', '') ~ '^[0-9]+(\\.[0-9]+)?$'
+             THEN (data->'boxSelection'->>'large')::numeric ELSE 0 END
+           + CASE WHEN coalesce(data->'boxSelection'->>'small', '') ~ '^[0-9]+(\\.[0-9]+)?$'
+             THEN (data->'boxSelection'->>'small')::numeric ELSE 0 END
+         ) AS boxes,
+         (
+           nullif(btrim(coalesce((${latSql}), '')), '') IS NULL
+           OR btrim(coalesce((${latSql}), '')) IN ('0', '0.0')
+         ) AS missing
+       FROM missions
+       WHERE (${where})
+     )
+     SELECT
+       (SELECT count(*)::int FROM visible) AS total,
+       (SELECT coalesce(sum(boxes), 0) FROM visible) AS total_boxes,
+       (SELECT count(*) FILTER (WHERE missing)::int FROM visible) AS missing_address,
+       (SELECT coalesce(jsonb_object_agg(status, n), '{}'::jsonb)
+          FROM (SELECT status, count(*)::int AS n FROM visible GROUP BY status) s) AS by_status,
+       (SELECT coalesce(jsonb_object_agg(type, n), '{}'::jsonb)
+          FROM (SELECT type, count(*)::int AS n FROM visible GROUP BY type) s) AS by_type,
+       (SELECT coalesce(jsonb_object_agg(created_by, n), '{}'::jsonb)
+          FROM (SELECT created_by, count(*)::int AS n FROM visible GROUP BY created_by) s) AS by_created_by`,
+    params,
+  );
+  const row = rows[0] || {};
+  return {
+    total: row.total ?? 0,
+    totalBoxes: Number(row.total_boxes) || 0,
+    missingAddress: row.missing_address ?? 0,
+    byStatus: row.by_status || {},
+    byType: row.by_type || {},
+    byCreatedBy: row.by_created_by || {},
+  };
+}
+
+/** Leads waiting for a reply, with only the fields the alert toast needs. */
+export async function readLeadsAwaitingReply(user) {
+  const { where, params } = leadAudience(user);
+  const { rows } = await pool.query(
+    `SELECT id,
+            coalesce(data->>'fullName', '') AS "fullName",
+            coalesce(data->>'phone', '') AS phone,
+            data->>'lastInboundAt' AS "lastInboundAt",
+            left(coalesce(data->>'lastInboundPreview', ''), 200) AS "lastInboundPreview"
+     FROM leads
+     WHERE (${where})
+       AND coalesce(data->>'lastInboundAt', '') <> ''
+       AND (
+         coalesce(data->>'lastContactedAt', '') = ''
+         OR data->>'lastInboundAt' > data->>'lastContactedAt'
+       )
+     ORDER BY data->>'lastInboundAt' DESC`,
+    params,
+  );
+  return rows.map((row) => {
+    const preview = String(row.lastInboundPreview || '').trim();
+    return {
+      id: row.id,
+      fullName: row.fullName,
+      phone: row.phone,
+      lastInboundAt: row.lastInboundAt,
+      lastInboundPreview: row.lastInboundPreview,
+      needsReply: true,
+      alertText: preview ? `New message: ${preview}` : 'New message — awaiting reply',
+    };
+  });
+}
+
 export async function insertLeadData(id, data) {
   await pool.query(`INSERT INTO leads (id, data) VALUES ($1, $2::jsonb)`, [id, data]);
 }

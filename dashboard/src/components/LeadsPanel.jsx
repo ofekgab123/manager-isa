@@ -729,6 +729,17 @@ function AddLeadModal({ onClose, onCreated, authCountry = null }) {
   );
 }
 
+async function fetchRevision(path) {
+  try {
+    const res = await fetch(path);
+    if (!res.ok) return null;
+    const data = await res.json();
+    return typeof data?.revision === 'string' ? data.revision : null;
+  } catch {
+    return null;
+  }
+}
+
 export default function LeadsPanel({ authUser, openLeadId = null, onOpenLeadHandled }) {
   const { job, startBulkSend } = useBulkSend();
   const [subTab, setSubTab] = useState('leads');
@@ -747,24 +758,34 @@ export default function LeadsPanel({ authUser, openLeadId = null, onOpenLeadHand
   const [showSelectAll, setShowSelectAll] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const fileInputRef = useRef(null);
+  const revisionRef = useRef(null);
 
   const load = useCallback(async (opts = {}) => {
     const silent = opts.silent === true;
+    const seenRevision = silent ? await fetchRevision(`${API_BASE}/leads/revision`) : null;
+    if (silent && seenRevision && revisionRef.current === seenRevision) return;
     if (!silent) setLoading(true);
     setError('');
     try {
       const params = new URLSearchParams();
       if (search.trim()) params.set('q', search.trim());
       const qs = params.toString();
-      const [leadsRes, tplRes] = await Promise.all([
-        fetch(`${API_BASE}/leads${qs ? `?${qs}` : ''}`),
-        fetch(`${API_BASE}/message-templates`),
-      ]);
+      const leadsPromise = fetch(`${API_BASE}/leads${qs ? `?${qs}` : ''}`);
+      const tplPromise = silent ? null : fetch(`${API_BASE}/message-templates`);
+      const leadsRes = await leadsPromise;
       const leadsData = await leadsRes.json();
-      const tplData = await tplRes.json();
       if (!leadsRes.ok) throw new Error(leadsData.error || 'Failed to load leads');
       setLeads(leadsData);
-      if (tplRes.ok) setTemplates(tplData);
+      if (tplPromise) {
+        const tplRes = await tplPromise;
+        if (tplRes.ok) setTemplates(await tplRes.json());
+      }
+      if (silent && seenRevision) {
+        revisionRef.current = seenRevision;
+      } else {
+        const revision = await fetchRevision(`${API_BASE}/leads/revision`);
+        if (revision) revisionRef.current = revision;
+      }
     } catch (err) {
       if (!silent) setError(err.message);
     } finally {

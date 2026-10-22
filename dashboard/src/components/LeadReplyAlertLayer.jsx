@@ -79,7 +79,7 @@ export default function LeadReplyAlertLayer({ enabled, onOpenLead, onReplyCountC
     const poll = async () => {
       if (document.visibilityState !== 'visible') return;
       try {
-        const res = await fetch(`${API_BASE}/leads`);
+        const res = await fetch(`${API_BASE}/leads/reply-watch`);
         if (!res.ok || cancelled) return;
         const leads = await res.json();
         const replyCount = leads.filter((l) => l.needsReply).length;
