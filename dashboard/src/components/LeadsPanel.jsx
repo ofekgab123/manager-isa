@@ -5,6 +5,7 @@ import {
   Search,
   RefreshCw,
   Upload,
+  Download,
   X,
   MessageSquare,
   Send,
@@ -116,6 +117,18 @@ function parseLeadImportRow(row) {
   const country = pickExcelField(row, ['country_name_EN', 'country_name', 'country', 'Country', 'מדינה']);
   const notes = [passport && `passport ${passport}`, country].filter(Boolean).join(' · ');
   return { phone, firstName: resolvedFirstName, lastName: resolvedLastName, fullName, notes };
+}
+
+function downloadLeadImportTemplate() {
+  const rows = [
+    ['phone', 'firstName', 'lastName', 'country'],
+    ['0500000001', 'David', 'Cohen', 'Thailand'],
+  ];
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  ws['!cols'] = [{ wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 16 }];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Leads');
+  XLSX.writeFile(wb, 'leads-import-template.xlsx');
 }
 
 function SelectLeadsScopeModal({ allCount, newCount, onSelectAll, onSelectNews, onClose }) {
@@ -1026,6 +1039,15 @@ export default function LeadsPanel({ authUser, openLeadId = null, onOpenLeadHand
             <button type="button" onClick={() => setShowAdd(true)} className="btn-secondary flex items-center gap-2">
               <Plus className="w-4 h-4" />
               Add
+            </button>
+            <button
+              type="button"
+              onClick={downloadLeadImportTemplate}
+              title="Excel template: phone, firstName, lastName, country"
+              className="btn-secondary flex items-center gap-2"
+            >
+              <Download className="w-4 h-4" />
+              Download template
             </button>
             <button
               type="button"
