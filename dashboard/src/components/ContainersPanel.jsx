@@ -2179,6 +2179,7 @@ export default function ContainersPanel({ authCountry = null }) {
             trackingId,
             description: descStr || '—',
             weight: typeof weight === 'number' ? weight : '',
+            notes: String(m.notes || '').trim(),
           });
         }
       });
@@ -2213,6 +2214,7 @@ export default function ContainersPanel({ authCountry = null }) {
             senderName,
             senderPhone,
             weight: typeof weight === 'number' ? weight : '',
+            notes: String(m.notes || '').trim(),
           });
         }
       });
@@ -2228,19 +2230,19 @@ export default function ContainersPanel({ authCountry = null }) {
 
     const exportDate = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
     const headers = isCourier
-      ? ['Tracking ID', 'Recipient Name', 'Recipient Phone', 'Recipient Address', 'Sender Name', 'Sender Phone', 'Weight (kg)']
-      : ['Tracking ID', 'Description', 'Weight (kg)'];
+      ? ['Tracking ID', 'Recipient Name', 'Recipient Phone', 'Recipient Address', 'Sender Name', 'Sender Phone', 'Weight (kg)', 'Notes']
+      : ['Tracking ID', 'Description', 'Weight (kg)', 'Notes'];
     const sheetRows = [[`Date: ${exportDate}`], headers];
     rows.forEach((r) => {
       sheetRows.push(isCourier
-        ? [r.trackingId, r.receiverName, r.receiverPhone, r.receiverAddress, r.senderName, r.senderPhone, r.weight]
-        : [r.trackingId, r.description, r.weight]);
+        ? [r.trackingId, r.receiverName, r.receiverPhone, r.receiverAddress, r.senderName, r.senderPhone, r.weight, r.notes]
+        : [r.trackingId, r.description, r.weight, r.notes]);
     });
     downloadExcel(
       `container-${containerName}-${suffix}.xlsx`,
       isCourier ? 'Courier' : 'Customs',
       sheetRows,
-      isCourier ? [18, 22, 18, 36, 22, 18, 14] : [18, 36, 14],
+      isCourier ? [18, 22, 18, 36, 22, 18, 14, 48] : [18, 36, 14, 48],
     );
     setExportModalContainer(null);
   };
