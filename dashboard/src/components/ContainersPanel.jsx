@@ -20,12 +20,21 @@ import {
   Search,
   ArrowLeftRight,
 } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import { API_BASE } from '../config';
 import { formatIls, sumBoxContentsIls } from '../parcelContentUtils';
 import CollapsibleParcelContent from './CollapsibleParcelContent';
 import { authCountryToShippingDestination } from '../authCountryUtils';
 
 const CAPACITY_ALERT_THRESHOLD = 70;
+
+function downloadExcel(filename, sheetName, rows, colWidths) {
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  if (colWidths) ws['!cols'] = colWidths.map((wch) => ({ wch }));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, String(sheetName).slice(0, 31));
+  XLSX.writeFile(wb, filename);
+}
 
 function containerCountryKey(country) {
   if (country == null || String(country).trim() === '') return '';
@@ -762,7 +771,7 @@ function ExportOptionsModal({ onExport, onClose }) {
           </div>
           <p className="text-sm text-slate-500 flex items-center gap-2">
             <FileSpreadsheet className="w-4 h-4 shrink-0 text-green-600" />
-            Export downloads as CSV (Excel-compatible).
+            Export downloads as an Excel file (.xlsx).
           </p>
         </div>
         <div className="modal-footer">
@@ -923,46 +932,33 @@ function ContainerSummaryModal({ container, packages, onClose }) {
 
   const downloadSummary = () => {
     const { rows, totalWeight, totalPackages, totalQty, grandTotal } = getContentRows();
-    const escapeCsv = (val) => {
-      const s = String(val ?? '');
-      if (s.includes(',') || s.includes('"') || s.includes('\n')) {
-        return `"${s.replace(/"/g, '""')}"`;
-      }
-      return s;
-    };
     const downloadDate = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
-    const issueDate = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
-    const csvLines = [
-      `Date: ${downloadDate}`,
-      '',
-      'GOODS DECLARATION',
-      `Issue date: ${issueDate}`,
-      `Shipper name: ${form.shipperName}`,
-      `ID: ${form.shipperId}`,
-      `Address: ${form.address}`,
-      `Phone: ${form.phone}`,
-      '',
-      `Total number of packages: ${totalPackages}`,
-      `Total gross weight (kg): ${totalWeight.toFixed(2)}`,
-      '',
-      ['Description', 'Qty', 'Unit price (NIS)', 'Total (NIS)'].map(escapeCsv).join(','),
+    const issueDate = downloadDate;
+    const sheetRows = [
+      [`Date: ${downloadDate}`],
+      [],
+      ['GOODS DECLARATION'],
+      [`Issue date: ${issueDate}`],
+      [`Shipper name: ${form.shipperName}`],
+      [`ID: ${form.shipperId}`],
+      [`Address: ${form.address}`],
+      [`Phone: ${form.phone}`],
+      [],
+      [`Total number of packages: ${totalPackages}`],
+      [`Total gross weight (kg): ${totalWeight.toFixed(2)}`],
+      [],
+      ['Description', 'Qty', 'Unit price (NIS)', 'Total (NIS)'],
+      ...rows.map((r) => [r.description, r.qty, r.unitPrice.toFixed(2), r.total.toFixed(2)]),
+      [],
+      ['', '', 'Total qty', totalQty],
+      ['', '', 'Grand total (NIS)', grandTotal.toFixed(2)],
     ];
-    rows.forEach((r) => {
-      csvLines.push(
-        [r.description, r.qty, r.unitPrice.toFixed(2), r.total.toFixed(2)].map(escapeCsv).join(',')
-      );
-    });
-    csvLines.push('');
-    csvLines.push(['', '', 'Total qty', totalQty].map(escapeCsv).join(','));
-    csvLines.push(['', '', 'Grand total (NIS)', grandTotal.toFixed(2)].map(escapeCsv).join(','));
-    const csv = '\uFEFF' + csvLines.join('\n');
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `goods-declaration-${container.name || container.id}-${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    downloadExcel(
+      `goods-declaration-${container.name || container.id}-${new Date().toISOString().slice(0, 10)}.xlsx`,
+      'Goods declaration',
+      sheetRows,
+      [36, 12, 18, 16],
+    );
     onClose();
   };
 
@@ -1123,7 +1119,7 @@ function ContainerSummaryModal({ container, packages, onClose }) {
             disabled={!isFormValid}
             className="btn-primary flex-1 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            Download goods declaration (CSV)
+            Download goods declaration (Excel)
           </button>
         </div>
       </div>
@@ -2135,16 +2131,9 @@ export default function ContainersPanel({ authCountry = null }) {
   const defaultContainersInList = containersWithStats.filter((c) => c.isDefaultForCountry);
 
   const exportAllContainers = () => {
-    const escapeCsv = (val) => {
-      const s = String(val ?? '');
-      if (s.includes(',') || s.includes('"') || s.includes('\n')) {
-        return `"${s.replace(/"/g, '""')}"`;
-      }
-      return s;
-    };
     const exportDateStr = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
     const headers = ['ID', 'Name', 'Country', 'Status', 'Default', 'Estimated arrival', 'Created At'];
-    const csvLines = [`Date: ${exportDateStr}`, headers.map(escapeCsv).join(',')];
+    const sheetRows = [[`Date: ${exportDateStr}`], headers];
     containers.forEach((c) => {
       const createdAt = c.createdAt
         ? new Date(c.createdAt).toLocaleString('he-IL', { dateStyle: 'short', timeStyle: 'short' })
@@ -2156,16 +2145,14 @@ export default function ContainersPanel({ authCountry = null }) {
           ? new Date(c.estimatedArrivalAt).toLocaleString('he-IL', { dateStyle: 'short', timeStyle: 'short' })
           : '';
       const defLabel = c.isDefault ? 'Yes' : '';
-      csvLines.push([c.id, c.name || '', c.country || '', statusLabel, defLabel, arrival, createdAt].map(escapeCsv).join(','));
+      sheetRows.push([c.id, c.name || '', c.country || '', statusLabel, defLabel, arrival, createdAt]);
     });
-    const csv = '\uFEFF' + csvLines.join('\n');
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `containers-export-${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    downloadExcel(
+      `containers-export-${new Date().toISOString().slice(0, 10)}.xlsx`,
+      'Containers',
+      sheetRows,
+      [18, 24, 14, 22, 12, 22, 20],
+    );
   };
 
   const getContainerExportRowsCustoms = (container) => {
@@ -2239,33 +2226,22 @@ export default function ContainersPanel({ authCountry = null }) {
     const containerName = container.name || container.id;
     const suffix = isCourier ? 'courier' : 'customs';
 
-    const escapeCsv = (val) => {
-      const s = String(val ?? '');
-      if (s.includes(',') || s.includes('"') || s.includes('\n')) {
-        return `"${s.replace(/"/g, '""')}"`;
-      }
-      return s;
-    };
-
-    const csvExportDate = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    const exportDate = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
     const headers = isCourier
       ? ['Tracking ID', 'Recipient Name', 'Recipient Phone', 'Recipient Address', 'Sender Name', 'Sender Phone', 'Weight (kg)']
       : ['Tracking ID', 'Description', 'Weight (kg)'];
-    const csvLines = [`Date: ${csvExportDate}`, headers.map(escapeCsv).join(',')];
+    const sheetRows = [[`Date: ${exportDate}`], headers];
     rows.forEach((r) => {
-      const cells = isCourier
+      sheetRows.push(isCourier
         ? [r.trackingId, r.receiverName, r.receiverPhone, r.receiverAddress, r.senderName, r.senderPhone, r.weight]
-        : [r.trackingId, r.description, r.weight];
-      csvLines.push(cells.map(escapeCsv).join(','));
+        : [r.trackingId, r.description, r.weight]);
     });
-    const csv = '\uFEFF' + csvLines.join('\n');
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `container-${containerName}-${suffix}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    downloadExcel(
+      `container-${containerName}-${suffix}.xlsx`,
+      isCourier ? 'Courier' : 'Customs',
+      sheetRows,
+      isCourier ? [18, 22, 18, 36, 22, 18, 14] : [18, 36, 14],
+    );
     setExportModalContainer(null);
   };
 
