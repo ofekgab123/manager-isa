@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Image as ImageIcon, Mic, Play, Send } from 'lucide-react';
+import { Image as ImageIcon, Mic, Pause, Play, Send } from 'lucide-react';
 import Recorder from 'opus-recorder';
 import { API_BASE } from '../config';
 
@@ -71,79 +71,195 @@ export async function sendVoiceNote(leadId, blob, durationMs) {
   return data;
 }
 
+const WAVE_BARS = 32;
+
+function placeholderPeaks(seed, count) {
+  let hash = 0;
+  const text = String(seed || 'voice');
+  for (let i = 0; i < text.length; i++) hash = (hash * 33 + text.charCodeAt(i)) >>> 0;
+  return Array.from({ length: count }, (_, i) => {
+    const wave = 0.42 + 0.4 * Math.abs(Math.sin(i * 0.62 + (hash % 9)));
+    const jitter = ((hash >> (i % 16)) & 7) / 30;
+    return Math.min(1, Math.max(0.22, wave * 0.72 + jitter));
+  });
+}
+
+async function peaksFromBlob(blob, count) {
+  const ctx = new AudioContext();
+  try {
+    const audio = await ctx.decodeAudioData(await blob.arrayBuffer());
+    const channel = audio.getChannelData(0);
+    const block = Math.max(1, Math.floor(channel.length / count));
+    const peaks = [];
+    for (let i = 0; i < count; i++) {
+      let max = 0;
+      const start = i * block;
+      for (let j = 0; j < block; j += 24) {
+        const value = Math.abs(channel[start + j] || 0);
+        if (value > max) max = value;
+      }
+      peaks.push(max);
+    }
+    const top = Math.max(...peaks, 0.01);
+    return peaks.map((peak, i) => {
+      const prev = peaks[i - 1] ?? peak;
+      const next = peaks[i + 1] ?? peak;
+      return Math.max(0.18, ((prev + peak * 2 + next) / 4) / top);
+    });
+  } finally {
+    ctx.close().catch(() => {});
+  }
+}
+
 export function VoiceMessagePlayer({ leadId, messageId, durationMs, inverted = false }) {
   const audioRef = useRef(null);
   const urlRef = useRef('');
-  const [src, setSrc] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [ready, setReady] = useState(false);
+  const [playing, setPlaying] = useState(false);
   const [error, setError] = useState('');
-  const [knownDuration, setKnownDuration] = useState(durationMs || 0);
+  const [peaks, setPeaks] = useState(() => placeholderPeaks(messageId, WAVE_BARS));
+  const [progress, setProgress] = useState(0);
+  const [elapsedMs, setElapsedMs] = useState(0);
+  const [totalMs, setTotalMs] = useState(durationMs || 0);
 
-  useEffect(() => () => {
-    if (urlRef.current) URL.revokeObjectURL(urlRef.current);
-  }, []);
+  useEffect(() => {
+    let cancelled = false;
+    let url = '';
+    (async () => {
+      try {
+        const res = await fetch(`${API_BASE}/leads/${leadId}/messages/${messageId}/audio`);
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.error || 'Could not load the recording');
+        }
+        const blob = await res.blob();
+        url = URL.createObjectURL(blob);
+        if (cancelled) {
+          URL.revokeObjectURL(url);
+          return;
+        }
+        urlRef.current = url;
+        if (audioRef.current) audioRef.current.src = url;
+        setReady(true);
+        try {
+          const real = await peaksFromBlob(blob, WAVE_BARS);
+          if (!cancelled) setPeaks(real);
+        } catch {
+          /* keep the placeholder wave if this browser cannot decode the file */
+        }
+      } catch (err) {
+        if (!cancelled) setError(err.message);
+      }
+    })();
+    return () => {
+      cancelled = true;
+      if (url) URL.revokeObjectURL(url);
+      urlRef.current = '';
+    };
+  }, [leadId, messageId]);
 
-  const load = async () => {
-    if (src) {
-      audioRef.current?.play?.().catch(() => {});
+  const toggle = async () => {
+    const audio = audioRef.current;
+    if (!audio?.src) return;
+    if (playing) {
+      audio.pause();
+      setPlaying(false);
       return;
     }
-    if (loading) return;
-    setLoading(true);
-    setError('');
     try {
-      const res = await fetch(`${API_BASE}/leads/${leadId}/messages/${messageId}/audio`);
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || 'Could not load the recording');
-      }
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      urlRef.current = url;
-      const el = audioRef.current;
-      if (el) el.src = url;
-      setSrc(url);
-      await el?.play?.().catch(() => {});
+      await audio.play();
+      setPlaying(true);
     } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
+      setError(err.message || 'Could not play the recording');
     }
   };
 
+  const seek = (event) => {
+    const audio = audioRef.current;
+    if (!audio?.duration) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    const ratio = Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width));
+    audio.currentTime = ratio * audio.duration;
+    setProgress(ratio);
+    setElapsedMs(audio.currentTime * 1000);
+  };
+
+  const unplayed = inverted ? 'rgba(255,255,255,0.45)' : '#cbd5e1';
+  const played = inverted ? '#ffffff' : '#4f46e5';
+  const shownMs = progress > 0 || playing ? elapsedMs : totalMs;
+
   return (
-    <div className="min-w-[200px]">
-      <div className="flex items-center gap-2">
-        {!src && (
-          <button
-            type="button"
-            onClick={load}
-            disabled={loading}
-            className={`shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${
-              inverted ? 'bg-white/20 text-white hover:bg-white/30' : 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100'
-            }`}
-            aria-label="Play voice message"
+    <div className="min-w-[232px] max-w-[280px]">
+      <div className="flex items-center gap-2.5">
+        <button
+          type="button"
+          onClick={toggle}
+          disabled={!ready}
+          className={`shrink-0 w-10 h-10 rounded-full flex items-center justify-center disabled:opacity-60 ${
+            inverted ? 'bg-white/25 text-white' : 'bg-indigo-600 text-white'
+          }`}
+          aria-label={playing ? 'Pause voice message' : 'Play voice message'}
+        >
+          {!ready && !error ? (
+            <span className="w-4 h-4 rounded-full border-2 border-white/40 border-t-white animate-spin" />
+          ) : playing ? (
+            <Pause className="w-4 h-4 fill-white" />
+          ) : (
+            <Play className="w-4 h-4 fill-white ml-0.5" />
+          )}
+        </button>
+        <div className="flex-1 min-w-0 pt-0.5">
+          <div
+            className="relative flex items-center gap-[2px] h-8 cursor-pointer"
+            onClick={seek}
+            role="slider"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={Math.round(progress * 100)}
+            aria-label="Voice message progress"
           >
-            {loading ? <span className="text-xs">…</span> : <Play className="w-3.5 h-3.5 fill-current" />}
-          </button>
-        )}
-        <div className="min-w-0">
-          <p className={`text-xs font-medium ${inverted ? 'text-indigo-100' : 'text-slate-500'}`}>
-            Voice message{knownDuration ? ` · ${formatVoiceClock(knownDuration)}` : ''}
-          </p>
-          <audio
-            ref={audioRef}
-            src={src || undefined}
-            controls={!!src}
-            preload="none"
-            className={src ? 'h-8 max-w-[220px] mt-1' : 'hidden'}
-            onLoadedMetadata={(event) => {
-              const seconds = event.currentTarget.duration;
-              if (Number.isFinite(seconds) && seconds > 0) setKnownDuration(seconds * 1000);
-            }}
-          />
+            {peaks.map((peak, index) => {
+              const filled = (index + 0.5) / peaks.length <= progress;
+              return (
+                <span
+                  key={index}
+                  className="w-[3px] rounded-full shrink-0"
+                  style={{
+                    height: `${Math.round(4 + peak * 24)}px`,
+                    background: filled ? played : unplayed,
+                  }}
+                />
+              );
+            })}
+          </div>
+          <div className="flex items-center justify-between mt-0.5 pr-0.5">
+            <span className={`text-[11px] tabular-nums ${inverted ? 'text-indigo-100' : 'text-slate-500'}`}>{formatVoiceClock(shownMs)}</span>
+            <Mic className={`w-3.5 h-3.5 ${inverted ? 'text-indigo-200' : 'text-slate-400'}`} />
+          </div>
         </div>
       </div>
+      <audio
+        ref={audioRef}
+        preload="metadata"
+        className="hidden"
+        onLoadedMetadata={(event) => {
+          const seconds = event.currentTarget.duration;
+          if (Number.isFinite(seconds) && seconds > 0) setTotalMs(seconds * 1000);
+        }}
+        onTimeUpdate={(event) => {
+          const audio = event.currentTarget;
+          const duration = audio.duration || 0;
+          setElapsedMs(audio.currentTime * 1000);
+          setProgress(duration ? audio.currentTime / duration : 0);
+        }}
+        onEnded={() => {
+          setPlaying(false);
+          setProgress(0);
+          setElapsedMs(0);
+        }}
+        onPause={() => setPlaying(false)}
+        onPlay={() => setPlaying(true)}
+      />
       {error && (
         <p className={`text-[11px] mt-1 ${inverted ? 'text-indigo-100' : 'text-red-600'}`}>{error}</p>
       )}
