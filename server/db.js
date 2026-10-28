@@ -50,6 +50,12 @@ export async function initDb() {
       id TEXT PRIMARY KEY,
       data JSONB NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS message_audio (
+      id TEXT PRIMARY KEY,
+      mime TEXT NOT NULL,
+      bytes BYTEA NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
     CREATE TABLE IF NOT EXISTS auth_users (
       id TEXT PRIMARY KEY,
       username TEXT UNIQUE NOT NULL,

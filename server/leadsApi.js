@@ -13,7 +13,10 @@ import {
   readLeadsRevision,
   readLeadsAwaitingReply,
   readMessagesForLead,
+  readMessageById,
   insertMessageData,
+  insertMessageAudio,
+  readMessageAudio,
   updateMessageByWaMessageId,
 } from './storage.js';
 import { israeliMobileKey } from './phoneKey.js';
@@ -21,6 +24,15 @@ import { whatsAppFirstTouch } from './waAttribution.js';
 import {
   sendTemplateMessage,
   sendTextMessage,
+  sendAudioMessage,
+  sendImageMessage,
+  downloadWhatsAppMedia,
+  uploadWhatsAppAudio,
+  audioFileForWhatsApp,
+  imageFileForWhatsApp,
+  decodeAudioBase64,
+  decodeImageBase64,
+  MAX_INBOUND_AUDIO_BYTES,
   verifyWebhookSignature,
   fetchApprovedMessageTemplates,
   fetchWabaMessageTemplates,
@@ -425,7 +437,94 @@ export function leadNeedsReply(lead) {
   return new Date(lead.lastInboundAt) > new Date(lead.lastContactedAt);
 }
 
+function inboundAudioPayload(msg) {
+  if (msg?.type === 'audio' && msg.audio?.id) return msg.audio;
+  const doc = msg?.document;
+  if (
+    msg?.type === 'document'
+    && doc?.id
+    && String(doc.mime_type || '').toLowerCase().startsWith('audio/')
+  ) {
+    return doc;
+  }
+  return null;
+}
+
+function inboundImagePayload(msg) {
+  if (msg?.type === 'image' && msg.image?.id) return msg.image;
+  if (msg?.type === 'sticker' && msg.sticker?.id) return msg.sticker;
+  const doc = msg?.document;
+  if (
+    msg?.type === 'document'
+    && doc?.id
+    && String(doc.mime_type || '').toLowerCase().startsWith('image/')
+  ) {
+    return doc;
+  }
+  return null;
+}
+
+function inboundAudioLabel(audio, msg) {
+  if (msg?.type === 'audio' && audio?.voice !== false) return 'Voice message';
+  const filename = String(audio?.filename || '').trim();
+  return filename || 'Audio';
+}
+
+function inboundImageLabel(image, msg) {
+  const caption = String(image?.caption || '').trim();
+  if (caption) return caption;
+  if (msg?.type === 'sticker') return 'Sticker';
+  const filename = String(image?.filename || '').trim();
+  return filename || 'Photo';
+}
+
+function safeMediaContentType(mime) {
+  const cleaned = String(mime || '').split(/[\r\n]/)[0].trim();
+  if (/^(audio|image)\/[a-z0-9.+-]+(?:\s*;\s*[a-z0-9.+="\s,-]+)?$/i.test(cleaned)) return cleaned;
+  return 'application/octet-stream';
+}
+
+async function storeInboundWhatsAppMedia(messageId, media, fallbackMime) {
+  const waMediaId = String(media.id);
+  const declaredMime = media.mime_type || null;
+  try {
+    const file = await downloadWhatsAppMedia(waMediaId);
+    if (file.buffer.length > MAX_INBOUND_AUDIO_BYTES) {
+      console.error('Inbound WhatsApp media too large', file.buffer.length);
+      return { waMediaId, mediaMime: declaredMime, mediaStored: false };
+    }
+    const mime = file.mimeType || declaredMime || fallbackMime;
+    await insertMessageAudio(messageId, mime, file.buffer);
+    return { waMediaId, mediaMime: mime, mediaStored: true };
+  } catch (err) {
+    console.error('Inbound WhatsApp media failed:', err.message);
+    return { waMediaId, mediaMime: declaredMime, mediaStored: false };
+  }
+}
+
+async function captureInboundAudio(messageId, audio) {
+  const stored = await storeInboundWhatsAppMedia(messageId, audio, 'audio/ogg');
+  return {
+    ...stored,
+    audioMime: stored.mediaMime,
+    audioStored: stored.mediaStored,
+    audioVoice: audio.voice === true,
+  };
+}
+
+async function captureInboundImage(messageId, image) {
+  const stored = await storeInboundWhatsAppMedia(messageId, image, image.mime_type || 'image/jpeg');
+  return {
+    ...stored,
+    imageMime: stored.mediaMime,
+  };
+}
+
 function inboundMessageText(msg) {
+  const audio = inboundAudioPayload(msg);
+  if (audio) return inboundAudioLabel(audio, msg);
+  const image = inboundImagePayload(msg);
+  if (image) return inboundImageLabel(image, msg);
   const type = msg?.type;
   if (type === 'text') return String(msg.text?.body || '').trim();
   if (type === 'button') {
@@ -537,15 +636,22 @@ export function registerWhatsAppWebhook(app) {
                 lead = { ...lead, ...whatsAppFirstTouch(lead, msg, value.metadata) };
               }
 
-              const inboundBody = inboundMessageText(msg);
-
               const now = new Date().toISOString();
               const msgId = `MSG-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+              const audio = inboundAudioPayload(msg);
+              const image = audio ? null : inboundImagePayload(msg);
+              const mediaFields = audio
+                ? await captureInboundAudio(msgId, audio)
+                : image
+                  ? await captureInboundImage(msgId, image)
+                  : null;
+              const inboundBody = inboundMessageText(msg);
               await insertMessageData(msgId, {
                 id: msgId,
                 leadId: lead.id,
                 phone: lead.phone,
                 direction: 'inbound',
+                messageType: audio ? 'audio' : image ? 'image' : (msg.type || 'text'),
                 templateId: null,
                 waTemplateName: null,
                 body: inboundBody,
@@ -557,6 +663,7 @@ export function registerWhatsAppWebhook(app) {
                 readAt: null,
                 repliedAt: now,
                 inboundBody,
+                ...(mediaFields || {}),
               });
 
               const windowUntil = conversationWindowOpenUntilFromInbound(now);
@@ -791,6 +898,48 @@ export function registerLeadsRoutes(app, { requireAdmin }) {
     }
   });
 
+  async function sendStoredMessageMedia(req, res) {
+    try {
+      const lead = await readLeadById(req.params.id);
+      if (!lead || !leadVisibleToUser(lead, req.user)) {
+        return res.status(404).json({ error: 'Lead not found' });
+      }
+      const message = await readMessageById(req.params.messageId);
+      const kind = message?.messageType;
+      if (!message || message.leadId !== lead.id || (kind !== 'audio' && kind !== 'image')) {
+        return res.status(404).json({ error: 'File not found' });
+      }
+
+      let media = await readMessageAudio(message.id);
+      if (!media && message.waMediaId) {
+        const file = await downloadWhatsAppMedia(message.waMediaId);
+        const mime = file.mimeType || message.mediaMime || message.imageMime || message.audioMime
+          || (kind === 'image' ? 'image/jpeg' : 'audio/ogg');
+        await insertMessageAudio(message.id, mime, file.buffer);
+        media = { mime, bytes: file.buffer };
+      }
+      const bytes = Buffer.isBuffer(media?.bytes) ? media.bytes : null;
+      if (!bytes?.length) {
+        return res.status(404).json({
+          error: kind === 'image' ? 'Photo is not available' : 'Recording is not available',
+        });
+      }
+
+      res.status(200);
+      res.setHeader('Content-Type', safeMediaContentType(
+        media.mime || message.mediaMime || message.imageMime || message.audioMime,
+      ));
+      res.setHeader('Content-Length', String(bytes.length));
+      res.setHeader('Cache-Control', 'private, max-age=86400');
+      res.end(bytes);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  }
+
+  app.get('/api/leads/:id/messages/:messageId/audio', requireLeadsAccess, sendStoredMessageMedia);
+  app.get('/api/leads/:id/messages/:messageId/media', requireLeadsAccess, sendStoredMessageMedia);
+
   app.post('/api/leads/:id/send-message', requireLeadsAccess, async (req, res) => {
     try {
       const { templateId } = req.body || {};
@@ -914,6 +1063,158 @@ export function registerLeadsRoutes(app, { requireAdmin }) {
         waTemplateName: null,
         body,
         waMessageId: result.waMessageId,
+        status: 'sent',
+        sentBy: req.user?.id || req.user?.username || null,
+        sentAt: now,
+        deliveredAt: null,
+        readAt: null,
+        repliedAt: null,
+        inboundBody: null,
+      };
+      await insertMessageData(msgId, message);
+
+      const updatedLead = {
+        ...lead,
+        lastContactedAt: now,
+        lastContactedBy: req.user?.id || req.user?.username || null,
+        updatedAt: now,
+      };
+      await updateLeadData(lead.id, updatedLead);
+
+      res.json({
+        message,
+        lead: updatedLead,
+        conversationWindowOpen: isConversationWindowOpen(updatedLead),
+      });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post('/api/leads/:id/send-audio', requireLeadsAccess, async (req, res) => {
+    try {
+      const leads = await readLeads();
+      const lead = leads.find(
+        (l) => l.id === req.params.id && leadVisibleToUser(l, req.user),
+      );
+      if (!lead) return res.status(404).json({ error: 'Lead not found' });
+      if (!isConversationWindowOpen(lead)) {
+        return res.status(400).json({
+          error: 'Conversation window closed. Send an approved template to start or re-open the conversation.',
+          conversationWindowOpen: false,
+        });
+      }
+
+      const file = audioFileForWhatsApp(req.body?.mimeType);
+      const buffer = decodeAudioBase64(req.body?.audioBase64);
+      if (buffer.length < 800) return res.status(400).json({ error: 'Recording is too short' });
+      const durationMs = Number(req.body?.durationMs);
+      const audioDurationMs = Number.isFinite(durationMs)
+        ? Math.max(0, Math.min(Math.round(durationMs), 120_000))
+        : null;
+      if (audioDurationMs != null && audioDurationMs < 500) {
+        return res.status(400).json({ error: 'Recording is too short' });
+      }
+
+      const mediaId = await uploadWhatsAppAudio({
+        buffer,
+        mimeType: file.mimeType,
+        filename: file.filename,
+      });
+      const result = await sendAudioMessage({
+        to: lead.phone,
+        mediaId,
+        voice: file.voice,
+      });
+
+      const now = new Date().toISOString();
+      const msgId = `MSG-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+      const storedMime = file.voice ? 'audio/ogg; codecs=opus' : file.mimeType;
+      await insertMessageAudio(msgId, storedMime, buffer);
+      const message = {
+        id: msgId,
+        leadId: lead.id,
+        phone: lead.phone,
+        direction: 'outbound',
+        messageType: 'audio',
+        templateId: null,
+        waTemplateName: null,
+        body: 'Voice message',
+        waMessageId: result.waMessageId,
+        waMediaId: mediaId,
+        audioMime: storedMime,
+        audioStored: true,
+        audioVoice: file.voice,
+        audioDurationMs,
+        status: 'sent',
+        sentBy: req.user?.id || req.user?.username || null,
+        sentAt: now,
+        deliveredAt: null,
+        readAt: null,
+        repliedAt: null,
+        inboundBody: null,
+      };
+      await insertMessageData(msgId, message);
+
+      const updatedLead = {
+        ...lead,
+        lastContactedAt: now,
+        lastContactedBy: req.user?.id || req.user?.username || null,
+        updatedAt: now,
+      };
+      await updateLeadData(lead.id, updatedLead);
+
+      res.json({
+        message,
+        lead: updatedLead,
+        conversationWindowOpen: isConversationWindowOpen(updatedLead),
+      });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post('/api/leads/:id/send-image', requireLeadsAccess, async (req, res) => {
+    try {
+      const leads = await readLeads();
+      const lead = leads.find(
+        (l) => l.id === req.params.id && leadVisibleToUser(l, req.user),
+      );
+      if (!lead) return res.status(404).json({ error: 'Lead not found' });
+      if (!isConversationWindowOpen(lead)) {
+        return res.status(400).json({
+          error: 'Conversation window closed. Send an approved template to start or re-open the conversation.',
+          conversationWindowOpen: false,
+        });
+      }
+
+      const file = imageFileForWhatsApp(req.body?.mimeType);
+      const buffer = decodeImageBase64(req.body?.imageBase64);
+      const caption = String(req.body?.caption || '').trim().slice(0, 1024);
+      const mediaId = await uploadWhatsAppAudio({
+        buffer,
+        mimeType: file.mimeType,
+        filename: file.filename,
+      });
+      const result = await sendImageMessage({ to: lead.phone, mediaId, caption });
+
+      const now = new Date().toISOString();
+      const msgId = `MSG-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+      await insertMessageAudio(msgId, file.mimeType, buffer);
+      const message = {
+        id: msgId,
+        leadId: lead.id,
+        phone: lead.phone,
+        direction: 'outbound',
+        messageType: 'image',
+        templateId: null,
+        waTemplateName: null,
+        body: caption || 'Photo',
+        waMessageId: result.waMessageId,
+        waMediaId: mediaId,
+        mediaMime: file.mimeType,
+        mediaStored: true,
+        imageMime: file.mimeType,
         status: 'sent',
         sentBy: req.user?.id || req.user?.username || null,
         sentAt: now,

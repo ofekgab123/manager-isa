@@ -273,6 +273,238 @@ export async function sendTemplateMessage({
   };
 }
 
+const MAX_OUTBOUND_AUDIO_BYTES = 4 * 1024 * 1024;
+export const MAX_INBOUND_AUDIO_BYTES = 8 * 1024 * 1024;
+
+const WHATSAPP_AUDIO_FILES = {
+  'audio/ogg': { filename: 'voice.ogg', voice: true },
+  'audio/mpeg': { filename: 'voice.mp3', voice: false },
+  'audio/mp4': { filename: 'voice.m4a', voice: false },
+  'audio/aac': { filename: 'voice.aac', voice: false },
+  'audio/amr': { filename: 'voice.amr', voice: false },
+};
+
+function whatsAppAccessToken() {
+  const accessToken = (process.env.WHATSAPP_ACCESS_TOKEN || '').trim();
+  if (!accessToken) {
+    throw new Error('WhatsApp API not configured (WHATSAPP_ACCESS_TOKEN)');
+  }
+  return accessToken;
+}
+
+function phoneNumberAuth() {
+  const phoneNumberId = (process.env.WHATSAPP_PHONE_NUMBER_ID || '').trim();
+  const accessToken = whatsAppAccessToken();
+  if (!phoneNumberId) {
+    throw new Error('WhatsApp API not configured (WHATSAPP_PHONE_NUMBER_ID)');
+  }
+  return { phoneNumberId, accessToken };
+}
+
+/** Base mime WhatsApp Cloud API accepts for audio messages. Voice notes must be Ogg Opus. */
+export function audioFileForWhatsApp(mimeType) {
+  const base = String(mimeType || '').split(';')[0].trim().toLowerCase();
+  const spec = WHATSAPP_AUDIO_FILES[base];
+  if (!spec) {
+    throw new Error('Unsupported audio type. Record the voice message in this chat.');
+  }
+  return { mimeType: base, filename: spec.filename, voice: spec.voice };
+}
+
+const WHATSAPP_IMAGE_FILES = {
+  'image/jpeg': 'photo.jpg',
+  'image/png': 'photo.png',
+  'image/webp': 'photo.webp',
+};
+
+function decodeBase64Payload(value, { maxChars, maxBytes, emptyError, largeError }) {
+  const raw = String(value || '').trim();
+  const payload = raw.includes(',') ? raw.slice(raw.indexOf(',') + 1) : raw;
+  const compact = payload.replace(/\s/g, '');
+  if (!compact) throw new Error(emptyError);
+  if (compact.length > maxChars) throw new Error(largeError);
+  const buffer = Buffer.from(compact, 'base64');
+  if (!buffer.length) throw new Error(emptyError);
+  if (buffer.length > maxBytes) throw new Error(largeError);
+  return buffer;
+}
+
+export function decodeAudioBase64(audioBase64) {
+  return decodeBase64Payload(audioBase64, {
+    maxChars: 6_000_000,
+    maxBytes: MAX_OUTBOUND_AUDIO_BYTES,
+    emptyError: 'Recording is empty',
+    largeError: 'Recording is too large',
+  });
+}
+
+export function decodeImageBase64(imageBase64) {
+  return decodeBase64Payload(imageBase64, {
+    maxChars: 5_800_000,
+    maxBytes: MAX_OUTBOUND_AUDIO_BYTES,
+    emptyError: 'Photo is empty',
+    largeError: 'Photo is too large',
+  });
+}
+
+/** JPEG, PNG, or WebP. Photos from the chat are sent as JPEG. */
+export function imageFileForWhatsApp(mimeType) {
+  const base = String(mimeType || '').split(';')[0].trim().toLowerCase();
+  const filename = WHATSAPP_IMAGE_FILES[base];
+  if (!filename) throw new Error('Unsupported photo type. Use a JPEG or PNG.');
+  return { mimeType: base, filename };
+}
+
+function assertMetaMediaUrl(url) {
+  let parsed;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new Error('Invalid WhatsApp media URL');
+  }
+  if (parsed.protocol !== 'https:') throw new Error('Invalid WhatsApp media URL');
+  const host = parsed.hostname.toLowerCase();
+  const allowed = host === 'lookaside.fbsbx.com'
+    || host.endsWith('.fbsbx.com')
+    || host.endsWith('.fbcdn.net')
+    || host.endsWith('.facebook.com');
+  if (!allowed) throw new Error('Unexpected WhatsApp media host');
+  return parsed.toString();
+}
+
+/** Download a webhook media id (voice note or audio file) and keep the bytes. */
+export async function downloadWhatsAppMedia(mediaId) {
+  const accessToken = whatsAppAccessToken();
+  const id = String(mediaId || '').trim();
+  if (!/^[A-Za-z0-9_-]+$/.test(id)) throw new Error('Invalid WhatsApp media id');
+
+  const metaRes = await fetch(`https://graph.facebook.com/${GRAPH_API_VERSION}/${id}`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+    signal: AbortSignal.timeout(20000),
+  });
+  const meta = await metaRes.json().catch(() => ({}));
+  if (!metaRes.ok || !meta.url) {
+    throw new Error(`WhatsApp media lookup failed: ${graphErrorMessage(meta)}`);
+  }
+
+  const fileRes = await fetch(assertMetaMediaUrl(meta.url), {
+    headers: { Authorization: `Bearer ${accessToken}` },
+    signal: AbortSignal.timeout(20000),
+  });
+  if (!fileRes.ok) {
+    throw new Error(`WhatsApp media download failed (${fileRes.status})`);
+  }
+  const declared = Number(fileRes.headers.get('content-length') || 0);
+  if (declared > MAX_INBOUND_AUDIO_BYTES) throw new Error('File is too large');
+  const buffer = Buffer.from(await fileRes.arrayBuffer());
+  if (!buffer.length) throw new Error('WhatsApp media was empty');
+  if (buffer.length > MAX_INBOUND_AUDIO_BYTES) throw new Error('File is too large');
+
+  const mimeType = String(meta.mime_type || fileRes.headers.get('content-type') || 'audio/ogg')
+    .split('\n')[0]
+    .trim();
+  return { buffer, mimeType };
+}
+
+export async function uploadWhatsAppAudio({ buffer, mimeType, filename }) {
+  const { phoneNumberId, accessToken } = phoneNumberAuth();
+  const form = new FormData();
+  form.append('messaging_product', 'whatsapp');
+  const bytes = new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength);
+  form.append('file', new Blob([bytes], { type: mimeType }), filename);
+
+  const res = await fetch(`https://graph.facebook.com/${GRAPH_API_VERSION}/${phoneNumberId}/media`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${accessToken}` },
+    body: form,
+    signal: AbortSignal.timeout(20000),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.id) {
+    throw new Error(`WhatsApp media upload error: ${graphErrorMessage(data)}`);
+  }
+  return data.id;
+}
+
+/** Free-form image inside the 24h customer service window. */
+export async function sendImageMessage({ to, mediaId, caption = '' }) {
+  const { phoneNumberId, accessToken } = phoneNumberAuth();
+  const recipient = whatsAppRecipientDigits(to);
+  if (!recipient) throw new Error('Invalid recipient phone');
+  const id = String(mediaId || '').trim();
+  if (!id) throw new Error('Missing WhatsApp media id');
+  const text = String(caption || '').trim().slice(0, 1024);
+
+  const payload = {
+    messaging_product: 'whatsapp',
+    to: recipient,
+    type: 'image',
+    image: {
+      id,
+      ...(text ? { caption: text } : {}),
+    },
+  };
+
+  const url = `https://graph.facebook.com/${GRAPH_API_VERSION}/${phoneNumberId}/messages`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(20000),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(`WhatsApp API error: ${graphErrorMessage(data)}`);
+  }
+  return {
+    waMessageId: data.messages?.[0]?.id || null,
+    recipient,
+    raw: data,
+  };
+}
+
+/** Free-form audio inside the 24h customer service window. `voice` shows it as a voice note. */
+export async function sendAudioMessage({ to, mediaId, voice = false }) {
+  const { phoneNumberId, accessToken } = phoneNumberAuth();
+  const recipient = whatsAppRecipientDigits(to);
+  if (!recipient) throw new Error('Invalid recipient phone');
+  const id = String(mediaId || '').trim();
+  if (!id) throw new Error('Missing WhatsApp media id');
+
+  const payload = {
+    messaging_product: 'whatsapp',
+    to: recipient,
+    type: 'audio',
+    audio: {
+      id,
+      ...(voice ? { voice: true } : {}),
+    },
+  };
+
+  const url = `https://graph.facebook.com/${GRAPH_API_VERSION}/${phoneNumberId}/messages`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(20000),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(`WhatsApp API error: ${graphErrorMessage(data)}`);
+  }
+  return {
+    waMessageId: data.messages?.[0]?.id || null,
+    recipient,
+    raw: data,
+  };
+}
+
 /** Free-form text within the 24h customer service window. */
 export async function sendTextMessage({ to, text }) {
   const phoneNumberId = (process.env.WHATSAPP_PHONE_NUMBER_ID || '').trim();

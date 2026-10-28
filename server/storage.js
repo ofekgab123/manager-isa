@@ -695,7 +695,21 @@ export async function updateLeadData(id, data) {
   if (rowCount === 0) throw new Error('Lead not found');
 }
 
+async function deleteMessageAudioForLeadIds(leadIds) {
+  const unique = [...new Set((leadIds || []).map((id) => String(id).trim()).filter(Boolean))];
+  if (unique.length === 0) return;
+  await pool.query(
+    `DELETE FROM message_audio
+     WHERE id IN (
+       SELECT id FROM messages WHERE data->>'leadId' = ANY($1::text[])
+     )`,
+    [unique],
+  );
+}
+
 export async function deleteLeadById(id) {
+  await deleteMessageAudioForLeadIds([id]);
+  await pool.query(`DELETE FROM messages WHERE data->>'leadId' = $1`, [id]);
   const { rowCount } = await pool.query('DELETE FROM leads WHERE id = $1', [id]);
   if (rowCount === 0) throw new Error('Lead not found');
 }
@@ -703,6 +717,7 @@ export async function deleteLeadById(id) {
 export async function deleteLeadsByIds(ids) {
   const unique = [...new Set((ids || []).map((id) => String(id).trim()).filter(Boolean))];
   if (unique.length === 0) return { deleted: 0 };
+  await deleteMessageAudioForLeadIds(unique);
   await pool.query(`DELETE FROM messages WHERE data->>'leadId' = ANY($1::text[])`, [unique]);
   const { rowCount } = await pool.query('DELETE FROM leads WHERE id = ANY($1::text[])', [unique]);
   return { deleted: rowCount };
@@ -747,6 +762,30 @@ export async function readMessagesForLead(leadId) {
 
 export async function insertMessageData(id, data) {
   await pool.query(`INSERT INTO messages (id, data) VALUES ($1, $2::jsonb)`, [id, data]);
+}
+
+export async function readMessageById(id) {
+  const { rows } = await pool.query(`SELECT data FROM messages WHERE id = $1`, [id]);
+  return rows[0]?.data ?? null;
+}
+
+export async function insertMessageAudio(id, mime, bytes) {
+  await pool.query(
+    `INSERT INTO message_audio (id, mime, bytes)
+     VALUES ($1, $2, $3)
+     ON CONFLICT (id) DO UPDATE SET mime = EXCLUDED.mime, bytes = EXCLUDED.bytes`,
+    [id, mime, bytes],
+  );
+}
+
+export async function readMessageAudio(id) {
+  const { rows } = await pool.query(
+    `SELECT mime, bytes FROM message_audio WHERE id = $1`,
+    [id],
+  );
+  const row = rows[0];
+  if (!row) return null;
+  return { mime: row.mime, bytes: row.bytes };
 }
 
 export async function findUserIdByPhone(phone) {

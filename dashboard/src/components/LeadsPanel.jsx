@@ -17,6 +17,16 @@ import {
 import * as XLSX from 'xlsx';
 import PhoneInput from './PhoneInput';
 import MessageTemplatesPanel from './MessageTemplatesPanel';
+import {
+  ChatImage,
+  ImagePickButton,
+  VoiceMessagePlayer,
+  VoiceRecordButton,
+  imageCaption,
+  prepareChatImage,
+  sendChatImage,
+  sendVoiceNote,
+} from './LeadVoiceNote';
 import { API_BASE } from '../config';
 import { authCountryToDefaultPhoneCode } from '../authCountryUtils';
 import { useBulkSend } from '../BulkSendContext';
@@ -424,6 +434,10 @@ function LeadDetailModal({ lead, templates, onClose, onUpdated }) {
   const [showSend, setShowSend] = useState(false);
   const [replyText, setReplyText] = useState('');
   const [sendingReply, setSendingReply] = useState(false);
+  const [voiceBusy, setVoiceBusy] = useState(false);
+  const [photoDraft, setPhotoDraft] = useState(null);
+  const [sendingPhoto, setSendingPhoto] = useState(false);
+  const photoUrlRef = useRef('');
   const chatEndRef = useRef(null);
 
   const loadMessages = useCallback(async (silent = false) => {
@@ -466,6 +480,10 @@ function LeadDetailModal({ lead, templates, onClose, onUpdated }) {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  useEffect(() => () => {
+    if (photoUrlRef.current) URL.revokeObjectURL(photoUrlRef.current);
+  }, []);
+
   const handleSave = async () => {
     setSaving(true);
     setError('');
@@ -488,6 +506,45 @@ function LeadDetailModal({ lead, templates, onClose, onUpdated }) {
   const handleSent = (data) => {
     setShowSend(false);
     onUpdated(data.lead);
+    loadMessages(true);
+  };
+
+  const stagePhoto = (blob) => {
+    if (photoUrlRef.current) URL.revokeObjectURL(photoUrlRef.current);
+    const url = URL.createObjectURL(blob);
+    photoUrlRef.current = url;
+    setPhotoDraft({ blob, url });
+    setError('');
+  };
+
+  const clearPhoto = () => {
+    if (photoUrlRef.current) URL.revokeObjectURL(photoUrlRef.current);
+    photoUrlRef.current = '';
+    setPhotoDraft(null);
+  };
+
+  const handleSendPhoto = async () => {
+    if (!photoDraft?.blob) return;
+    setSendingPhoto(true);
+    setError('');
+    try {
+      const data = await sendChatImage(lead.id, photoDraft.blob, replyText.trim());
+      setReplyText('');
+      clearPhoto();
+      onUpdated(data.lead);
+      setConversationWindowOpen(!!data.conversationWindowOpen);
+      loadMessages(true);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSendingPhoto(false);
+    }
+  };
+
+  const handleSendAudio = async (blob, durationMs) => {
+    const data = await sendVoiceNote(lead.id, blob, durationMs);
+    onUpdated(data.lead);
+    setConversationWindowOpen(!!data.conversationWindowOpen);
     loadMessages(true);
   };
 
@@ -586,16 +643,36 @@ function LeadDetailModal({ lead, templates, onClose, onUpdated }) {
               <ul className="space-y-3">
                 {messages.map((m) => {
                   const isInbound = m.direction === 'inbound';
+                  const isImage = m.messageType === 'image';
+                  const caption = isImage ? imageCaption(m.body) : '';
                   return (
                     <li key={m.id} className={`flex ${isInbound ? 'justify-start' : 'justify-end'}`}>
                       <div
-                        className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 text-sm shadow-sm border ${
+                        className={`max-w-[85%] rounded-2xl text-sm shadow-sm border ${
+                          isImage ? 'p-1.5' : 'px-3.5 py-2.5'
+                        } ${
                           isInbound
                             ? 'bg-white border-slate-200 text-slate-800 rounded-tl-sm'
                             : 'bg-indigo-600 border-indigo-600 text-white rounded-tr-sm'
                         }`}
                       >
-                        <p className="whitespace-pre-wrap break-words">{m.body || m.inboundBody || '—'}</p>
+                        {m.messageType === 'audio' ? (
+                          <VoiceMessagePlayer
+                            leadId={lead.id}
+                            messageId={m.id}
+                            durationMs={m.audioDurationMs}
+                            inverted={!isInbound}
+                          />
+                        ) : isImage ? (
+                          <div>
+                            <ChatImage leadId={lead.id} messageId={m.id} caption={caption} />
+                            {caption && (
+                              <p className="whitespace-pre-wrap break-words px-1.5 pt-1.5">{caption}</p>
+                            )}
+                          </div>
+                        ) : (
+                          <p className="whitespace-pre-wrap break-words">{m.body || m.inboundBody || '—'}</p>
+                        )}
                         <div className={`flex flex-wrap gap-2 mt-1.5 text-[10px] ${isInbound ? 'text-slate-400' : 'text-indigo-200'}`}>
                           <span>{m.sentAt ? new Date(m.sentAt).toLocaleString() : ''}</span>
                           {!isInbound && m.messageType === 'template' && <span>· template</span>}
@@ -622,28 +699,66 @@ function LeadDetailModal({ lead, templates, onClose, onUpdated }) {
             )}
 
             {conversationWindowOpen ? (
+              <div className="space-y-2">
+              {photoDraft && !voiceBusy && (
+                <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-2 py-2">
+                  <img src={photoDraft.url} alt="" className="h-14 w-14 rounded-lg object-cover" />
+                  <p className="flex-1 text-xs text-slate-500">
+                    {replyText.trim() ? 'Photo with the text as a caption' : 'Photo ready to send'}
+                  </p>
+                  <button type="button" onClick={clearPhoto} disabled={sendingPhoto} className="text-xs text-slate-500 hover:text-slate-800">
+                    Cancel
+                  </button>
+                  <button type="button" onClick={handleSendPhoto} disabled={sendingPhoto} className="btn-primary px-3 py-2 text-sm">
+                    {sendingPhoto ? 'Sending…' : 'Send photo'}
+                  </button>
+                </div>
+              )}
               <div className="flex gap-2 items-end">
-                <textarea
-                  className="input-field flex-1 min-h-[44px] max-h-28 text-sm resize-none py-2.5"
-                  rows={2}
-                  value={replyText}
-                  onChange={(e) => setReplyText(e.target.value)}
-                  placeholder="Type a reply…"
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                      e.preventDefault();
-                      handleSendReply();
-                    }
-                  }}
+                <VoiceRecordButton
+                  disabled={sendingReply || sendingPhoto}
+                  onBusyChange={setVoiceBusy}
+                  onError={setError}
+                  onSend={handleSendAudio}
                 />
-                <button
-                  type="button"
-                  onClick={handleSendReply}
-                  disabled={sendingReply || !replyText.trim()}
-                  className="btn-primary px-4 py-2.5 shrink-0"
-                >
-                  {sendingReply ? '…' : <Send className="w-4 h-4" />}
-                </button>
+                {!voiceBusy && (
+                  <>
+                    <ImagePickButton
+                      disabled={sendingReply || sendingPhoto}
+                      onPick={stagePhoto}
+                      onError={setError}
+                    />
+                    <textarea
+                      className="input-field flex-1 min-h-[44px] max-h-28 text-sm resize-none py-2.5"
+                      rows={2}
+                      value={replyText}
+                      onChange={(e) => setReplyText(e.target.value)}
+                      placeholder="Type a reply…"
+                      onPaste={(event) => {
+                        const file = [...(event.clipboardData?.files || [])].find((item) => item.type.startsWith('image/'));
+                        if (!file) return;
+                        event.preventDefault();
+                        prepareChatImage(file).then(stagePhoto).catch((err) => setError(err.message));
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                          e.preventDefault();
+                          if (photoDraft) handleSendPhoto();
+                          else handleSendReply();
+                        }
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={photoDraft ? handleSendPhoto : handleSendReply}
+                      disabled={sendingReply || sendingPhoto || (!photoDraft && !replyText.trim())}
+                      className="btn-primary px-4 py-2.5 shrink-0"
+                    >
+                      {sendingReply || sendingPhoto ? '…' : <Send className="w-4 h-4" />}
+                    </button>
+                  </>
+                )}
+              </div>
               </div>
             ) : (
               <button
@@ -654,6 +769,11 @@ function LeadDetailModal({ lead, templates, onClose, onUpdated }) {
                 <MessageSquare className="w-4 h-4" />
                 Send template
               </button>
+            )}
+            {!conversationWindowOpen && (
+              <p className="text-[11px] text-slate-400">
+                Photos and voice messages can be sent after they reply, while the 24h window is open.
+              </p>
             )}
 
             {conversationWindowOpen && (

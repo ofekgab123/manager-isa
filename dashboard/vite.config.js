@@ -22,8 +22,38 @@ function readDevApiPort() {
 
 const apiPort = readDevApiPort();
 
+/** Opus encoder for WhatsApp voice notes. Served as its own file so AudioWorklet can load it. */
+function opusEncoderWorkerPlugin() {
+  const workerFile = path.join(__dirname, 'node_modules/opus-recorder/dist/encoderWorker.min.js');
+  const workerPath = '/opus-encoder-worker.min.js';
+  const serveWorker = (req, res, next) => {
+    const url = (req.url || '').split('?')[0];
+    if (url !== workerPath) return next();
+    if (!fs.existsSync(workerFile)) return next();
+    res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-cache');
+    fs.createReadStream(workerFile).pipe(res);
+  };
+  return {
+    name: 'opus-encoder-worker',
+    configureServer(server) {
+      server.middlewares.use(serveWorker);
+    },
+    configurePreviewServer(server) {
+      server.middlewares.use(serveWorker);
+    },
+    generateBundle() {
+      this.emitFile({
+        type: 'asset',
+        fileName: 'opus-encoder-worker.min.js',
+        source: fs.readFileSync(workerFile),
+      });
+    },
+  };
+}
+
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), opusEncoderWorkerPlugin()],
   build: {
     outDir: '../public',
     emptyOutDir: true,
